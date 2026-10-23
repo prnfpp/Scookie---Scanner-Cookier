@@ -1,0 +1,73 @@
+# Tabella dei riferimenti normativi e collegamento regole → norme.
+# DA VALIDARE A CURA DEL CONSULENTE LEGALE. Modificabile senza toccare il codice:
+# per usarne una versione diversa indicare il percorso nella chiave "norme" della configurazione.
+
+norme:
+  art122:
+    titolo: Art. 122 Codice Privacy
+    riferimento: "D.Lgs. 196/2003, art. 122 — Informazioni raccolte nei riguardi del contraente o dell'utente"
+    url: https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2003-06-30;196~art122
+  garante2021:
+    titolo: Linee guida cookie del Garante (10 giugno 2021)
+    riferimento: "Garante per la protezione dei dati personali, Linee guida cookie e altri strumenti di tracciamento, provv. 10 giugno 2021 [doc. web n. 9677876]"
+    url: https://www.garanteprivacy.it/home/docweb/-/docweb-display/docweb/9677876
+  eprivacy53:
+    titolo: Art. 5(3) direttiva ePrivacy
+    riferimento: "Direttiva 2002/58/CE, art. 5, paragrafo 3"
+    url: https://eur-lex.europa.eu/legal-content/IT/ALL/?uri=CELEX:32002L0058
+  edpb2_2023:
+    titolo: Linee guida EDPB 2/2023
+    riferimento: "EDPB, Guidelines 2/2023 on Technical Scope of Art. 5(3) of ePrivacy Directive"
+    url: https://www.edpb.europa.eu/our-work-tools/documents/public-consultations/2023/guidelines-22023-technical-scope-art-53-eprivacy_en
+  gdpr4_11:
+    titolo: Art. 4(11) GDPR
+    riferimento: "Regolamento (UE) 2016/679, art. 4, punto 11 — definizione di consenso"
+    url: https://eur-lex.europa.eu/legal-content/IT/TXT/?uri=CELEX:32016R0679
+  gdpr7:
+    titolo: Art. 7 GDPR
+    riferimento: "Regolamento (UE) 2016/679, art. 7 — Condizioni per il consenso"
+    url: https://eur-lex.europa.eu/legal-content/IT/TXT/?uri=CELEX:32016R0679
+  gdpr13:
+    titolo: Art. 13 GDPR
+    riferimento: "Regolamento (UE) 2016/679, art. 13 — Informazioni da fornire"
+    url: https://eur-lex.europa.eu/legal-content/IT/TXT/?uri=CELEX:32016R0679
+
+# Per ogni regola: norme collegate e gravità (alta | media | bassa | informativa).
+# Le regole non elencate usano i valori predefiniti nel codice.
+regole:
+  cookie-prima-del-consenso:
+    norme: [art122, eprivacy53, garante2021, edpb2_2023]
+    gravita: alta
+  richiesta-tracker-prima-del-consenso:
+    norme: [art122, eprivacy53, garante2021, edpb2_2023]
+    gravita: alta
+  consent-mode-senza-consenso:
+    norme: [art122, eprivacy53, edpb2_2023]
+    gravita: media
+  attivazione-dopo-rifiuto:
+    norme: [art122, eprivacy53, garante2021, gdpr4_11, gdpr7]
+    gravita: alta
+  rifiuto-non-al-primo-livello:
+    norme: [garante2021, gdpr4_11, gdpr7]
+    gravita: media
+  scelta-non-verificata:
+    norme: [gdpr4_11, gdpr7]
+    gravita: media
+  banner-assente:
+    norme: [garante2021, gdpr13]
+    gravita: informativa
+  sottodomini-disomogenei:
+    norme: [garante2021, gdpr13]
+    gravita: bassa
+  elementi-non-dichiarati:
+    norme: [gdpr13, garante2021, art122]
+    gravita: media
+  dichiarati-non-osservati:
+    norme: [gdpr13]
+    gravita: bassa
+  categoria-incoerente:
+    norme: [gdpr13, garante2021, art122]
+    gravita: media
+  endpoint-server-side:
+    norme: [gdpr13]
+    gravita: informativa

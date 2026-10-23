@@ -1,0 +1,6 @@
+nome;dominio;categoria;sempre attiva;tipo
+PHPSESSID;shop.esempio.it;Necessari;sì;cookie
+_ga;esempio.it;Statistici;no;cookie
+_ga_xxxxxxxxxx;esempio.it;Statistici;no;cookie
+_fbp;esempio.it;Marketing;no;cookie
+Google Analytics;;Statistici;no;servizio
