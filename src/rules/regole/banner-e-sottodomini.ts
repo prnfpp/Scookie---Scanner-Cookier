@@ -1,0 +1,78 @@
+import { NON_TECHNICAL } from '../../types.js';
+import { groupBy, sessionEvidence } from '../helpers.js';
+import type { RawFinding, Rule } from '../types.js';
+
+/** Nessun banner rilevato sulla home di un sito. */
+export const bannerAssente: Rule = {
+  id: 'banner-assente',
+  title: 'Nessun banner di consenso rilevato',
+  defaultSeverity: 'informativa',
+  defaultNorms: ['garante2021', 'gdpr13'],
+  evaluate({ sessions }) {
+    const out: RawFinding[] = [];
+    for (const [site, list] of groupBy(sessions, (s) => s.site)) {
+      if (list.some((s) => s.interaction.bannerVisibleBefore || s.interaction.detectedCmps.length)) continue;
+      const home = list.find((s) => s.scenario === 'nessuna-azione') ?? list[0];
+      const nonTech =
+        list.some((s) => s.cookies.some((c) => NON_TECHNICAL.has(c.classification.category))) ||
+        list.some((s) => s.requests.some((r) => r.tracker && NON_TECHNICAL.has(r.tracker.category)));
+      out.push({
+        site,
+        scenario: null,
+        pageUrl: home.pages[0],
+        severity: nonTech ? 'media' : 'informativa',
+        description: `In nessuna delle pagine visitate è stato rilevato un banner o un gestore del consenso.${nonTech ? ' Sono però presenti cookie o richieste di categoria non tecnica (vedi inventario).' : ''}`,
+        details: [`Pagine visitate: ${[...new Set(list.flatMap((s) => s.pages))].length}`],
+        evidence: sessionEvidence(home, ['1-banner']),
+      });
+    }
+    return out;
+  },
+};
+
+/** Sottodomini dello stesso dominio con CMP diversi, banner presenti solo in parte, policy su altri domini. */
+export const sottodominiDisomogenei: Rule = {
+  id: 'sottodomini-disomogenei',
+  title: 'Gestione del consenso disomogenea tra sottodomini',
+  defaultSeverity: 'bassa',
+  defaultNorms: ['garante2021', 'gdpr13'],
+  evaluate({ sessions, config }) {
+    const out: RawFinding[] = [];
+    for (const [domain, list] of groupBy(sessions, (s) => s.registrableDomain)) {
+      const bySite = groupBy(list, (s) => s.site);
+      if (bySite.size < 2) continue;
+      const profile = [...bySite].map(([site, ss]) => ({
+        site,
+        cmps: [...new Set(ss.flatMap((s) => s.interaction.detectedCmps).filter((c) => c !== 'IAB TCF v2'))].sort(),
+        banner: ss.some((s) => s.interaction.bannerVisibleBefore),
+      }));
+      const signatures = new Set(profile.map((p) => `${p.banner}|${p.cmps.join(',')}`));
+      if (signatures.size < 2) continue;
+      out.push({
+        site: domain,
+        scenario: null,
+        pageUrl: null,
+        description: `I siti del dominio ${domain} non gestiscono il consenso nello stesso modo.`,
+        details: profile.map((p) => `${p.site}: banner ${p.banner ? 'visibile' : 'non rilevato'}; CMP: ${p.cmps.join(', ') || 'nessuno'}`),
+        evidence: [],
+      });
+    }
+    for (const site of config.siti) {
+      if (!site.cookiePolicy) continue;
+      const policyHost = new URL(site.cookiePolicy, site.url).hostname;
+      const siteHost = new URL(site.url).hostname;
+      if (policyHost !== siteHost) {
+        out.push({
+          site: new URL(site.url).origin,
+          scenario: null,
+          pageUrl: site.cookiePolicy,
+          severity: 'informativa',
+          description: `La cookie policy indicata per ${siteHost} è pubblicata su un altro host (${policyHost}).`,
+          details: [`Cookie policy: ${site.cookiePolicy}`],
+          evidence: [],
+        });
+      }
+    }
+    return out;
+  },
+};

@@ -1,0 +1,169 @@
+import type { AuditConfig } from '../config/schema.js';
+import type { DiscoveryResult } from '../discovery/discover.js';
+import { CATEGORY_LABEL, groupBy } from '../rules/helpers.js';
+import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } from '../types.js';
+import { NON_TECHNICAL } from '../types.js';
+
+export interface ReportInput {
+  config: AuditConfig;
+  toolVersion: string;
+  browserVersion: string;
+  userAgent: string;
+  startedAt: string;
+  endedAt: string;
+  discovery: DiscoveryResult[];
+  sessions: SessionResult[];
+  declared: DeclaredSet[];
+  comparison: ComparisonRow[];
+  findings: Finding[];
+  files: { path: string; sha256: string; bytes: number }[];
+  normsPath: string;
+}
+
+const esc = (v: unknown) =>
+  String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+const SEV: Severity[] = ['alta', 'media', 'bassa', 'informativa'];
+const sevBadge = (s: Severity) => `<span class="sev sev-${s}">${esc(s)}</span>`;
+const fmt = (iso: string) => new Date(iso).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
+
+const LIMITS = [
+  'Il controllo è campionario: sono state visitate solo le pagine elencate. Comportamenti presenti in altre pagine non sono coperti.',
+  'Ogni scenario parte da un profilo browser pulito. Il risultato può variare con test A/B, aste pubblicitarie, geolocalizzazione e configurazioni del CMP diverse per paese.',
+  'Il tracciamento lato server non è osservabile: se il sito invia dati a un proprio endpoint (es. /g/collect su un sottodominio proprio), i destinatari finali non sono visibili dal browser.',
+  'La classificazione di cookie e domini si basa su Open Cookie Database e su un elenco di domini curato; gli elementi "non classificati" vanno valutati caso per caso.',
+  'Il paese di uscita è quello dichiarato nella configurazione e non è verificato dal tool.',
+  'Il tool documenta fatti tecnici e li collega a riferimenti normativi; la valutazione di conformità spetta al consulente legale o al DPO.',
+];
+
+const CSS = `
+:root{--fg:#1d1d1f;--muted:#5f6368;--line:#dadce0;--bg:#fff;--alt:#f6f7f9;--alta:#b3261e;--media:#b26a00;--bassa:#1a73e8;--info:#5f6368}
+*{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg);margin:0;padding:24px;max-width:1100px;margin:auto}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:20px;border-bottom:2px solid var(--fg);padding-bottom:4px;margin-top:40px;page-break-after:avoid}h3{font-size:16px;margin:18px 0 6px}
+.muted{color:var(--muted)}table{border-collapse:collapse;width:100%;margin:8px 0 16px;font-size:12.5px}th,td{border:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;word-break:break-word}th{background:var(--alt)}
+.sev{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-size:12px;font-weight:600;text-transform:uppercase}.sev-alta{background:var(--alta)}.sev-media{background:var(--media)}.sev-bassa{background:var(--bassa)}.sev-informativa{background:var(--info)}
+.card{border:1px solid var(--line);border-left:5px solid var(--info);border-radius:6px;padding:12px 16px;margin:14px 0;page-break-inside:avoid}.card.alta{border-left-color:var(--alta)}.card.media{border-left-color:var(--media)}.card.bassa{border-left-color:var(--bassa)}
+.card h3{margin-top:0}.shots{display:flex;gap:8px;flex-wrap:wrap}.shots figure{margin:0;width:calc(50% - 4px)}.shots img{width:100%;border:1px solid var(--line)}figcaption{font-size:11px;color:var(--muted)}
+pre{background:var(--alt);padding:8px;font-size:11.5px;white-space:pre-wrap;word-break:break-all;border-radius:4px}code{font-size:12px}
+ul{margin:4px 0;padding-left:20px}.kv td:first-child{width:28%;font-weight:600;background:var(--alt)}
+@page{size:A4;margin:14mm 12mm}@media print{body{padding:0 2px;max-width:none;width:auto}a{color:inherit}table{table-layout:fixed}}`;
+
+export function renderHtml(r: ReportInput): string {
+  const { config, sessions, findings } = r;
+  const sites = [...new Set(sessions.map((s) => s.site))];
+  const parts: string[] = [];
+
+  parts.push(`<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audit cookie – ${esc(config.cliente)}</title><style>${CSS}</style></head><body>
+<h1>Audit tecnico cookie e tracciamenti</h1>
+<p class="muted">${esc(config.cliente)} · esecuzione del ${esc(fmt(r.startedAt))} · Scookie ${esc(r.toolVersion)}</p>
+<p>Questo documento descrive cosa avviene nel browser dell'utente rispetto alle scelte sul banner di consenso, con le relative prove. Non contiene valutazioni di conformità né indicazioni correttive.</p>`);
+
+  // 1. Perimetro e metodo
+  parts.push(`<h2>1. Perimetro e metodo</h2><table class="kv">
+<tr><td>Cliente</td><td>${esc(config.cliente)}</td></tr>
+<tr><td>Inizio / fine</td><td>${esc(fmt(r.startedAt))} — ${esc(fmt(r.endedAt))}</td></tr>
+<tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}; browser ${esc(r.browserVersion)}</td></tr>
+<tr><td>User agent</td><td><code>${esc(r.userAgent)}</code></td></tr>
+<tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
+<tr><td>Paese di uscita (dichiarato)</td><td>${esc(config.browser.paeseUscita)}${config.browser.proxy ? ' (tramite proxy)' : ''}</td></tr>
+<tr><td>Scenari</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta</td></tr>
+<tr><td>Protocollo di osservazione</td><td>Per ogni pagina: caricamento completo, attesa della rete inattiva (max 5 s), attesa fissa di ${config.protocollo.attesaDopoCaricamento} ms${config.protocollo.scroll ? `, scroll fino a fondo pagina e attesa di ${config.protocollo.attesaDopoScroll} ms` : ''}. Sulla prima pagina il banner viene fotografato e l'eventuale scelta avviene <em>prima</em> dello scroll; dopo la scelta si attendono ${config.protocollo.attesaDopoScelta} ms. Pausa tra sessioni: ${config.protocollo.pausaTraSessioni} ms. Ogni sessione usa un profilo browser nuovo.</td></tr>
+<tr><td>Tabella norme</td><td>${esc(r.normsPath)}</td></tr>
+</table>`);
+
+  parts.push('<h3>Pagine campionate</h3>');
+  for (const d of r.discovery) {
+    parts.push(`<p><strong>${esc(d.site)}</strong> — ${d.found} URL scoperte; tipi: ${esc(Object.entries(d.byType).map(([k, v]) => `${k} (${v})`).join(', ') || '—')}</p>
+<table><tr><th>#</th><th>Tipo</th><th>Origine</th><th>URL</th></tr>${d.sample.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.type)}</td><td>${esc(p.source)}</td><td>${esc(p.url)}</td></tr>`).join('')}</table>
+${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`);
+  }
+
+  parts.push(`<h3>Interazione con il banner</h3><p>Per ogni sessione: CMP riconosciuti, metodo che ha eseguito la scelta (selettori manuali, adattatore del CMP, euristica sui testi, API del CMP) e verifica dello stato del consenso registrato dopo la scelta.</p>
+<table><tr><th style="width:17%">Sessione</th><th style="width:9%">Scenario</th><th style="width:12%">CMP / banner</th><th style="width:14%">Metodo</th><th>Esito</th><th style="width:22%">Verifica</th></tr>
+${sessions
+  .map(
+    (s) => `<tr><td>${esc(s.id)}<br><span class="muted">${s.pages.length} pag.</span></td><td>${esc(s.scenario)}</td><td>${esc(s.interaction.detectedCmps.join(', ') || 'nessun CMP')}<br><span class="muted">banner ${s.interaction.bannerVisibleBefore ? 'visibile' : 'non rilevato'}</span></td>
+<td>${esc(s.interaction.method)}${s.interaction.layer ? `<br><span class="muted">${esc(s.interaction.layer)}</span>` : ''}</td><td>${esc(s.interaction.outcome)}<br><span class="muted">${esc(s.interaction.detail)}</span></td><td>${esc(s.interaction.verification)}<br><span class="muted">${esc(s.interaction.verificationDetail)}</span></td></tr>`,
+  )
+  .join('')}</table>`);
+
+  parts.push(`<h3>Elenco dichiarato</h3><table><tr><th>Sito</th><th>Fonte</th><th>Voci</th><th>Note</th></tr>${r.declared
+    .map((d) => `<tr><td>${esc(d.site)}</td><td>${esc(d.source ?? 'non disponibile')}</td><td>${d.items.length}</td><td>${esc(d.note ?? '')}</td></tr>`)
+    .join('')}</table>`);
+
+  const errors = sessions.flatMap((s) => s.errors.map((e) => `${s.id}: ${e}`));
+  parts.push(`<h3>Limiti</h3><ul>${[...LIMITS, ...config.report.noteLimiti].map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+${errors.length ? `<p><strong>Anomalie durante l'esecuzione:</strong></p><ul>${errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}`);
+
+  // 2. Sintesi
+  const bySite = groupBy(findings, (f) => f.site);
+  const byRule = groupBy(findings, (f) => f.ruleTitle);
+  parts.push(`<h2>2. Sintesi</h2><p>Criticità rilevate: <strong>${findings.length}</strong>.</p>
+<table><tr><th>Sito / dominio</th>${SEV.map((s) => `<th>${sevBadge(s)}</th>`).join('')}<th>Totale</th></tr>
+${[...bySite].map(([site, fs]) => `<tr><td>${esc(site)}</td>${SEV.map((s) => `<td>${fs.filter((f) => f.severity === s).length}</td>`).join('')}<td>${fs.length}</td></tr>`).join('')}</table>
+<table><tr><th>Tipo</th><th>Numero</th><th>Criticità</th></tr>${[...byRule]
+    .map(([t, fs]) => `<tr><td>${esc(t)}</td><td>${fs.length}</td><td>${fs.map((f) => `<a href="#${f.id}">${f.id}</a>`).join(', ')}</td></tr>`)
+    .join('')}</table>`);
+
+  // 3. Criticità
+  parts.push('<h2>3. Criticità</h2>');
+  if (!findings.length) parts.push('<p>Nessuna criticità rilevata dalle regole attive.</p>');
+  for (const f of findings) {
+    const images = f.evidence.filter((e) => e.file.endsWith('.png'));
+    const others = f.evidence.filter((e) => !e.file.endsWith('.png'));
+    parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · ${esc(f.ruleTitle)} ${sevBadge(f.severity)}</h3>
+<p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
+<p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
+${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (vedi dati.csv)</li>` : ''}</ul>` : ''}
+${images.length ? `<p><strong>Prova.</strong></p><div class="shots">${images.map((e) => `<figure><img src="${esc(e.file)}" alt="${esc(e.label)}"><figcaption>${esc(e.label)} — ${esc(e.file)}</figcaption></figure>`).join('')}</div>` : ''}
+${f.requestExcerpt ? `<p><strong>Estratto della richiesta</strong> (completa nel file HAR):</p><pre>${esc(JSON.stringify(f.requestExcerpt, null, 2))}</pre>` : ''}
+${others.length ? `<p class="muted">File: ${others.map((e) => esc(e.file)).join(', ')}</p>` : ''}
+<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.map((n) => `<li>${n.url ? `<a href="${esc(n.url)}">${esc(n.title)}</a>` : esc(n.title)} — ${esc(n.reference)}</li>`).join('')}</ul></div>`);
+  }
+
+  // 4. Inventario
+  parts.push('<h2>4. Inventario</h2>');
+  const declaredStatus = new Map(r.comparison.map((c) => [`${c.site}|${c.name}|${c.domain}`, c]));
+  for (const site of sites) {
+    const ss = sessions.filter((s) => s.site === site);
+    const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: boolean; afterReject: boolean }>();
+    for (const s of ss) {
+      for (const c of s.cookies) {
+        const k = `${c.name}|${c.domain}`;
+        const cur = cookies.get(k) ?? { c, scen: new Set<string>(), pre: false, afterReject: false };
+        cur.scen.add(s.scenario);
+        if (c.phase === 'prima') cur.pre = true;
+        if (s.scenario === 'rifiuta' && c.phase === 'dopo') cur.afterReject = true;
+        cookies.set(k, cur);
+      }
+    }
+    parts.push(`<h3>${esc(site)} — cookie (${cookies.size})</h3><table><tr><th>Nome</th><th>Dominio</th><th>Parte</th><th>Scadenza</th><th>Categoria (fonte)</th><th>Dichiarato</th><th>Prima della scelta</th><th>Dopo rifiuto</th><th>Scenari</th></tr>
+${[...cookies.values()]
+  .sort((a, b) => a.c.name.localeCompare(b.c.name))
+  .map(({ c, scen, pre, afterReject }) => {
+    const d = declaredStatus.get(`${site}|${c.name}|${c.domain.replace(/^\./, '')}`);
+    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${pre ? 'sì' : ''}</td><td>${afterReject ? 'sì' : ''}</td><td>${esc([...scen].join(', '))}</td></tr>`;
+  })
+  .join('')}</table>`);
+
+    const third = groupBy(
+      ss.flatMap((s) => s.requests.filter((q) => q.party === 'terza').map((q) => ({ s, q }))),
+      (x) => x.q.host,
+    );
+    parts.push(`<h3>${esc(site)} — terze parti contattate (${third.size})</h3><table><tr><th>Host</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta</th><th>Dopo rifiuto</th></tr>
+${[...third]
+  .sort((a, b) => Number(NON_TECHNICAL.has(b[1][0].q.tracker?.category ?? 'sconosciuta')) - Number(NON_TECHNICAL.has(a[1][0].q.tracker?.category ?? 'sconosciuta')) || a[0].localeCompare(b[0]))
+  .map(([host, list]) => {
+    const t = list[0].q.tracker;
+    return `<tr><td>${esc(host)}</td><td>${esc(t?.company ?? '—')}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.phase === 'prima').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
+  })
+  .join('')}</table>`);
+  }
+
+  // 5. Allegati
+  parts.push(`<h2>5. Allegati</h2><p>File di evidenza con impronta SHA-256. L'elenco completo, inclusi questo report e la configurazione usata, è in <code>manifest.json</code>.</p>
+<table><tr><th>File</th><th>Byte</th><th>SHA-256</th></tr>${r.files.map((f) => `<tr><td>${esc(f.path)}</td><td>${f.bytes}</td><td><code>${esc(f.sha256)}</code></td></tr>`).join('')}</table>
+</body></html>`);
+  return parts.join('\n');
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url><loc>http://sito-a.test:{{PORT}}/</loc></url>
+<url><loc>http://sito-a.test:{{PORT}}/prodotti/alfa.html</loc></url>
+<url><loc>http://sito-a.test:{{PORT}}/prodotti/beta.html</loc></url>
+<url><loc>http://sito-a.test:{{PORT}}/blog/post-1.html</loc></url>
+<url><loc>http://sito-a.test:{{PORT}}/documento.pdf</loc></url>
+</urlset>
