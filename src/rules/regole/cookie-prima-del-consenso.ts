@@ -51,10 +51,13 @@ export const cookiePrimaDelConsenso: Rule = {
           `${when}. Categoria: ${CATEGORY_LABEL[first.cls.category]}` +
           `${first.cls.platform ? ` (${first.cls.platform})` : ''}, secondo ${first.cls.source}.`,
         details: [
-          ...[...new Map(group.map((g) => [g.what, g])).values()].map((g) => `${g.what} — dominio/origine ${g.where}; ${g.extra}; ${stageLabel(g.stage)}`),
+          ...[...new Map(group.map((g) => [g.what, g])).values()].map((g) => `${g.what} — dominio/origine ${g.where}; ${g.extra}; ${stageLabel(g.stage)}${g.cls.note ? ` — nota: ${g.cls.note}` : ''}`),
           `Pagine: ${pages.join(', ')}`,
           `Osservato negli scenari: ${scen.join(', ')} (fase precedente alla scelta)`,
         ],
+        evidenceLevel: 'identificativo',
+        groupKey: `${first.cls.platform ?? first.where}|${first.cls.category}`,
+        headline: `${first.cls.platform ?? `Un fornitore (${first.where})`} scrive ${names.length === 1 ? 'un identificativo' : 'identificativi'} nel browser ${onlyAfterScroll ? 'dopo lo scroll, ' : ''}prima di qualsiasi scelta sul banner`,
         evidence: sessionEvidence(first.s, onlyAfterScroll ? ['1-banner', '3-fine'] : ['1-banner']),
       });
     }

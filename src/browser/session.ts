@@ -1,11 +1,13 @@
 import { join } from 'node:path';
-import type { Browser, Page } from 'playwright';
+import type { Browser, Page, Response } from 'playwright';
 import type { Classifier } from '../classify/classifier.js';
 import type { AuditConfig, SiteConfig } from '../config/schema.js';
-import { observeBanner, performChoice } from '../cmp/interact.js';
-import type { DeclaredItem, Evidence, InteractionReport, ScenarioName, SessionResult } from '../types.js';
+import { analyzeBanner } from '../cmp/analysis.js';
+import { observeBanner, performChoice, performPersonalize, performRevocation } from '../cmp/interact.js';
+import { NON_TECHNICAL, type BannerAnalysis, type DeclaredItem, type Evidence, type InteractionReport, type ScenarioName, type SessionResult } from '../types.js';
 import { PartyResolver, registrableDomain } from '../util/domains.js';
 import { closeSafely, slug, withTimeout } from '../util/misc.js';
+import { detectBotChallenge, type BotBlock } from './antibot.js';
 import { Collector } from './collector.js';
 import { trimHar } from './har.js';
 
@@ -16,6 +18,8 @@ export interface SessionPlan {
   scenario: ScenarioName;
   pageType: string;
   pages: string[];
+  /** Se true, a fine sessione si analizza la struttura del banner (prima sessione "nessuna azione" del sito). */
+  analyzeBanner?: boolean;
 }
 
 export interface SessionEnv {
@@ -75,10 +79,12 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     }
   };
 
+  let blocked: BotBlock | null = null;
   const visit = async (url: string): Promise<boolean> => {
     collector.currentUrl = url;
+    let response: Response | null = null;
     try {
-      await page.goto(url, { waitUntil: 'load', timeout: p.timeoutNavigazione });
+      response = await page.goto(url, { waitUntil: 'load', timeout: p.timeoutNavigazione });
     } catch (e) {
       errors.push(`navigazione non riuscita su ${url}: ${(e as Error).message.split('\n')[0]}`);
       return false;
@@ -86,6 +92,12 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     collector.currentUrl = page.url();
     await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(p.attesaDopoCaricamento);
+    // Una pagina di verifica anti-bot non è il sito: la sessione non è valida e non si prosegue.
+    blocked ??= await detectBotChallenge(page, response);
+    if (blocked) {
+      errors.push(`accesso bloccato da ${blocked.provider} (${blocked.signal}) su ${blocked.url}: sessione non valida`);
+      return false;
+    }
     return true;
   };
 
@@ -112,12 +124,19 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     bannerVisibleAfter: null,
   };
   let choiceAt: string | null = null;
+  let bannerAnalysis: BannerAnalysis | undefined;
+  let revocation: SessionResult['revocation'];
   const banner = plan.siteConfig.banner;
   const bannerWait = banner?.attesa ?? DEFAULT_BANNER_WAIT;
 
   const flow = async () => {
     const [first, ...rest] = plan.pages;
-    if (await visit(first)) {
+    const firstOk = await visit(first);
+    if (blocked) {
+      await shot('1-banner');
+      interaction = { ...interaction, outcome: 'non-applicabile', detail: `accesso bloccato da ${blocked.provider}: ${blocked.signal}` };
+    }
+    if (firstOk) {
       // Prima pagina: banner, stato iniziale, poi (eventuale) scelta. Lo scroll avviene dopo la scelta,
       // per non confondere l'effetto dello scroll con quello del click.
       const obs = await observeBanner(page, banner, bannerWait);
@@ -142,10 +161,19 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         };
         await settle();
         await shot('3-fine');
+        if (plan.analyzeBanner && obs.visible) {
+          collector.pause();
+          bannerAnalysis = await analyzeBanner(page, obs.adapters, shot).catch((e) => {
+            errors.push(`analisi del banner non riuscita: ${(e as Error).message.split('\n')[0]}`);
+            return undefined;
+          });
+        }
       } else {
-        interaction = await performChoice(page, plan.scenario === 'rifiuta' ? 'rifiuta' : 'accetta', banner, p.attesaDopoScelta, bannerWait, () =>
-          collector.markChoice(),
-        );
+        const mark = () => collector.markChoice();
+        interaction =
+          plan.scenario === 'personalizza'
+            ? await performPersonalize(page, banner, p.attesaDopoScelta, bannerWait, mark)
+            : await performChoice(page, plan.scenario === 'rifiuta' ? 'rifiuta' : 'accetta', banner, p.attesaDopoScelta, bannerWait, mark);
         if (interaction.outcome === 'eseguito') {
           choiceAt = new Date(collector.choiceEpoch!).toISOString();
           await shot('2-dopo-scelta');
@@ -155,8 +183,24 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         await settle();
         for (const url of rest) {
           if (await visit(url)) await settle();
+          else if (blocked) break;
         }
         await shot('3-fine');
+        // Scenario "revoca": dopo aver navigato con il consenso, lo si revoca e si torna sulla prima pagina.
+        if (plan.scenario === 'revoca' && interaction.outcome === 'eseguito' && !blocked) {
+          collector.markRevoke();
+          const rev = await performRevocation(page, banner, p.attesaDopoScelta, bannerWait);
+          await shot('4-dopo-revoca');
+          const remaining = (await context.cookies())
+            .filter((c) => NON_TECHNICAL.has(env.classifier.classifyName(c.name, c.domain).category))
+            .map((c) => `${c.name} (${c.domain})`);
+          revocation = { ...rev, remaining };
+          if (rev.outcome === 'eseguita') {
+            await settle();
+            if (await visit(first)) await settle();
+            await shot('5-fine-revoca');
+          }
+        }
       }
     }
   };
@@ -197,5 +241,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     screenshots,
     har: harRel,
     errors,
+    ...(blocked ? { blocked } : {}),
+    ...(bannerAnalysis ? { bannerAnalysis } : {}),
+    ...(revocation ? { revocation } : {}),
   };
 }

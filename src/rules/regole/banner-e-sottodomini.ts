@@ -23,6 +23,7 @@ export const bannerAssente: Rule = {
         scenario: null,
         pageUrl: home.pages[0],
         severity: nonTech && !geoCaveat ? 'media' : 'informativa',
+        headline: nonTech ? 'Nessun banner di consenso, pur in presenza di tracciamenti' : undefined,
         description: `In nessuna delle pagine visitate è stato rilevato un banner o un gestore del consenso.${nonTech ? ' Sono però presenti cookie o richieste di categoria non tecnica (vedi inventario).' : ''}`,
         details: [
           `Pagine visitate: ${[...new Set(list.flatMap((s) => s.pages))].length}`,
@@ -57,6 +58,7 @@ export const sottodominiDisomogenei: Rule = {
         site: domain,
         scenario: null,
         pageUrl: null,
+        headline: `I siti del dominio ${domain} non gestiscono il consenso nello stesso modo`,
         description: `I siti del dominio ${domain} non gestiscono il consenso nello stesso modo.`,
         details: profile.map((p) => `${p.site}: banner ${p.banner ? 'visibile' : 'non rilevato'}; CMP: ${p.cmps.join(', ') || 'nessuno'}`),
         evidence: [],
@@ -108,6 +110,37 @@ export const bannerIntermittente: Rule = {
           return `${s.id} (${s.scenario}, ${s.pages[0]})${failed.length ? ` — richieste senza risposta: ${failed.slice(0, 5).join(', ')}` : ''}`;
         }),
         evidence: sessionEvidence(without[0], ['1-banner']),
+      });
+    }
+    return out;
+  },
+};
+
+/** Navigazione intercettata da un sistema anti-bot: le sessioni non sono valide e i dati non descrivono il sito. */
+export const accessoBloccato: Rule = {
+  id: 'accesso-bloccato',
+  title: 'Accesso bloccato da un sistema anti-bot',
+  defaultSeverity: 'informativa',
+  defaultNorms: [],
+  evaluate({ sessions, blocked }) {
+    const out: RawFinding[] = [];
+    for (const [site, list] of groupBy(blocked, (s) => s.site)) {
+      const total = list.length + sessions.filter((s) => s.site === site).length;
+      const providers = [...new Set(list.map((s) => s.blocked!.provider))];
+      const all = list.length === total;
+      out.push({
+        site,
+        scenario: null,
+        pageUrl: list[0].blocked!.url,
+        headline: `${list.length === total ? 'Sito non analizzabile' : `${list.length} sessioni su ${total} non valide`}: accesso bloccato da ${providers.join(', ')}`,
+        description:
+          `${list.length} sessioni su ${total} sono state intercettate da ${providers.join(', ')} con una pagina di verifica anti-bot. ` +
+          (all
+            ? 'Il sito non è stato analizzabile: nessuna criticità è stata ricavata da queste sessioni.'
+            : 'Queste sessioni sono escluse dalle regole: le criticità del sito derivano solo dalle sessioni valide.') +
+          ' Il tool non tenta di aggirare questi sistemi; si può ripetere l\'audit con il browser visibile o in un altro momento.',
+        details: list.map((s) => `${s.id} (${s.scenario}) — ${s.blocked!.signal} su ${s.blocked!.url}`),
+        evidence: sessionEvidence(list[0], ['1-banner']),
       });
     }
     return out;

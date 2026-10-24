@@ -1,7 +1,7 @@
 import type { ExitInfo } from '../browser/exit.js';
 import type { AuditConfig } from '../config/schema.js';
 import type { DiscoveryResult } from '../discovery/discover.js';
-import { CATEGORY_LABEL, groupBy } from '../rules/helpers.js';
+import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy } from '../rules/helpers.js';
 import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } from '../types.js';
 import { NON_TECHNICAL } from '../types.js';
 
@@ -22,12 +22,12 @@ export interface ReportInput {
   exit: ExitInfo;
 }
 
-const esc = (v: unknown) =>
+export const esc = (v: unknown) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 const SEV: Severity[] = ['alta', 'media', 'bassa', 'informativa'];
-const sevBadge = (s: Severity) => `<span class="sev sev-${s}">${esc(s)}</span>`;
-const fmt = (iso: string) => new Date(iso).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
+export const sevBadge = (s: Severity) => `<span class="sev sev-${s}">${esc(s)}</span>`;
+export const fmt = (iso: string) => new Date(iso).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
 
 const LIMITS = [
   'Il controllo è campionario: sono state visitate solo le pagine elencate. Comportamenti presenti in altre pagine non sono coperti.',
@@ -38,7 +38,7 @@ const LIMITS = [
   'Il tool documenta fatti tecnici e li collega a riferimenti normativi; la valutazione di conformità spetta al consulente legale o al DPO.',
 ];
 
-const CSS = `
+export const CSS = `
 :root{--fg:#1d1d1f;--muted:#5f6368;--line:#dadce0;--bg:#fff;--alt:#f6f7f9;--alta:#b3261e;--media:#b26a00;--bassa:#1a73e8;--info:#5f6368}
 *{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg);margin:0;padding:24px;max-width:1100px;margin:auto}
 h1{font-size:26px;margin:0 0 4px}h2{font-size:20px;border-bottom:2px solid var(--fg);padding-bottom:4px;margin-top:40px;page-break-after:avoid}h3{font-size:16px;margin:18px 0 6px}
@@ -75,11 +75,27 @@ ${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</st
 <li><strong>Il perimetro</strong> è un campione di pagine visitate in una certa data, da un certo paese e con un certo browser (sezione 1): pagine non visitate, aree riservate e momenti diversi possono dare risultati diversi.</li>
 </ul>`);
 
+  // Sintesi per il legale: i fatti principali in una frase, con rimando alle schede.
+  const host = (s: string) => {
+    try {
+      return new URL(s).hostname;
+    } catch {
+      return s;
+    }
+  };
+  const top = findings.filter((f) => f.headline && (f.severity === 'alta' || f.severity === 'media')).slice(0, 10);
+  const blockedSites = [...new Set(sessions.filter((s) => s.blocked).map((s) => host(s.site)))];
+  parts.push(`<h2>Sintesi per il legale</h2>
+${top.length ? `<p>I fatti principali osservati, in ordine di priorità di verifica. Il dettaglio e le prove sono nelle schede indicate.</p>
+<ol>${top.map((f) => `<li>${esc(f.headline)}${f.sites.length === 1 ? ` <span class="muted">(${esc(host(f.sites[0]))})</span>` : ''} — ${sevBadge(f.severity)} <a href="#${f.id}">${f.id}</a></li>`).join('')}</ol>` : '<p>Non sono emersi fatti con priorità alta o media.</p>'}
+${findings.length > top.length ? `<p class="muted">Altre ${findings.length - top.length} schede, di priorità minore o di contesto, sono elencate nella sezione 3.</p>` : ''}
+${blockedSites.length ? `<p class="warn"><strong>Attenzione.</strong> Su ${esc(blockedSites.join(', '))} la navigazione è stata intercettata da un sistema anti-bot: le sessioni coinvolte non sono valide e non sono state usate per le criticità.</p>` : ''}`);
+
   // 1. Perimetro e metodo
   parts.push(`<h2>1. Perimetro e metodo</h2><table class="kv">
 <tr><td>Cliente</td><td>${esc(config.cliente)}</td></tr>
 <tr><td>Inizio / fine</td><td>${esc(fmt(r.startedAt))} — ${esc(fmt(r.endedAt))}</td></tr>
-<tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}; browser ${esc(r.browserVersion)}</td></tr>
+<tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}; browser ${esc(r.browserVersion)} (${config.browser.canale === 'chromium' ? 'Chromium incluso nel tool' : `${esc(config.browser.canale)} installato sul computer`}, ${config.browser.headless ? 'senza finestra (headless)' : 'con finestra visibile'})</td></tr>
 <tr><td>User agent</td><td><code>${esc(r.userAgent)}</code></td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
 <tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (IP ${esc(r.exit.ip)}, fonte ${esc(r.exit.source)})` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
@@ -119,7 +135,9 @@ ${sessions
 ${errors.length ? `<p><strong>Anomalie durante l'esecuzione:</strong></p><ul>${errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}`);
 
   // 2. Sintesi
-  const bySite = groupBy(findings, (f) => f.site);
+  // Una scheda raggruppata conta per ognuno dei siti a cui si riferisce.
+  const bySite = new Map<string, Finding[]>();
+  for (const f of findings) for (const s of f.sites?.length ? f.sites : [f.site]) bySite.set(s, [...(bySite.get(s) ?? []), f]);
   const byRule = groupBy(findings, (f) => f.ruleTitle);
   parts.push(`<h2>2. Sintesi</h2><p>Criticità rilevate: <strong>${findings.length}</strong>.</p>
 <table><tr><th>Sito / dominio</th>${SEV.map((s) => `<th>${sevBadge(s)}</th>`).join('')}<th>Totale</th></tr>
@@ -136,19 +154,21 @@ ${[...bySite].map(([site, fs]) => `<tr><td>${esc(site)}</td>${SEV.map((s) => `<t
     const others = f.evidence.filter((e) => !e.file.endsWith('.png'));
     parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · ${esc(f.ruleTitle)} ${sevBadge(f.severity)}</h3>
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
+${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}.</p>` : ''}
 <p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
 ${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (vedi dati.csv)</li>` : ''}</ul>` : ''}
 ${images.length ? `<p><strong>Prova.</strong></p><div class="shots">${images.map((e) => `<figure><img src="${esc(e.file)}" alt="${esc(e.label)}"><figcaption>${esc(e.label)} — ${esc(e.file)}</figcaption></figure>`).join('')}</div>` : ''}
 ${f.requestExcerpt ? `<p><strong>Estratto della richiesta</strong> (completa nel file HAR):</p><pre>${esc(JSON.stringify(f.requestExcerpt, null, 2))}</pre>` : ''}
 ${others.length ? `<p class="muted">File: ${others.map((e) => esc(e.file)).join(', ')}</p>` : ''}
-<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.map((n) => `<li>${n.url ? `<a href="${esc(n.url)}">${esc(n.title)}</a>` : esc(n.title)} — ${esc(n.reference)}</li>`).join('')}</ul></div>`);
+${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.map((n) => `<li>${n.url ? `<a href="${esc(n.url)}">${esc(n.title)}</a>` : esc(n.title)} — ${esc(n.reference)}</li>`).join('')}</ul>` : ''}</div>`);
   }
 
   // 4. Inventario
   parts.push('<h2>4. Inventario</h2>');
   const declaredStatus = new Map(r.comparison.map((c) => [`${c.site}|${c.name}|${c.domain}`, c]));
   for (const site of sites) {
-    const ss = sessions.filter((s) => s.site === site);
+    // L'inventario usa solo le sessioni valide (non intercettate da sistemi anti-bot).
+    const ss = sessions.filter((s) => s.site === site && !s.blocked);
     const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: '' | 'al caricamento' | 'dopo scroll'; afterReject: boolean }>();
     for (const s of ss) {
       for (const c of s.cookies) {

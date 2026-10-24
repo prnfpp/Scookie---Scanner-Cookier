@@ -59,13 +59,25 @@ export function normalizeDeclaredCategory(label: string): Category {
   return 'sconosciuta';
 }
 
+/** Voce dell'elenco curato data/cookies.yaml. */
+interface CuratedCookie {
+  nome: string;
+  dominio?: string;
+  fornitore: string;
+  categoria: Category;
+  nota?: string;
+}
+
 export class Classifier {
+  private readonly curated: (CuratedCookie & { re: RegExp })[];
   private readonly ocdExact = new Map<string, OcdEntry[]>();
   private readonly ocdWildcard: OcdEntry[] = [];
   private readonly trackers: TrackerEntry[];
 
   constructor(extraTrackers: TrackerEntry[] = []) {
     this.loadOcd(`${DATA_DIR}vendor/open-cookie-database.csv`);
+    const curated = (parse(readFileSync(`${DATA_DIR}cookies.yaml`, 'utf8')) as { cookie: CuratedCookie[] }).cookie;
+    this.curated = curated.map((c) => ({ ...c, re: new RegExp(c.nome) }));
     const base = (parse(readFileSync(`${DATA_DIR}trackers.yaml`, 'utf8')) as { tracker: TrackerEntry[] }).tracker;
     // Le voci extra vengono prima: a parità di specificità prevalgono su quelle incluse.
     this.trackers = [...extraTrackers, ...base];
@@ -107,15 +119,33 @@ export class Classifier {
     this.ocdWildcard.sort((a, b) => b.name.length - a.name.length);
   }
 
-  /** Cerca un nome di cookie o chiave di storage in Open Cookie Database. */
+  /**
+   * Cerca un nome di cookie o chiave di storage in Open Cookie Database, per nome E dominio.
+   * Una voce legata a un dominio specifico (es. "sessionid" di instagram.com) vale solo su quel dominio:
+   * un nome generico uguale su un altro sito non viene attribuito a quel fornitore.
+   * Le voci senza dominio, o marcate "(3rd party)" (impostate dallo script del fornitore sul dominio del sito), valgono ovunque.
+   */
   private lookupOcd(name: string, domain: string): OcdEntry | undefined {
-    const pick = (list: OcdEntry[]) =>
-      list.find((e) => e.domain && !e.domain.includes(' ') && hostMatches(domain, e.domain)) ?? list[0];
+    const applies = (e: OcdEntry) => !e.domain || e.domain.includes('(3rd party)') || hostMatches(domain, e.domain.split(/\s/)[0]);
+    const pick = (list: OcdEntry[]) => {
+      const ok = list.filter(applies);
+      // Il nome esatto (maiuscole comprese) prevale; poi la voce legata al dominio; poi quella generica.
+      return (
+        ok.find((e) => e.name === name && e.domain && hostMatches(domain, e.domain.split(/\s/)[0])) ??
+        ok.find((e) => e.name === name) ??
+        ok.find((e) => e.domain && hostMatches(domain, e.domain.split(/\s/)[0])) ??
+        ok[0]
+      );
+    };
     const exact = this.ocdExact.get(name.toLowerCase());
-    if (exact?.length) return pick(exact);
+    const hit = exact?.length ? pick(exact) : undefined;
+    if (hit) return hit;
     const wild = this.ocdWildcard.filter((e) => name.toLowerCase().startsWith(e.name.toLowerCase()));
-    if (wild.length) return pick(wild);
-    return undefined;
+    return wild.length ? pick(wild) : undefined;
+  }
+
+  private lookupCurated(name: string, domain: string) {
+    return this.curated.find((c) => c.re.test(name) && (!c.dominio || hostMatches(domain, c.dominio)));
   }
 
   /** Categoria di un host (e opzionalmente di un path) secondo l'elenco tracker. */
@@ -130,16 +160,21 @@ export class Classifier {
   }
 
   /**
-   * Classifica un cookie o una chiave di storage.
-   * Ordine: nome in Open Cookie Database, poi dominio del cookie nell'elenco tracker.
+   * Classifica un cookie o una chiave di storage, sempre per nome E dominio.
+   * Ordine: elenco curato (data/cookies.yaml), Open Cookie Database (voci applicabili al dominio),
+   * infine il dominio del cookie nell'elenco dei fornitori (dichiarandolo nella fonte).
    */
   classifyName(name: string, domain: string): Classification {
-    const ocd = this.lookupOcd(name, domain);
+    const d = domain.replace(/^\./, '');
+    const curated = this.lookupCurated(name, d);
+    if (curated) return { category: curated.categoria, source: 'elenco-curato', platform: curated.fornitore, note: curated.nota };
+    const ocd = this.lookupOcd(name, d);
     if (ocd && ocd.category !== 'sconosciuta') {
       return { category: ocd.category, source: 'open-cookie-database', platform: ocd.platform };
     }
-    const t = this.classifyHost(domain.replace(/^\./, ''));
-    if (t) return { category: t.categoria, source: 'elenco-tracker', platform: t.azienda };
+    // Nome sconosciuto ma dominio di un fornitore noto: si attribuisce al fornitore del dominio, dichiarandolo.
+    const t = this.classifyHost(d);
+    if (t) return { category: t.categoria, source: 'dominio-del-fornitore', platform: t.azienda, note: 'nome non presente nelle fonti: categoria dedotta dal dominio' };
     return { category: 'sconosciuta', source: 'nessuna' };
   }
 }

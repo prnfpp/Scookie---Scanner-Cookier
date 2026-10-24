@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -132,4 +132,22 @@ test('audit dall\'interfaccia e apertura del report', async () => {
   await page.waitForSelector('#runs table');
   assert.match(await page.textContent('#runs') ?? '', /Cliente di prova/);
   assert.ok(existsSync(runsDir));
+});
+
+test('confronto con l\'esecuzione precedente', async () => {
+  // Si simula un'esecuzione precedente copiando quella appena fatta con una data anteriore.
+  const last = readdirSync(runsDir).find((n) => existsSync(join(runsDir, n, 'manifest.json')))!;
+  const prev = join(runsDir, 'precedente');
+  cpSync(join(runsDir, last), prev, { recursive: true });
+  const man = JSON.parse(readFileSync(join(prev, 'manifest.json'), 'utf8'));
+  writeFileSync(join(prev, 'manifest.json'), JSON.stringify({ ...man, inizio: '2026-01-01T10:00:00.000Z' }));
+  await page.click('#refresh-runs');
+  await page.click('text=Confronta con precedente');
+  const link = page.locator('#runs a', { hasText: 'Confronto:' });
+  await link.waitFor();
+  assert.match(await link.textContent() ?? '', /−0 \/ =\d+ \/ \+0/);
+  const [cmp] = await Promise.all([page.waitForEvent('popup'), link.click()]);
+  await cmp.waitForLoadState();
+  assert.match(await cmp.textContent('h1') ?? '', /Confronto tra due esecuzioni/);
+  await cmp.close();
 });

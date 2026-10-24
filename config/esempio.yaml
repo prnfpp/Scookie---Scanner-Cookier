@@ -5,7 +5,8 @@ cliente: Esempio Srl
 output: ../runs            # relativo a questo file
 
 browser:
-  headless: true
+  headless: true           # false = browser visibile (utile se il sito blocca i browser automatici)
+  # canale: chrome         # chromium (predefinito) | chrome | msedge: usa il browser installato sul computer
   locale: it-IT
   timezone: Europe/Rome
   paeseUscita: IT          # paese da cui deve partire la navigazione; usare un proxy se serve
@@ -21,7 +22,8 @@ protocollo:
   pausaTraSessioni: 3000   # navigazione lenta: niente tentativi di aggirare blocchi anti-bot
 
 scenari:
-  modalita: percorso       # oppure per-pagina (tutti e tre gli scenari su ogni pagina)
+  modalita: percorso       # oppure per-pagina (tutti gli scenari su ogni pagina)
+  # attivi: [nessuna-azione, rifiuta, accetta, personalizza, revoca]   # predefinito: tutti
   pagineDopoScelta: 3
 
 campionamento:

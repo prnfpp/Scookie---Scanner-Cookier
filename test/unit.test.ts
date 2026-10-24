@@ -2,14 +2,18 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Classifier, normalizeDeclaredCategory } from '../src/classify/classifier.js';
 import { declaredPattern } from '../src/declared/compare.js';
-import { pageType, parseSitemap, robotsDisallows, sample } from '../src/discovery/discover.js';
+import { pageType, parseSitemap, robotsDisallows, sample, sectionsOf } from '../src/discovery/discover.js';
 import { TEXTS } from '../src/cmp/heuristic.js';
-import { isConsentModeDeniedPing } from '../src/rules/helpers.js';
+import { describeGoogleConsent, isConsentModeDeniedPing, requestEvidenceLevel } from '../src/rules/helpers.js';
 import { PartyResolver, registrableDomain } from '../src/util/domains.js';
 import { parseCsv, toCsv } from '../src/util/csv.js';
 import type { RequestRecord } from '../src/types.js';
 import { parseTrace } from '../src/browser/exit.js';
+import { onetrust } from '../src/cmp/adapters/onetrust.js';
 import { trimHar } from '../src/browser/har.js';
+import { writeComparison } from '../src/report/compare.js';
+import type { Finding } from '../src/types.js';
+import { mkdirSync } from 'node:fs';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -68,6 +72,10 @@ test('sitemap e tipi di pagina', () => {
   assert.equal(pageType('https://a.it/16-alimenti-e-snack', {}), 'numerata');
   assert.equal(pageType('https://a.it/chi-siamo.html', {}), 'pagina.html');
   assert.equal(pageType('https://a.it/chi-siamo', {}), 'chi-siamo');
+  // pagine piatte: tipo a sé solo se sono l'indice di una sezione con sottopagine
+  const sections = sectionsOf(['https://a.it/blog/a', 'https://a.it/blog/b']);
+  assert.equal(pageType('https://a.it/blog', {}, sections), 'blog');
+  assert.equal(pageType('https://a.it/federalismo-fiscale', {}, sections), 'pagina');
 });
 
 test('campionamento deterministico e vario', () => {
@@ -86,7 +94,7 @@ test('campionamento deterministico e vario', () => {
   assert.equal(s1.length, 5);
   assert.equal(s1[0].type, 'home');
   assert.equal(s1[1].source, 'extra');
-  assert.deepEqual(new Set(s1.slice(2).map((p) => p.type)), new Set(['blog', 'prodotti', 'contatti']));
+  assert.deepEqual(new Set(s1.slice(2).map((p) => p.type)), new Set(['blog', 'prodotti', 'pagina']));
 });
 
 test('testi dei pulsanti', () => {
@@ -140,4 +148,76 @@ test('robots.txt: Disallow, Allow, * e $', () => {
   assert.ok(!d('/solo-google'));
   assert.ok(!d('/prodotti/a'));
   assert.ok(!robotsDisallows('')('/x'));
+});
+
+test('classificazione per nome e dominio: niente attribuzioni per solo nome', () => {
+  const c = new Classifier();
+  // "sessionid" in Open Cookie Database è di instagram.com: su un altro sito non va attribuito a Instagram
+  assert.equal(c.classifyName('sessionId', 'www.conte.it').category, 'sconosciuta');
+  assert.equal(c.classifyName('sessionid', 'www.instagram.com').platform, 'Instagram');
+  // cookie anti-bot Cloudflare su dominio Vimeo: tecnico, non statistica Vimeo
+  const cf = c.classifyName('__cf_ob', 'player.vimeo.com');
+  assert.equal(cf.category, 'tecnico');
+  assert.equal(cf.platform, 'Cloudflare');
+  assert.equal(c.classifyName('cf_clearance', '.conte.it').category, 'tecnico');
+  assert.equal(c.classifyName('TNCID', '.conte.it').category, 'marketing');
+  const dt = c.classifyName('dtPC', '.conte.it');
+  assert.equal(dt.platform, 'Dynatrace');
+  assert.match(dt.note ?? '', /prestazioni/);
+  // le voci "(3rd party)" valgono anche sul dominio del sito
+  assert.equal(c.classifyName('_fbp', '.conte.it').category, 'marketing');
+  // nome sconosciuto su dominio noto: dedotto dal dominio e dichiarato
+  const v = c.classifyName('zz_ignoto', 'player.vimeo.com');
+  assert.equal(v.source, 'dominio-del-fornitore');
+});
+
+test('OneTrust: gruppi con ID propri letti dalla configurazione', () => {
+  const gruppi = [
+    { id: '0', nome: 'Cookie tecnici e analitici', stato: 'always active', elementi: 12 },
+    { id: '4', nome: 'Cookie di profilazione', stato: 'inactive', elementi: 30 },
+    { id: '7', nome: 'Vuoto', stato: 'inactive', elementi: 0 },
+  ];
+  assert.equal(onetrust.checkConsent({ activeGroups: ',0,4,', gruppi }, 'accetta').consistent, true, 'accetta: 0 e 4 sono tutti i gruppi utili');
+  assert.equal(onetrust.checkConsent({ activeGroups: ',0,', gruppi }, 'rifiuta').consistent, true);
+  assert.equal(onetrust.checkConsent({ activeGroups: ',0,4,', gruppi }, 'rifiuta').consistent, false);
+  assert.equal(onetrust.checkConsent({ activeGroups: ',0,', gruppi }, 'accetta').consistent, false);
+  // senza configurazione e con ID non standard: non determinabile, mai "incoerente"
+  assert.equal(onetrust.checkConsent({ activeGroups: ',0,4,', gruppi: null }, 'accetta').consistent, null);
+});
+
+test('parametri Google Consent Mode tradotti', () => {
+  assert.equal(describeGoogleConsent({ gcs: 'G101' }), 'gcs=G101: ad_storage negato, analytics_storage concesso');
+  assert.match(describeGoogleConsent({ gcd: '13p3p3p3p5l1' }) ?? '', /ad_storage negato \(predefinito\).*ad_personalization negato \(predefinito\)/);
+  assert.match(describeGoogleConsent({ gcd: '13r3r3r3r5l1', npa: '1' }) ?? '', /concesso dopo l'aggiornamento.*npa=1/);
+  assert.equal(describeGoogleConsent({ foo: 'x' }), null);
+});
+
+test('forza della prova delle richieste', () => {
+  const r = (o: Partial<RequestRecord>) => ({ method: 'GET', resourceType: 'script', url: 'https://x.example/sdk.js', ...o }) as RequestRecord;
+  assert.equal(requestEvidenceLevel([r({})]), 'risorsa');
+  assert.equal(requestEvidenceLevel([r({ resourceType: 'image', url: 'https://x.example/logo.png' })]), 'risorsa');
+  assert.equal(requestEvidenceLevel([r({}), r({ resourceType: 'image', url: 'https://x.example/tr?id=1&ev=PageView' })]), 'raccolta');
+  assert.equal(requestEvidenceLevel([r({ method: 'POST', resourceType: 'fetch', url: 'https://x.example/collect' })]), 'raccolta');
+});
+
+test('confronto tra due esecuzioni', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scookie-cmp-'));
+  const f = (id: string, key: string, severity: Finding['severity'], site = 'https://www.a.test'): Finding =>
+    ({ id, key, ruleId: key.split('|')[0], ruleTitle: 'Regola', severity, site, sites: [site], scenario: null, pageUrl: null, description: 'd', details: [], evidence: [], norms: [], headline: `titolo ${key}` }) as Finding;
+  const run = (name: string, findings: Finding[]) => {
+    const d = join(root, name);
+    mkdirSync(d);
+    writeFileSync(join(d, 'dati.json'), JSON.stringify({ findings }));
+    writeFileSync(join(d, 'manifest.json'), JSON.stringify({ cliente: 'Cliente', inizio: '2026-10-01T10:00:00Z' }));
+    return d;
+  };
+  const a = run('prima', [f('C-001', 'r1|meta|a.test', 'alta'), f('C-002', 'r2|_ga|a.test', 'media'), f('C-003', 'r3|x|a.test', 'bassa')]);
+  const b = run('dopo', [f('C-001', 'r2|_ga|a.test', 'alta'), f('C-002', 'r4|tiktok|a.test', 'media'), f('C-003', 'r3|x|a.test', 'bassa')]);
+  const { path, comparison: c } = writeComparison(a, b);
+  assert.deepEqual(c.risolte.map((x) => x.key), ['r1|meta|a.test']);
+  assert.deepEqual(c.nuove.map((x) => x.key), ['r4|tiktok|a.test']);
+  assert.deepEqual(c.rimaste.map((x) => [x.prima.id, x.dopo.id, x.gravita]), [['C-002', 'C-001', 'aumentata'], ['C-003', 'C-003', 'uguale']]);
+  const html = readFileSync(path, 'utf8');
+  assert.match(html, /Non più osservate \(1\)/);
+  assert.match(html, /C-002 → C-001/);
 });

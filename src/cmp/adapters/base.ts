@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { DeclaredItem } from '../../types.js';
-import { anyVisible, clickFirst, waitFor } from '../dom.js';
+import { anyVisible, clickFirst, waitFor, type ClickedElement } from '../dom.js';
 import type { CmpAdapter, Choice, ChoiceResult, ConsentCheck } from '../types.js';
 
 /**
@@ -46,11 +46,12 @@ async function evalExpr<T>(page: Page, expr: string): Promise<T | null> {
 export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
   const bannerVisible = (page: Page) => anyVisible(page, spec.bannerSelectors);
 
-  const clicked = (layer: ChoiceResult['layer'], selector: string): ChoiceResult => ({
+  const clicked = (layer: ChoiceResult['layer'], ...els: ClickedElement[]): ChoiceResult => ({
     ok: true,
     layer,
     via: 'click',
-    detail: `click su ${selector}`,
+    detail: els.map((e) => `click su ${e.label} (${e.selector})`).join(', poi '),
+    clicked: els.map((e) => e.label),
   });
 
   return {
@@ -82,9 +83,9 @@ export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
       if (spec.reject.openPreferences && spec.reject.preferencesReject) {
         const open = await clickFirst(page, spec.reject.openPreferences);
         if (open) {
-          let inner: string | null = null;
+          let inner: ClickedElement | null = null;
           await waitFor(async () => !!(inner = await clickFirst(page, spec.reject.preferencesReject!)), 5000, 400);
-          if (inner) return clicked('secondo-livello', `${open} → ${inner}`);
+          if (inner) return clicked('secondo-livello', open, inner);
         }
       }
       return { ok: false, layer: null, via: null, detail: 'pulsante "Rifiuta" non trovato né al primo né al secondo livello' };
