@@ -14,7 +14,9 @@ Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte
 | `rifiuta` | click su "Rifiuta", poi navigazione di altre pagine per vedere se la scelta è rispettata |
 | `accetta` | click su "Accetta", poi navigazione di altre pagine |
 
-Per ogni sessione registra tutti i cookie (anche HttpOnly), localStorage e sessionStorage di tutti i frame, e tutte le richieste di rete. Ogni elemento viene marcato *prima/dopo* la scelta e *prima/terza parte*. Le prove sono screenshot e file HAR, con hash SHA-256.
+Per ogni sessione registra tutti i cookie (anche HttpOnly), localStorage e sessionStorage di tutti i frame, e tutte le richieste di rete. Ogni elemento viene marcato *prima/terza parte* e con il momento in cui compare: *al caricamento* (nessuna interazione), *dopo lo scroll* (nessuna scelta sul banner) o *dopo la scelta*. Separare lo scroll serve per i banner che lo trattano come consenso. Le prove sono screenshot e file HAR, con hash SHA-256.
+
+All'avvio il tool rileva IP e paese di uscita effettivi, passando dallo stesso browser e dallo stesso eventuale proxy, e li confronta con `paeseUscita`. Molti CMP mostrano il banner solo a visitatori da UE/SEE. Con `verificaUscita: blocca` l'esecuzione si ferma se il paese non corrisponde.
 
 Domande a cui risponde, per ogni pagina:
 
@@ -41,6 +43,8 @@ npx scookie verifica-config -c clienti/cliente.yaml  # controlla la configurazio
 npx scookie scopri -c clienti/cliente.yaml           # mostra il campione di pagine senza eseguire gli scenari
 npx scookie run -c clienti/cliente.yaml              # audit completo
 ```
+
+Per la validazione su siti reali c'è già [`config/validazione.yaml`](config/validazione.yaml).
 
 Opzioni di `run`: `--out <cartella>` per cambiare la cartella di output, `--no-pdf` per saltare il PDF.
 
@@ -86,6 +90,7 @@ Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Coo
 | `elementi-non-dichiarati` | elementi osservati assenti dall'elenco dichiarato |
 | `dichiarati-non-osservati` | voci dichiarate mai osservate |
 | `categoria-incoerente` | es. analytics o heatmap tra i "necessari / sempre attivi"; stesso cookie in più categorie |
+| `elementi-non-classificati` | cookie, storage e domini di terze parti che nessuna fonte sa classificare: vengono elencati invece di restare invisibili |
 | `endpoint-server-side` | endpoint di raccolta su dominio proprio (`/g/collect`…), con il limite che comporta |
 
 Norme collegate e gravità si cambiano in [`config/norme.yaml`](config/norme.yaml). I riferimenti precaricati vanno **validati dal consulente legale**.
@@ -122,7 +127,7 @@ Chromium viene indirizzato al server locale con `--host-resolver-rules`, quindi 
 
 ## Licenze
 
-Codice con licenza MIT. Le dipendenze e i dati inclusi hanno licenze compatibili con l'uso commerciale. Dettagli ed esclusioni sono in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md); `npm run licenses` li verifica automaticamente.
+Software proprietario, © 2026 Filippo Pirini (vedi [`LICENSE`](LICENSE)): nessuna licenza d'uso è concessa a terzi. Le dipendenze e i dati inclusi hanno licenze permissive, compatibili anche con software proprietario e commerciale. Dettagli ed esclusioni sono in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md); `npm run licenses` li verifica automaticamente.
 
 ## Limiti noti
 

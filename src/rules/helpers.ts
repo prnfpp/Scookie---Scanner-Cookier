@@ -1,4 +1,4 @@
-import type { Category, Evidence, RequestRecord, SessionResult } from '../types.js';
+import { STAGE_LABEL, type Category, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   tecnico: 'tecnico',
@@ -59,3 +59,19 @@ export function hostsSummary(reqs: RequestRecord[], max = 5): string {
   const hosts = [...new Set(reqs.map((r) => r.host))];
   return hosts.slice(0, max).join(', ') + (hosts.length > max ? ` e altri ${hosts.length - max}` : '');
 }
+
+/**
+ * Descrive quando compaiono gli elementi di una criticità "prima della scelta":
+ * già al caricamento oppure solo dopo lo scroll (che non è una scelta sul banner).
+ */
+export function stageWhen(stages: Stage[]): { when: string; onlyAfterScroll: boolean } {
+  const onlyAfterScroll = stages.length > 0 && stages.every((s) => s === 'scroll');
+  return {
+    onlyAfterScroll,
+    when: onlyAfterScroll
+      ? 'prima di qualsiasi scelta sul banner, ma solo dopo lo scroll della pagina'
+      : 'prima di qualsiasi scelta sul banner, già al caricamento della pagina',
+  };
+}
+
+export const stageLabel = (s: Stage) => STAGE_LABEL[s];
