@@ -35,6 +35,7 @@ before(async () => {
       { url: url('sito-c.test'), sitemap: false },
       { url: url('sito-e.test'), sitemap: false, seguiLink: false },
       { url: url('sito-f.test'), sitemap: false, seguiLink: false, banner: { attesa: 1500 } },
+      { url: url('sito-g.test'), sitemap: false, seguiLink: false, banner: { attesa: 2000 } },
       { url: url('sito-d.test'), sitemap: false, dichiarati: join(FIXTURES, 'dichiarati-sito-d.csv'), cookiePolicy: url('www.sito-b.test', '/cookie-policy') },
     ],
   };
@@ -154,6 +155,22 @@ test('sito-a: elementi non classificati segnalati invece di restare invisibili',
   assert.ok(f.details.some((d) => d.includes('xyz_misterioso')));
   assert.ok(f.details.some((d) => d.includes('widget.ignoto.example')));
   assert.ok(!f.details.some((d) => d.includes('pixel.adtest.example')), 'i tracker classificati non compaiono');
+});
+
+test('sito-g: vanilla-cookieconsent v2 e ripetizione della sessione se lo script del banner non si carica', () => {
+  const r = session('sito-g.test', 'rifiuta').interaction;
+  assert.equal(r.method, 'adattatore:vanilla-cookieconsent');
+  assert.equal(r.layer, 'primo-livello');
+  assert.equal(r.verification, 'verificato');
+  assert.equal(session('sito-g.test', 'accetta').interaction.verification, 'verificato');
+  const first = session('sito-g.test', 'nessuna-azione');
+  assert.ok(first.retryOf, 'la prima sessione senza banner è stata ripetuta');
+  assert.equal(first.interaction.bannerVisibleBefore, true);
+  const dati = JSON.parse(readFileSync(join(result.runDir, 'dati.json'), 'utf8')) as { sessioniScartate: { id: string; requests: { host: string; failure?: string }[] }[] };
+  const scartata = dati.sessioniScartate.find((s) => s.id === first.retryOf)!;
+  assert.ok(scartata.requests.some((q) => q.host === 'cdn.flaky.example' && q.failure));
+  assert.ok(!rules('sito-g.test').includes('banner-intermittente'));
+  assert.ok(!rules('sito-g.test').includes('banner-assente'));
 });
 
 test('paese di uscita verificato e registrato nel manifest', () => {

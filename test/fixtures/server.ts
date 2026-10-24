@@ -21,8 +21,15 @@ const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA
  */
 export async function startFixtureServer(): Promise<{ server: Server; port: number; close: () => Promise<void> }> {
   let port = 0;
+  let flakyFailed = false;
   const server = createServer((req, res) => {
     const host = (req.headers.host ?? '').split(':')[0];
+    // Host "instabile": la prima richiesta non riceve risposta (come uno script di CMP che non si carica)
+    if (host === 'cdn.flaky.example' && !flakyFailed) {
+      flakyFailed = true;
+      req.socket.destroy();
+      return;
+    }
     const url = new URL(req.url ?? '/', 'http://x');
     const siteDir = join(FIXTURES, 'sites', host);
     const send = (status: number, body: string | Buffer, type: string) => {

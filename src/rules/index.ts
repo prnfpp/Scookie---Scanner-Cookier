@@ -1,5 +1,5 @@
 import { attivazioneDopoRifiuto } from './regole/attivazione-dopo-rifiuto.js';
-import { bannerAssente, sottodominiDisomogenei } from './regole/banner-e-sottodomini.js';
+import { bannerAssente, bannerIntermittente, sottodominiDisomogenei } from './regole/banner-e-sottodomini.js';
 import { categoriaIncoerente, dichiaratiNonOsservati, nonDichiarati } from './regole/confronto-dichiarati.js';
 import { consentModeSenzaConsenso } from './regole/consent-mode-senza-consenso.js';
 import { cookiePrimaDelConsenso } from './regole/cookie-prima-del-consenso.js';
@@ -18,6 +18,7 @@ export const RULES: Rule[] = [
   rifiutoNonAlPrimoLivello,
   sceltaNonVerificata,
   bannerAssente,
+  bannerIntermittente,
   sottodominiDisomogenei,
   nonDichiarati,
   categoriaIncoerente,

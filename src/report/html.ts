@@ -72,6 +72,7 @@ ${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</st
 <tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (IP ${esc(r.exit.ip)}, fonte ${esc(r.exit.source)})` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
 <tr><td>Scenari</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta</td></tr>
 <tr><td>Protocollo di osservazione</td><td>Per ogni pagina: caricamento completo, attesa della rete inattiva (max 5 s), attesa fissa di ${config.protocollo.attesaDopoCaricamento} ms${config.protocollo.scroll ? `, scroll fino a fondo pagina e attesa di ${config.protocollo.attesaDopoScroll} ms` : ''}. Sulla prima pagina il banner viene fotografato e l'eventuale scelta avviene <em>prima</em> dello scroll; dopo la scelta si attendono ${config.protocollo.attesaDopoScelta} ms. Pausa tra sessioni: ${config.protocollo.pausaTraSessioni} ms. Ogni sessione usa un profilo browser nuovo.</td></tr>
+<tr><td>File HAR</td><td>Uno per sessione, con URL, intestazioni, cookie, tempi e corpi delle richieste. Corpi delle risposte: ${config.report.harContenuti === 'tutti' ? 'tutti' : config.report.harContenuti === 'testo' ? 'solo testuali fino a 512 KB (immagini, font e video omessi)' : 'omessi'}.</td></tr>
 <tr><td>Tabella norme</td><td>${esc(r.normsPath)}</td></tr>
 </table>`);
 
@@ -91,6 +92,11 @@ ${sessions
   )
   .join('')}</table>`);
 
+  const retried = sessions.filter((s) => s.retryOf);
+  if (retried.length) {
+    parts.push(`<p><strong>Sessioni ripetute.</strong> Quando un sito mostra il banner in alcune sessioni e non in altre, le sessioni senza banner vengono ripetute una volta. La sessione originale resta nei dati (<code>dati.json</code>, voce <code>sessioniScartate</code>) e nelle evidenze.</p>
+<ul>${retried.map((s) => `<li>${esc(s.retryOf)} → ${esc(s.id)}: ${esc(s.errors[0] ?? '')}</li>`).join('')}</ul>`);
+  }
   parts.push(`<h3>Elenco dichiarato</h3><table><tr><th>Sito</th><th>Fonte</th><th>Voci</th><th>Note</th></tr>${r.declared
     .map((d) => `<tr><td>${esc(d.site)}</td><td>${esc(d.source ?? 'non disponibile')}</td><td>${d.items.length}</td><td>${esc(d.note ?? '')}</td></tr>`)
     .join('')}</table>`);

@@ -5,8 +5,9 @@ import type { AuditConfig, SiteConfig } from '../config/schema.js';
 import { observeBanner, performChoice } from '../cmp/interact.js';
 import type { DeclaredItem, Evidence, InteractionReport, ScenarioName, SessionResult } from '../types.js';
 import { PartyResolver, registrableDomain } from '../util/domains.js';
-import { slug } from '../util/misc.js';
+import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { Collector } from './collector.js';
+import { trimHar } from './har.js';
 
 export interface SessionPlan {
   id: string;
@@ -114,7 +115,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   const banner = plan.siteConfig.banner;
   const bannerWait = banner?.attesa ?? DEFAULT_BANNER_WAIT;
 
-  try {
+  const flow = async () => {
     const [first, ...rest] = plan.pages;
     if (await visit(first)) {
       // Prima pagina: banner, stato iniziale, poi (eventuale) scelta. Lo scroll avviene dopo la scelta,
@@ -158,10 +159,24 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         await shot('3-fine');
       }
     }
+  };
+
+  try {
+    // Tetto di durata: una pagina che non risponde non deve bloccare l'intera esecuzione.
+    await withTimeout(flow(), p.timeoutSessione, 'sessione interrotta');
   } catch (e) {
     errors.push(`errore durante la sessione: ${(e as Error).message.split('\n')[0]}`);
   } finally {
-    await context.close().catch((e) => errors.push(`chiusura contesto: ${String(e)}`));
+    // La chiusura salva il file HAR: se non avviene, la sessione resta senza HAR e lo si annota.
+    const err = await closeSafely(context, 90000, 'chiusura contesto (salvataggio HAR)');
+    if (err) errors.push(err);
+    else {
+      try {
+        trimHar(join(env.runDir, harRel), config.report.harContenuti);
+      } catch (e) {
+        errors.push(`riduzione del file HAR non riuscita: ${(e as Error).message.split('\n')[0]}`);
+      }
+    }
   }
 
   const { cookies, storage, requests } = collector.results();

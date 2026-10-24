@@ -1,5 +1,6 @@
 import type { Browser, Page } from 'playwright';
 import type { AuditConfig, SiteConfig } from '../config/schema.js';
+import { closeSafely, withTimeout } from '../util/misc.js';
 
 export interface SampledPage {
   url: string;
@@ -36,10 +37,19 @@ export function pageType(url: string, patterns: Record<string, string>): string 
   for (const [name, re] of Object.entries(patterns)) {
     if (new RegExp(re, 'i').test(u.pathname)) return name;
   }
-  const segs = path.split('/').filter(Boolean);
+  const all = path.split('/').filter(Boolean);
   // Salta il prefisso lingua (/it/, /en-gb/)
-  const first = /^[a-z]{2}(?:-[a-z]{2})?$/i.test(segs[0] ?? '') ? segs[1] : segs[0];
-  return first ? first.toLowerCase().slice(0, 40) : 'altro';
+  const segs = /^[a-z]{2}(?:-[a-z]{2})?$/i.test(all[0] ?? '') ? all.slice(1) : all;
+  const first = segs[0];
+  if (!first) return 'altro';
+  // Più livelli: il primo è la sezione (/blog/…, /prodotti/…)
+  if (segs.length > 1) return first.toLowerCase().slice(0, 40);
+  // Un solo livello con numeri o estensione (es. PrestaShop /10-nome.html, /16-categoria):
+  // si raggruppa per forma, altrimenti ogni prodotto diventerebbe un tipo a sé.
+  const ext = /\.[a-z0-9]{2,5}$/i.exec(first)?.[0].toLowerCase() ?? '';
+  if (ext || /\d/.test(first)) return `${/\d/.test(first) ? 'numerata' : 'pagina'}${ext}`;
+  // Pagina con nome pulito (chi-siamo, contatti): tipo a sé
+  return first.toLowerCase().slice(0, 40);
 }
 
 function normalize(url: string, base: string): string | null {
@@ -84,14 +94,16 @@ export function sample(
   const picked = new Map<string, SampledPage[]>();
   for (const [type, list] of types) {
     list.sort((a, b) => a.url.localeCompare(b.url));
-    const n = Math.min(cfg.perTipo, list.length);
+    // Si preparano più pagine di perTipo: servono a completare il campione se i tipi sono pochi.
+    const n = Math.min(cfg.maxPagine, list.length);
     const step = list.length / n;
     picked.set(
       type,
       Array.from({ length: n }, (_, i) => ({ ...list[Math.floor(i * step)], type })),
     );
   }
-  // Round-robin tra i tipi finché non si raggiunge il massimo, così il campione resta vario.
+  // Round-robin tra i tipi, così il campione resta vario: prima fino a perTipo pagine per tipo,
+  // poi, se i tipi sono pochi, si completa fino a maxPagine.
   for (let round = 0; out.length < cfg.maxPagine; round++) {
     let added = false;
     for (const [, list] of picked) {
@@ -107,15 +119,29 @@ export function sample(
   return out;
 }
 
+const STUB_PATH = '/__scookie_stub__';
+
 /**
- * Scarica un file passando dal browser, così valgono proxy e impostazioni di rete della configurazione
- * (il client HTTP di Node non li userebbe).
+ * Scarica un file di testo passando dal browser, così valgono proxy e impostazioni di rete della configurazione
+ * (il client HTTP di Node non li userebbe). La pagina viene portata sull'origine del file con un documento
+ * fittizio servito localmente da Playwright (nessuna richiesta al sito), poi il file si legge con fetch().
+ * Così non si caricano pagine di errore HTML, che su alcuni siti bloccano la chiusura della pagina.
  */
 async function fetchText(page: Page, url: string): Promise<string | null> {
   try {
-    const res = await page.goto(url, { timeout: 20000, waitUntil: 'commit' });
-    if (!res || !res.ok()) return null;
-    return await res.text();
+    const origin = new URL(url).origin;
+    if (new URL(page.url()).origin !== origin) {
+      await page.route(`${origin}${STUB_PATH}`, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>scookie</title>' }));
+      await page.goto(`${origin}${STUB_PATH}`, { timeout: 10000 });
+    }
+    return await withTimeout(
+      page.evaluate(async (u) => {
+        const res = await fetch(u, { redirect: 'follow', credentials: 'omit' });
+        return res.ok ? await res.text() : null;
+      }, url),
+      25000,
+      `lettura ${url}`,
+    );
   } catch {
     return null;
   }
@@ -154,6 +180,12 @@ export async function discoverSite(
   const origin = new URL(home).origin;
   const host = new URL(home).hostname;
   const notes: string[] = [];
+  // Link interni scritti con un protocollo diverso (es. http:// su un sito https): si usa quello del sito.
+  const sameScheme = (u: string) => {
+    const x = new URL(u);
+    if (x.hostname === host && x.protocol !== new URL(home).protocol) x.protocol = new URL(home).protocol;
+    return x.toString();
+  };
   const extras = site.pagineExtra.map((p) => normalize(p, home)).filter((u): u is string => !!u);
   const exclude = site.escludi.map((e) => new RegExp(e, 'i'));
   const keep = (u: string) => {
@@ -170,11 +202,11 @@ export async function discoverSite(
       if (site.sitemap) {
         const smPage = await ctx.newPage();
         const sm = await readSitemaps(smPage, origin, cfg.campionamento.maxUrlSitemap, notes);
-        await smPage.close();
+        await closeSafely(smPage, 15000);
         sitemapUrls = sm.sitemapUrls;
         for (const p of sm.pages) {
           const n = normalize(p, home);
-          if (n && keep(n)) candidates.push({ url: n, source: 'sitemap' });
+          if (n && keep(n)) candidates.push({ url: sameScheme(n), source: 'sitemap' });
         }
         notes.push(`URL da sitemap sullo stesso host: ${candidates.length}`);
       }
@@ -184,11 +216,16 @@ export async function discoverSite(
         try {
           await page.goto(home, { waitUntil: 'domcontentloaded', timeout: cfg.protocollo.timeoutNavigazione });
           await page.waitForTimeout(1500);
-          const hrefs = await page.$$eval('a[href]', (as) => as.map((a) => (a as HTMLAnchorElement).href));
+          const hrefs = await withTimeout(
+            page.$$eval('a[href]', (as) => as.map((a) => (a as HTMLAnchorElement).href)),
+            20000,
+            'lettura dei link della home',
+          );
           let n = 0;
           for (const h of hrefs) {
-            const u = normalize(h, home);
-            if (u && keep(u) && !candidates.some((c) => c.url === u)) {
+            const norm = normalize(h, home);
+            const u = norm && keep(norm) ? sameScheme(norm) : null;
+            if (u && !candidates.some((c) => c.url === u)) {
               candidates.push({ url: u, source: 'link' });
               n++;
             }
@@ -199,7 +236,8 @@ export async function discoverSite(
         }
       }
     } finally {
-      await ctx.close();
+      const err = await closeSafely(ctx, 30000, 'chiusura contesto di scoperta');
+      if (err) notes.push(err);
     }
   }
 

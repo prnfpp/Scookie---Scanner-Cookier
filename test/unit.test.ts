@@ -9,6 +9,10 @@ import { PartyResolver, registrableDomain } from '../src/util/domains.js';
 import { parseCsv, toCsv } from '../src/util/csv.js';
 import type { RequestRecord } from '../src/types.js';
 import { parseTrace } from '../src/browser/exit.js';
+import { trimHar } from '../src/browser/har.js';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 test('pattern dei nomi dichiarati', () => {
   assert.ok(declaredPattern('_ga_xxxxxxx').test('_ga_ABC123'));
@@ -60,6 +64,10 @@ test('sitemap e tipi di pagina', () => {
   assert.equal(pageType('https://a.it/it/', {}), 'home');
   assert.equal(pageType('https://a.it/it/blog/post', {}), 'blog');
   assert.equal(pageType('https://a.it/p/123', { prodotto: '^/p/' }), 'prodotto');
+  assert.equal(pageType('https://a.it/10-picadillo-de-pollo.html', {}), 'numerata.html');
+  assert.equal(pageType('https://a.it/16-alimenti-e-snack', {}), 'numerata');
+  assert.equal(pageType('https://a.it/chi-siamo.html', {}), 'pagina.html');
+  assert.equal(pageType('https://a.it/chi-siamo', {}), 'chi-siamo');
 });
 
 test('campionamento deterministico e vario', () => {
@@ -69,6 +77,9 @@ test('campionamento deterministico e vario', () => {
     'https://a.it/contatti',
   ].map((url) => ({ url, source: 'sitemap' as const }));
   const cfg = { perTipo: 2, maxPagine: 5, tipi: {} };
+  // Con pochi tipi il campione si completa fino al massimo
+  const few = Array.from({ length: 6 }, (_, i) => ({ url: `https://a.it/online/p${i}`, source: 'link' as const }));
+  assert.equal(sample(few, 'https://a.it/', [], { perTipo: 1, maxPagine: 4, tipi: {} }).length, 4);
   const s1 = sample(urls, 'https://a.it/', ['https://a.it/preventivo/step-2'], cfg);
   const s2 = sample([...urls].reverse(), 'https://a.it/', ['https://a.it/preventivo/step-2'], cfg);
   assert.deepEqual(s1, s2);
@@ -102,4 +113,19 @@ test('CSV andata e ritorno', () => {
 test('lettura IP e paese di uscita', () => {
   assert.deepEqual(parseTrace('fl=1\nip=203.0.113.5\nts=1\nloc=it\ncolo=MXP\n'), { ip: '203.0.113.5', country: 'IT' });
   assert.deepEqual(parseTrace('niente'), { ip: null, country: null });
+});
+
+test('riduzione HAR: via immagini e testi grandi, restano i corpi delle richieste', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'har-')), 'x.har');
+  const entry = (mimeType: string, text: string, encoding?: string) => ({
+    request: { method: 'POST', postData: { mimeType: 'text/plain', text: 'cid=1&ev=PageView' } },
+    response: { content: { mimeType, size: text.length, text, ...(encoding ? { encoding } : {}) } },
+  });
+  writeFileSync(path, JSON.stringify({ log: { entries: [entry('image/png', 'AAAA', 'base64'), entry('application/json', '{"ok":1}'), entry('text/javascript', 'x'.repeat(600 * 1024))] } }));
+  assert.equal(trimHar(path, 'testo'), 2);
+  const h = JSON.parse(readFileSync(path, 'utf8'));
+  assert.equal(h.log.entries[0].response.content.text, undefined);
+  assert.equal(h.log.entries[1].response.content.text, '{"ok":1}');
+  assert.equal(h.log.entries[2].response.content.text, undefined);
+  assert.ok(h.log.entries.every((e: { request: { postData: { text: string } } }) => e.request.postData.text === 'cid=1&ev=PageView'));
 });
