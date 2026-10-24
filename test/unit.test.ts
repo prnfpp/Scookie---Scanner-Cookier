@@ -60,6 +60,10 @@ test('sitemap e tipi di pagina', () => {
   assert.equal(pageType('https://a.it/it/', {}), 'home');
   assert.equal(pageType('https://a.it/it/blog/post', {}), 'blog');
   assert.equal(pageType('https://a.it/p/123', { prodotto: '^/p/' }), 'prodotto');
+  assert.equal(pageType('https://a.it/10-picadillo-de-pollo.html', {}), 'numerata.html');
+  assert.equal(pageType('https://a.it/16-alimenti-e-snack', {}), 'numerata');
+  assert.equal(pageType('https://a.it/chi-siamo.html', {}), 'pagina.html');
+  assert.equal(pageType('https://a.it/chi-siamo', {}), 'chi-siamo');
 });
 
 test('campionamento deterministico e vario', () => {
