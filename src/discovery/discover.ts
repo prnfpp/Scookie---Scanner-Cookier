@@ -1,11 +1,13 @@
 import type { Browser, Page } from 'playwright';
 import type { AuditConfig, SiteConfig } from '../config/schema.js';
 import { closeSafely, withTimeout } from '../util/misc.js';
+import { registrableDomain } from '../util/domains.js';
+import { exploreByClicks } from './explore.js';
 
 export interface SampledPage {
   url: string;
   type: string;
-  source: 'home' | 'extra' | 'sitemap' | 'link';
+  source: 'home' | 'extra' | 'sitemap' | 'link' | 'esplorazione';
 }
 
 export interface DiscoveryResult {
@@ -51,7 +53,9 @@ export function sectionsOf(urls: string[]): Set<string> {
  */
 export function pageType(url: string, patterns: Record<string, string>, sections?: Set<string>): string {
   const u = new URL(url);
-  const path = u.pathname.replace(/\/+$/, '') || '/';
+  // Instradamento nel frammento (#/offerte): il percorso vero è nel frammento.
+  const hashRoute = /^#!?\//.test(u.hash) ? u.hash.replace(/^#!?/, '') : '';
+  const path = (u.pathname.replace(/\/+$/, '') + hashRoute).replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/';
   if (path === '/' || /^\/(?:index\.\w+|[a-z]{2}(?:-[a-z]{2})?)$/i.test(path)) return 'home';
   for (const [name, re] of Object.entries(patterns)) {
     if (new RegExp(re, 'i').test(u.pathname)) return name;
@@ -76,7 +80,9 @@ function normalize(url: string, base: string): string | null {
   try {
     const u = new URL(url, base);
     if (!/^https?:$/.test(u.protocol)) return null;
-    u.hash = '';
+    // Le applicazioni con instradamento nel frammento (/#/preventivo) hanno pagine distinte nel frammento:
+    // lo si tiene solo per gli indirizzi che finiscono con "/" (o index.html), dove vive questo tipo di applicazione.
+    if (!(/^#!?\//.test(u.hash) && /(\/|\/index\.\w+)$/.test(u.pathname))) u.hash = '';
     return u.toString();
   } catch {
     return null;
@@ -312,6 +318,49 @@ export async function discoverSite(
     } finally {
       const err = await closeSafely(ctx, 30000, 'chiusura contesto di scoperta');
       if (err) notes.push(err);
+    }
+  }
+
+  const ex = cfg.campionamento.esplorazione;
+  // In automatico solo se la scoperta era attiva: chi ha disattivato sitemap e link ha scelto le pagine a mano.
+  const autoExplore = site.esplora === 'auto' && !site.soloPagineExtra && (site.sitemap || site.seguiLink) && candidates.length < ex.sePaginaMeno;
+  if (site.esplora === 'sempre' || autoExplore) {
+    const n = candidates.length;
+    const why =
+      site.esplora === 'sempre'
+        ? 'richiesta dalla configurazione'
+        : `${n === 0 ? 'nessuna pagina trovata' : n === 1 ? 'trovata una sola pagina' : `trovate solo ${n} pagine`} con sitemap e link`;
+    try {
+      const r = await exploreByClicks(browser, [home, ...extras], {
+        userAgent,
+        locale: cfg.browser.locale,
+        depth: ex.profondita,
+        maxClicks: ex.maxClic,
+        maxPages: ex.maxPagine,
+        perPage: 15,
+        navTimeout: cfg.protocollo.timeoutNavigazione,
+        budgetMs: ex.maxSecondi * 1000,
+        keep,
+        // Si può passare per gli altri sottodomini dello stesso dominio (es. dal sito principale all'area preventivo),
+        // ma nel campione entrano solo le pagine di questo sito.
+        traverse: (u) => {
+          const h = new URL(u).hostname;
+          return h !== host && registrableDomain(h) === registrableDomain(host);
+        },
+        normalize: (u) => {
+          const n = normalize(u, home);
+          return n ? sameScheme(n) : null;
+        },
+      });
+      let added = 0;
+      for (const u of r.urls) {
+        if (u === home || extras.includes(u) || candidates.some((c) => c.url === u)) continue;
+        candidates.push({ url: u, source: 'esplorazione' });
+        added++;
+      }
+      notes.push(`Esplorazione con clic (${why}): ${r.clicks} clic, ${added} pagine nuove`, ...r.notes);
+    } catch (e) {
+      notes.push(`Esplorazione con clic non riuscita: ${(e as Error).message.split('\n')[0]}`);
     }
   }
 

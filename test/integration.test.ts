@@ -26,7 +26,7 @@ before(async () => {
     browser: { hostResolverRules: 'MAP * 127.0.0.1', userAgentSuffix: 'ScookieAudit/test', servizioUscita: url('trace.test', '/cdn-cgi/trace') },
     protocollo: { attesaDopoCaricamento: 300, attesaDopoScroll: 200, attesaDopoScelta: 800, pausaTraSessioni: 0, timeoutNavigazione: 15000 },
     scenari: { modalita: 'percorso', pagineDopoScelta: 2 },
-    campionamento: { perTipo: 1, maxPagine: 4 },
+    campionamento: { perTipo: 1, maxPagine: 4, esplorazione: { sePaginaMeno: 0 } },
     trackerExtra: join(FIXTURES, 'tracker-test.yaml'),
     siti: [
       { url: url('sito-a.test') },

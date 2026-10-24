@@ -40,6 +40,8 @@ export async function startFixtureServer(): Promise<{ server: Server; port: numb
       let file = normalize(join(siteDir, url.pathname));
       if (!file.startsWith(siteDir)) return send(403, '', 'text/plain');
       if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
+      // Applicazione a pagina singola: ogni percorso senza file risponde con la pagina principale
+      if (!existsSync(file) && existsSync(join(siteDir, '_spa')) && !extname(file)) file = join(siteDir, 'index.html');
       if (!existsSync(file)) return send(404, 'non trovato', 'text/plain');
       // senza estensione: testo semplice, come il servizio reale /cdn-cgi/trace
       const type = TYPES[extname(file)] ?? 'text/plain';
