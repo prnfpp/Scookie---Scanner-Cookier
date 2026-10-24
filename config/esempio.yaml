@@ -1,5 +1,5 @@
 # Configurazione di esempio. Copiarla in clienti/<nome>.yaml (la cartella clienti/ è esclusa da git).
-# Validare con:  npx scookie verifica-config -c clienti/<nome>.yaml
+# Validare con:  npm run scookie -- verifica-config -c clienti/<nome>.yaml
 
 cliente: Esempio Srl
 output: ../runs            # relativo a questo file

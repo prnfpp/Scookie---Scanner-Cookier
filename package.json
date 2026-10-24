@@ -13,9 +13,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "scookie": "node dist/src/cli.js",
     "test": "npm run build && node --test --test-concurrency=1 \"dist/test/*.test.js\"",
-    "licenses": "node scripts/check-licenses.mjs",
-    "audit:run": "node dist/src/cli.js run"
+    "licenses": "node scripts/check-licenses.mjs"
   },
   "files": [
     "dist/src",
