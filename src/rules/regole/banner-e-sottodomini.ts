@@ -8,8 +8,10 @@ export const bannerAssente: Rule = {
   title: 'Nessun banner di consenso rilevato',
   defaultSeverity: 'informativa',
   defaultNorms: ['garante2021', 'gdpr13'],
-  evaluate({ sessions }) {
+  evaluate({ sessions, exit }) {
     const out: RawFinding[] = [];
+    // Fuori da UE/SEE, o senza verifica, l'assenza del banner può dipendere dalla geolocalizzazione del CMP.
+    const geoCaveat = !exit.verified || exit.inEu === false;
     for (const [site, list] of groupBy(sessions, (s) => s.site)) {
       if (list.some((s) => s.interaction.bannerVisibleBefore || s.interaction.detectedCmps.length)) continue;
       const home = list.find((s) => s.scenario === 'nessuna-azione') ?? list[0];
@@ -20,9 +22,12 @@ export const bannerAssente: Rule = {
         site,
         scenario: null,
         pageUrl: home.pages[0],
-        severity: nonTech ? 'media' : 'informativa',
+        severity: nonTech && !geoCaveat ? 'media' : 'informativa',
         description: `In nessuna delle pagine visitate è stato rilevato un banner o un gestore del consenso.${nonTech ? ' Sono però presenti cookie o richieste di categoria non tecnica (vedi inventario).' : ''}`,
-        details: [`Pagine visitate: ${[...new Set(list.flatMap((s) => s.pages))].length}`],
+        details: [
+          `Pagine visitate: ${[...new Set(list.flatMap((s) => s.pages))].length}`,
+          ...(geoCaveat ? [`Attenzione: ${exit.note} Molti CMP mostrano il banner solo a visitatori da UE/SEE.`] : []),
+        ],
         evidence: sessionEvidence(home, ['1-banner']),
       });
     }

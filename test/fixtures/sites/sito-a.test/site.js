@@ -8,6 +8,9 @@
   document.cookie = '_ga=GA1.1.' + Date.now() + '; max-age=63072000; path=/';
   pixel('http://pixel.adtest.example:' + P + '/tr?id=123&ev=PageView');
   fetch('http://analytics.stattest.example:' + P + '/g/collect?v=2&tid=G-TEST&gcs=G100', { mode: 'no-cors' });
+  // Elementi che nessuna fonte sa classificare
+  document.cookie = 'xyz_misterioso=1; max-age=31536000; path=/';
+  pixel('http://widget.ignoto.example:' + P + '/w.gif');
   // Rifiuto non rispettato: registrazione sessioni anche dopo "Rifiuta"
   if (consent === 'no') load('http://rec.sessiontest.example:' + P + '/rec.js');
   if (consent === 'si') { document.cookie = '_fbp=fb.1.1.1; max-age=7776000; path=/'; pixel('http://pixel.adtest.example:' + P + '/tr?ev=Consent'); }

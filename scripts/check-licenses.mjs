@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Verifica che tutte le dipendenze installate (dirette e transitive) abbiano
-// una licenza compatibile con l'uso commerciale e con la licenza MIT del progetto.
+// una licenza permissiva, compatibile con un progetto proprietario anche in caso di uso commerciale.
 // Esce con codice 1 se trova licenze non in elenco o mancanti.
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';

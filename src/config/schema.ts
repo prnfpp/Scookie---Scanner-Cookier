@@ -60,8 +60,15 @@ export const configSchema = z
         userAgentSuffix: z.string().default('ScookieAudit/0.1'),
         /** User agent completo (sostituisce quello standard). */
         userAgent: z.string().optional(),
-        /** Paese da cui parte la navigazione, dichiarato nel report (non verificato dal tool). */
-        paeseUscita: z.string().default('IT'),
+        /** Paese da cui deve partire la navigazione (codice ISO a 2 lettere). Viene verificato all'avvio. */
+        paeseUscita: z.string().length(2).default('IT'),
+        /**
+         * Verifica del paese di uscita: avvisa (default) segnala la differenza nel report,
+         * blocca interrompe l'esecuzione, no disattiva la verifica.
+         */
+        verificaUscita: z.enum(['avvisa', 'blocca', 'no']).default('avvisa'),
+        /** Servizio che restituisce ip= e loc= (formato /cdn-cgi/trace di Cloudflare). */
+        servizioUscita: z.string().default('https://www.cloudflare.com/cdn-cgi/trace'),
         /** Proxy opzionale, es. per uscire da un paese specifico. */
         proxy: z.string().optional(),
         /** Percorso dell'eseguibile Chromium, se diverso da quello di Playwright. */
@@ -77,6 +84,8 @@ export const configSchema = z
         viewport: { width: 1366, height: 900 },
         userAgentSuffix: 'ScookieAudit/0.1',
         paeseUscita: 'IT',
+        verificaUscita: 'avvisa',
+        servizioUscita: 'https://www.cloudflare.com/cdn-cgi/trace',
       }),
     /** Protocollo di osservazione: identico per ogni pagina e sessione. */
     protocollo: z

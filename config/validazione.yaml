@@ -1,0 +1,35 @@
+# Validazione su siti reali (v0.2). Avvio:  npx scookie run -c config/validazione.yaml
+# Per ogni sito, confrontare a mano il report con quello che si vede in un browser normale:
+#   1. il banner è stato riconosciuto? (tabella "Interazione con il banner")
+#   2. il click è andato a segno? (screenshot 2-dopo-scelta)
+#   3. le criticità corrispondono a quello che si osserva negli strumenti per sviluppatori?
+# Ripetere l'esecuzione 3 volte per misurare la stabilità dei risultati.
+
+cliente: Validazione siti reali
+output: ../runs
+
+browser:
+  headless: true
+  paeseUscita: IT
+  verificaUscita: blocca     # se non si esce dall'Italia i risultati non sono confrontabili
+
+protocollo:
+  attesaDopoCaricamento: 5000
+  attesaDopoScroll: 2500
+  attesaDopoScelta: 5000
+  pausaTraSessioni: 4000
+
+scenari:
+  modalita: percorso
+  pagineDopoScelta: 2
+
+campionamento:
+  perTipo: 1
+  maxPagine: 4
+
+siti:
+  - url: https://bluediet.shop/
+  - url: https://stiledibologna.com/
+  - url: https://gyver.work/
+  - url: https://www.comune.bologna.it/
+  - url: https://www.unieuro.it/

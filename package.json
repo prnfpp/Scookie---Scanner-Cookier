@@ -2,7 +2,8 @@
   "name": "scookie",
   "version": "0.1.0",
   "description": "Audit tecnico di cookie e tracciamenti rispetto al consenso dell'utente, con evidenze ripetibili.",
-  "license": "MIT",
+  "license": "UNLICENSED",
+  "private": true,
   "type": "module",
   "bin": {
     "scookie": "dist/src/cli.js"

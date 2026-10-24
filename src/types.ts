@@ -5,6 +5,21 @@ export type ScenarioName = 'nessuna-azione' | 'rifiuta' | 'accetta';
 /** Momento rispetto alla scelta sul banner. */
 export type Phase = 'prima' | 'dopo';
 
+/**
+ * Momento preciso in cui un elemento compare:
+ * - caricamento: pagina caricata, nessuna interazione dell'utente;
+ * - scroll: dopo lo scroll della pagina, senza alcuna scelta sul banner;
+ * - scelta: dopo il click sul banner.
+ * Separare lo scroll serve per i banner che (illegittimamente) lo trattano come consenso.
+ */
+export type Stage = 'caricamento' | 'scroll' | 'scelta';
+
+export const STAGE_LABEL: Record<Stage, string> = {
+  caricamento: 'al caricamento, senza interazioni',
+  scroll: 'dopo lo scroll della pagina, senza scelta sul banner',
+  scelta: 'dopo la scelta sul banner',
+};
+
 export type Party = 'prima' | 'terza';
 
 /** Categoria normalizzata usata in tutto il tool. */
@@ -41,6 +56,7 @@ export interface CookieRecord {
   sameSite: string;
   party: Party;
   phase: Phase;
+  stage: Stage;
   /** Pagina su cui il cookie è stato osservato per la prima volta. */
   firstSeenUrl: string;
   firstSeenAt: string;
@@ -55,6 +71,7 @@ export interface StorageRecord {
   valuePreview: string;
   party: Party;
   phase: Phase;
+  stage: Stage;
   firstSeenUrl: string;
   firstSeenAt: string;
   classification: Classification;
@@ -71,6 +88,7 @@ export interface RequestRecord {
   resourceType: string;
   party: Party;
   phase: Phase;
+  stage: Stage;
   pageUrl: string;
   status: number | null;
   tracker?: { company: string; category: Category };
