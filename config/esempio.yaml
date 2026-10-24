@@ -33,6 +33,10 @@ campionamento:
     prodotto: "^/(prodotti|shop)/"
     preventivo: "^/preventivo"
     blog: "^/(blog|news)/"
+  # esplorazione:            # esplorazione con clic quando sitemap e link trovano poche pagine
+  #   sePaginaMeno: 5
+  #   profondita: 2
+  #   maxClic: 40
 
 dominiPropri: []           # es. [esempio-cdn.com] se un dominio diverso è dello stesso titolare
 

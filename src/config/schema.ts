@@ -30,6 +30,11 @@ const siteSchema = z
     seguiLink: z.boolean().default(true),
     /** URL aggiunte a mano (es. step del preventivo). Sempre incluse. */
     pagineExtra: z.array(z.string()).default([]),
+    /**
+     * Esplorazione con clic (pulsanti, menu, schede) per trovare pagine assenti da sitemap e link:
+     * auto = solo se la scoperta trova poche pagine; sempre; no.
+     */
+    esplora: z.enum(['auto', 'sempre', 'no']).default('auto'),
     /** Se true usa solo la home e le pagine extra. */
     soloPagineExtra: z.boolean().default(false),
     /** Esclude dal campione automatico le pagine vietate da robots.txt (le pagine extra restano). */
@@ -148,9 +153,26 @@ export const configSchema = z
         maxUrlSitemap: z.number().int().positive().default(5000),
         /** Tipi di pagina: nome -> regex sul path. Il primo che corrisponde vince. */
         tipi: z.record(z.string(), z.string()).default({}),
+        /** Limiti dell'esplorazione con clic. In modalità auto parte se si trovano meno di "sePaginaMeno" pagine. */
+        esplorazione: z
+          .object({
+            sePaginaMeno: z.number().int().nonnegative().default(5),
+            profondita: z.number().int().min(1).max(4).default(2),
+            maxClic: z.number().int().positive().default(40),
+            maxPagine: z.number().int().positive().default(25),
+            maxSecondi: z.number().int().positive().default(240),
+          })
+          .strict()
+          .default({ sePaginaMeno: 5, profondita: 2, maxClic: 40, maxPagine: 25, maxSecondi: 240 }),
       })
       .strict()
-      .default({ perTipo: 2, maxPagine: 15, maxUrlSitemap: 5000, tipi: {} }),
+      .default({
+        perTipo: 2,
+        maxPagine: 15,
+        maxUrlSitemap: 5000,
+        tipi: {},
+        esplorazione: { sePaginaMeno: 5, profondita: 2, maxClic: 40, maxPagine: 25, maxSecondi: 240 },
+      }),
     /** Domini (registrabili) da considerare di prima parte oltre a quello del sito. */
     dominiPropri: z.array(z.string()).default([]),
     /** File YAML con norme e collegamento regole -> norme. */

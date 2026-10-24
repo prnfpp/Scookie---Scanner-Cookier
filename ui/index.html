@@ -192,6 +192,14 @@ th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
       <label class="check"><input type="checkbox" class="s-sitemap" checked> Leggi la sitemap</label>
       <label class="check"><input type="checkbox" class="s-link" checked> Segui i link della home</label>
       <label class="check"><input type="checkbox" class="s-robots" checked> Rispetta le esclusioni di robots.txt</label>
+      <div class="row">
+        <div><label>Esplorazione con clic <span class="hint">(per applicazioni web senza sitemap né link)</span></label>
+          <select class="s-esplora">
+            <option value="auto">Automatica: solo se si trovano poche pagine</option>
+            <option value="sempre">Sempre</option>
+            <option value="no">Mai</option>
+          </select></div>
+      </div>
       <h3>Pulsanti del banner <span class="muted">(solo se il banner non viene riconosciuto da solo)</span></h3>
       <div class="row">
         <div><label>Selettore "Rifiuta"</label><input type="text" class="s-b-rifiuta" placeholder="#cookie-bar .rifiuta"></div>
@@ -317,6 +325,7 @@ function addSiteCard(site = {}) {
   q('.s-dichiarati').value = site.dichiarati || '';
   q('.s-sitemap').checked = site.sitemap !== false;
   q('.s-link').checked = site.seguiLink !== false;
+  q('.s-esplora').value = site.esplora || 'auto';
   q('.s-robots').checked = site.rispettaRobots !== false;
   const b = site.banner || {};
   q('.s-b-rifiuta').value = b.rifiuta || '';
@@ -376,6 +385,7 @@ function readForm() {
     setOrDelete(s, 'dichiarati', q('.s-dichiarati').value.trim());
     setOrDelete(s, 'sitemap', q('.s-sitemap').checked ? undefined : false);
     setOrDelete(s, 'seguiLink', q('.s-link').checked ? undefined : false);
+    setOrDelete(s, 'esplora', q('.s-esplora').value === 'auto' ? undefined : q('.s-esplora').value);
     setOrDelete(s, 'rispettaRobots', q('.s-robots').checked ? undefined : false);
     const b = structuredClone(s.banner || {});
     setOrDelete(b, 'rifiuta', q('.s-b-rifiuta').value.trim());
