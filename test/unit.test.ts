@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Classifier, normalizeDeclaredCategory } from '../src/classify/classifier.js';
 import { declaredPattern } from '../src/declared/compare.js';
-import { pageType, parseSitemap, sample } from '../src/discovery/discover.js';
+import { pageType, parseSitemap, robotsDisallows, sample } from '../src/discovery/discover.js';
 import { TEXTS } from '../src/cmp/heuristic.js';
 import { isConsentModeDeniedPing } from '../src/rules/helpers.js';
 import { PartyResolver, registrableDomain } from '../src/util/domains.js';
@@ -128,4 +128,16 @@ test('riduzione HAR: via immagini e testi grandi, restano i corpi delle richiest
   assert.equal(h.log.entries[1].response.content.text, '{"ok":1}');
   assert.equal(h.log.entries[2].response.content.text, undefined);
   assert.ok(h.log.entries.every((e: { request: { postData: { text: string } } }) => e.request.postData.text === 'cid=1&ev=PageView'));
+});
+
+test('robots.txt: Disallow, Allow, * e $', () => {
+  const d = robotsDisallows('User-agent: Googlebot\nDisallow: /solo-google\n\nUser-agent: *\nDisallow: /area-riservata/\nDisallow: /*.pdf$\nDisallow: /cerca?\nAllow: /area-riservata/pubblica\n');
+  assert.ok(d('/area-riservata/profilo'));
+  assert.ok(!d('/area-riservata/pubblica/x'));
+  assert.ok(d('/doc/file.pdf'));
+  assert.ok(!d('/doc/file.pdf.html'));
+  assert.ok(d('/cerca?q=1'));
+  assert.ok(!d('/solo-google'));
+  assert.ok(!d('/prodotti/a'));
+  assert.ok(!robotsDisallows('')('/x'));
 });

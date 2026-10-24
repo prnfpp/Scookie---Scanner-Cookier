@@ -147,8 +147,39 @@ async function fetchText(page: Page, url: string): Promise<string | null> {
   }
 }
 
-async function readSitemaps(req: Page, origin: string, max: number, notes: string[]) {
-  const robots = (await fetchText(req, `${origin}/robots.txt`)) ?? '';
+/**
+ * Regole Allow/Disallow di robots.txt per tutti i crawler (User-agent: *), con * e $ come in Google.
+ * Ritorna una funzione che dice se un path è escluso. Vince la regola più lunga; a parità, Allow.
+ */
+export function robotsDisallows(robots: string): (path: string) => boolean {
+  const rules: { allow: boolean; re: RegExp; len: number }[] = [];
+  let groupAgents: string[] = [];
+  let inRules = false;
+  for (const raw of robots.split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, '').trim();
+    const m = /^([a-z-]+)\s*:\s*(.*)$/i.exec(line);
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    const value = m[2].trim();
+    if (key === 'user-agent') {
+      if (inRules) groupAgents = [];
+      inRules = false;
+      groupAgents.push(value.toLowerCase());
+    } else if (key === 'allow' || key === 'disallow') {
+      inRules = true;
+      if (!groupAgents.includes('*') || !value) continue;
+      // Il "$" finale non viene sottoposto a escape: resta l'ancora di fine path, come nelle specifiche.
+      const body = value.replace(/[.+?^{}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+      rules.push({ allow: key === 'allow', re: new RegExp(`^${body}`), len: value.length });
+    }
+  }
+  return (path: string) => {
+    const hits = rules.filter((r) => r.re.test(path)).sort((a, b) => b.len - a.len || Number(b.allow) - Number(a.allow));
+    return hits.length > 0 && !hits[0].allow;
+  };
+}
+
+async function readSitemaps(req: Page, origin: string, max: number, notes: string[], robots: string) {
   const declared = [...robots.matchAll(/^\s*sitemap:\s*(\S+)/gim)].map((m) => m[1]);
   const queue = declared.length ? declared : [`${origin}/sitemap.xml`];
   notes.push(declared.length ? `Sitemap da robots.txt: ${declared.join(', ')}` : 'Nessuna sitemap in robots.txt, provata /sitemap.xml');
@@ -188,9 +219,17 @@ export async function discoverSite(
   };
   const extras = site.pagineExtra.map((p) => normalize(p, home)).filter((u): u is string => !!u);
   const exclude = site.escludi.map((e) => new RegExp(e, 'i'));
+  // Pagine escluse da robots.txt: non entrano nel campione automatico (le pagine extra sì, sono una scelta esplicita).
+  let disallowed: (path: string) => boolean = () => false;
+  let robotsExcluded = 0;
   const keep = (u: string) => {
     const parsed = new URL(u);
-    return parsed.hostname === host && !SKIP_EXT.test(parsed.pathname) && !exclude.some((re) => re.test(parsed.pathname));
+    if (parsed.hostname !== host || SKIP_EXT.test(parsed.pathname) || exclude.some((re) => re.test(parsed.pathname))) return false;
+    if (disallowed(parsed.pathname + parsed.search)) {
+      robotsExcluded++;
+      return false;
+    }
+    return true;
   };
 
   const candidates: { url: string; source: SampledPage['source'] }[] = [];
@@ -199,10 +238,13 @@ export async function discoverSite(
   if (!site.soloPagineExtra) {
     const ctx = await browser.newContext({ userAgent, locale: cfg.browser.locale, ignoreHTTPSErrors: false });
     try {
+      const smPage = await ctx.newPage();
+      const robots = (await fetchText(smPage, `${origin}/robots.txt`)) ?? '';
+      if (site.rispettaRobots) {
+        disallowed = robotsDisallows(robots);
+      }
       if (site.sitemap) {
-        const smPage = await ctx.newPage();
-        const sm = await readSitemaps(smPage, origin, cfg.campionamento.maxUrlSitemap, notes);
-        await closeSafely(smPage, 15000);
+        const sm = await readSitemaps(smPage, origin, cfg.campionamento.maxUrlSitemap, notes, robots);
         sitemapUrls = sm.sitemapUrls;
         for (const p of sm.pages) {
           const n = normalize(p, home);
@@ -210,6 +252,7 @@ export async function discoverSite(
         }
         notes.push(`URL da sitemap sullo stesso host: ${candidates.length}`);
       }
+      await closeSafely(smPage, 15000);
       if (site.seguiLink) {
         // Contesto separato da quelli di audit: i cookie scritti qui non influenzano gli scenari.
         const page = await ctx.newPage();
@@ -241,6 +284,7 @@ export async function discoverSite(
     }
   }
 
+  if (robotsExcluded) notes.push(`URL escluse perché vietate da robots.txt: ${robotsExcluded}`);
   const s = sample(candidates, home, extras, cfg.campionamento);
   const byType: Record<string, number> = {};
   for (const c of candidates) {
