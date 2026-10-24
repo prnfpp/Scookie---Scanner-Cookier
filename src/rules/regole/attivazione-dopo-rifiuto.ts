@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
+import { nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo "Rifiuta": nuovi cookie non tecnici o richieste a tracker, anche nelle pagine successive. */
@@ -24,8 +24,8 @@ export const attivazioneDopoRifiuto: Rule = {
         const rs = reqs.filter((r) => r.tracker!.company === key);
         const cat = cs[0]?.classification.category ?? rs[0]?.tracker!.category;
         const parts: string[] = [];
-        if (cs.length) parts.push(`vengono scritti ${cs.length} cookie (${cs.map((c) => c.name).join(', ')})`);
-        if (rs.length) parts.push(`partono ${rs.length} richieste a ${hostsSummary(rs)}`);
+        if (cs.length) parts.push(`${cs.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${cs.length} cookie`} (${cs.map((c) => c.name).join(', ')})`);
+        if (rs.length) parts.push(`${rs.length === 1 ? 'parte' : 'partono'} ${nReq(rs.length)} a ${hostsSummary(rs)}`);
         const pages = [...new Set([...cs.map((c) => c.firstSeenUrl), ...rs.map((r) => r.pageUrl)])];
         out.push({
           site: s.site,

@@ -75,3 +75,6 @@ export function stageWhen(stages: Stage[]): { when: string; onlyAfterScroll: boo
 }
 
 export const stageLabel = (s: Stage) => STAGE_LABEL[s];
+
+/** "1 richiesta", "3 richieste". */
+export const nReq = (n: number) => `${n} ${n === 1 ? 'richiesta' : 'richieste'}`;

@@ -1,4 +1,4 @@
-import { groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
+import { nReq, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /**
@@ -28,7 +28,7 @@ export const consentModeSenzaConsenso: Rule = {
         scenario: s.scenario,
         pageUrl: r.pageUrl,
         description:
-          `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${reqs.length} richieste con parametro Google Consent Mode ` +
+          `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${nReq(reqs.length)} con parametro Google Consent Mode ` +
           `gcs=${gcs.join('/')} (consenso negato o non impostato) a ${hostsSummary(reqs)}. ` +
           `Le richieste partono comunque e trasmettono dati della navigazione.`,
         details: [`Esempio: ${r.url.slice(0, 250)}`, `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`],
