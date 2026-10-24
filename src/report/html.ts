@@ -62,6 +62,19 @@ export function renderHtml(r: ReportInput): string {
 ${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</strong> ${esc(r.exit.note)}</p>` : ''}
 <p>Questo documento descrive cosa avviene nel browser dell'utente rispetto alle scelte sul banner di consenso, con le relative prove. Non contiene valutazioni di conformità né indicazioni correttive.</p>`);
 
+  parts.push(`<h2>Come leggere questo report</h2>
+<ul>
+<li><strong>Cosa è.</strong> Una documentazione tecnica di quanto avviene nel browser di un visitatore, raccolta in modo automatico e ripetibile, con le relative prove (screenshot, file HAR, dati grezzi). Non è una perizia, né un parere legale: la valutazione di conformità spetta al consulente legale o al DPO.</li>
+<li><strong>Le criticità</strong> sono fatti osservati che una regola tecnica segnala come meritevoli di verifica, ciascuno collegato ai riferimenti normativi pertinenti.</li>
+<li><strong>La gravità</strong> (alta, media, bassa, informativa) indica la <em>priorità di verifica suggerita</em>, definita nella tabella delle regole e modificabile; non è una qualificazione giuridica.
+  <ul><li><em>alta</em>: tracciamenti di marketing, statistica o registrazione sessioni prima della scelta o dopo il rifiuto;</li>
+  <li><em>media</em>: aspetti del banner o dell'informativa che possono incidere sulla validità del consenso;</li>
+  <li><em>bassa</em>: incoerenze documentali o elementi da classificare;</li>
+  <li><em>informativa</em>: contesto utile alla lettura (es. tracciamento lato server, banner assente senza tracciamenti).</li></ul></li>
+<li><strong>Le prove</strong> sono nella cartella <code>evidenze/</code>; i nomi dei file richiamano il numero della criticità. L'impronta SHA-256 di ogni file è in fondo al report e in <code>manifest.json</code>, insieme alla configurazione usata: permette di verificare che i file non siano stati modificati dopo la raccolta.</li>
+<li><strong>Il perimetro</strong> è un campione di pagine visitate in una certa data, da un certo paese e con un certo browser (sezione 1): pagine non visitate, aree riservate e momenti diversi possono dare risultati diversi.</li>
+</ul>`);
+
   // 1. Perimetro e metodo
   parts.push(`<h2>1. Perimetro e metodo</h2><table class="kv">
 <tr><td>Cliente</td><td>${esc(config.cliente)}</td></tr>
