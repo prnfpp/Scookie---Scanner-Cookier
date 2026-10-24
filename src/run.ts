@@ -14,7 +14,7 @@ import { renderHtml } from './report/html.js';
 import { writeCsvs } from './report/csv.js';
 import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms } from './rules/engine.js';
 import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult } from './types.js';
-import { sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
+import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
 import { TOOL_VERSION } from './version.js';
 
 export interface RunOptions {
@@ -31,7 +31,11 @@ export interface RunResult {
 
 export function launchOptions(cfg: AuditConfig, headless = cfg.browser.headless): LaunchOptions {
   const args: string[] = [];
-  if (cfg.browser.hostResolverRules) args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`);
+  if (cfg.browser.hostResolverRules) {
+    // Solo per i test: tutti gli host puntano a 127.0.0.1 e la protezione della rete locale di Chromium
+    // bloccherebbe le letture di robots.txt e sitemap fatte dal documento fittizio (vedi discovery).
+    args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`, '--disable-features=LocalNetworkAccessChecks');
+  }
   return {
     headless,
     args,
@@ -44,7 +48,7 @@ export async function resolveUserAgent(browser: Browser, cfg: AuditConfig): Prom
   if (cfg.browser.userAgent) return cfg.browser.userAgent;
   const ctx = await browser.newContext();
   const ua = await (await ctx.newPage()).evaluate(() => navigator.userAgent);
-  await ctx.close();
+  await closeSafely(ctx, 15000);
   return cfg.browser.userAgentSuffix ? `${ua} ${cfg.browser.userAgentSuffix}` : ua;
 }
 
@@ -118,6 +122,12 @@ function linkEvidenceToFindings(runDir: string, findings: Finding[]) {
   }
 }
 
+/** Host delle richieste senza risposta in una sessione, per spiegare un banner mancante. */
+function failedHosts(s: SessionResult): string {
+  const hosts = [...new Set(s.requests.filter((r) => r.failure).map((r) => r.host))];
+  return hosts.slice(0, 5).join(', ') + (hosts.length > 5 ? ` e altri ${hosts.length - 5}` : '');
+}
+
 export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Promise<RunResult> {
   const { config } = loaded;
   const log = opts.log ?? ((m: string) => console.log(m));
@@ -135,6 +145,8 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const sessions: SessionResult[] = [];
   const discovery: DiscoveryResult[] = [];
   const declared: DeclaredSet[] = [];
+  /** Sessioni sostituite da una ripetizione (restano nei dati e nelle evidenze). */
+  const discarded: SessionResult[] = [];
   let userAgent = '';
   let browserVersion = '';
   let exit: ExitInfo = {
@@ -178,7 +190,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
 
       const plans = planSessions(config, d, i, nextId);
       nextId += plans.length;
-      for (const plan of plans) {
+      const exec = async (plan: SessionPlan) => {
         log(`  ${plan.id} (${plan.pages.length} pagine)…`);
         const res = await runSession(browser, plan, {
           config,
@@ -195,9 +207,32 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
         });
         const i2 = res.interaction;
         log(`    banner: ${i2.bannerVisibleBefore ? 'sì' : 'no'}; metodo: ${i2.method}; esito: ${i2.outcome}; verifica: ${i2.verification}; cookie: ${res.cookies.length}; richieste: ${res.requests.length}`);
-        sessions.push(res);
         await sleep(config.protocollo.pausaTraSessioni);
+        return res;
+      };
+      const siteResults: SessionResult[] = [];
+      for (const plan of plans) siteResults.push(await exec(plan));
+
+      // Se il sito mostra il banner in alcune sessioni e non in altre, le sessioni senza banner
+      // si ripetono una volta: spesso lo script del CMP non è stato scaricato (errore di rete).
+      // La sessione scartata resta tra i dati e le evidenze, per trasparenza.
+      if (siteResults.some((s) => s.interaction.bannerVisibleBefore)) {
+        for (let k = 0; k < siteResults.length; k++) {
+          const first = siteResults[k];
+          if (first.interaction.bannerVisibleBefore) continue;
+          const plan = plans.find((p) => p.id === first.id)!;
+          log(`    banner assente solo in questa sessione: ripetizione di ${first.id}`);
+          const retry = await exec({ ...plan, id: `${plan.id}_ripetuta` });
+          retry.retryOf = first.id;
+          const failed = failedHosts(first);
+          retry.errors.unshift(
+            `Ripetizione di ${first.id}: in quella sessione il banner non è comparso${failed ? `; richieste senza risposta verso ${failed}` : ''}.`,
+          );
+          discarded.push(first);
+          siteResults[k] = retry;
+        }
       }
+      sessions.push(...siteResults);
       if (!decl.source) decl.note = 'Nessun elenco leggibile dal CMP e nessun file configurato: confronto con i dichiarati non eseguito.';
     }
   } finally {
@@ -213,7 +248,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
   const endedAt = new Date().toISOString();
 
-  writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ discovery, sessions, declared, comparison, findings }, null, 2));
+  writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ discovery, sessions, sessioniScartate: discarded, declared, comparison, findings }, null, 2));
   const csvs = writeCsvs(runDir, sessions, comparison, findings);
   const html = renderHtml({
     config,

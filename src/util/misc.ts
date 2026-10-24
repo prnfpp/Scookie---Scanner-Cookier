@@ -38,3 +38,22 @@ export function timestampForPath(d = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
+
+/** Rifiuta se la promessa non si risolve entro `ms`: una pagina bloccata non deve fermare l'intera esecuzione. */
+export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label}: nessuna risposta dopo ${Math.round(ms / 1000)} s`)), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** Chiude una pagina o un contesto senza mai bloccarsi; ritorna l'errore, se c'è stato. */
+export async function closeSafely(target: { close(): Promise<void> }, ms = 30000, label = 'chiusura'): Promise<string | null> {
+  try {
+    await withTimeout(target.close(), ms, label);
+    return null;
+  } catch (e) {
+    return (e as Error).message.split('\n')[0];
+  }
+}

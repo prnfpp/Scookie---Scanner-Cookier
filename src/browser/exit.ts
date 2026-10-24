@@ -1,4 +1,5 @@
 import type { Browser } from 'playwright';
+import { closeSafely } from '../util/misc.js';
 
 /** Paesi UE + SEE: fuori da qui molti CMP non mostrano il banner o lo mostrano diverso. */
 export const EU_EEA = new Set([
@@ -68,6 +69,6 @@ export async function detectExit(browser: Browser, url: string, declared: string
       note: `Paese di uscita non verificato (${(e as Error).message.split('\n')[0]}): vale solo quello dichiarato.`,
     };
   } finally {
-    await ctx.close();
+    await closeSafely(ctx, 15000);
   }
 }

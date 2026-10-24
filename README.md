@@ -61,7 +61,7 @@ Una cartella per esecuzione (`runs/<data>_<cliente>/`):
 | `confronto-dichiarati.csv` | confronto tra elementi osservati ed elenco dichiarato |
 | `criticita.csv` | elenco delle criticità |
 | `dati.json` | tutti i dati in formato strutturato |
-| `evidenze/` | screenshot e HAR per sessione; in `evidenze/criticita/` le prove con il numero della criticità nel nome (`C-003_…png`) |
+| `evidenze/` | screenshot e HAR per sessione (i HAR conservano sempre i corpi delle richieste; dei corpi delle risposte, per default solo i testuali fino a 512 KB: vedi `report.harContenuti`); in `evidenze/criticita/` le prove con il numero della criticità nel nome (`C-003_…png`) |
 | `manifest.json` (+ `.sha256`) | configurazione usata, versione del tool, browser, user agent, hash di ogni file |
 
 ## Come interagisce con banner che non conosce

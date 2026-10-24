@@ -91,6 +91,8 @@ export const configSchema = z
     protocollo: z
       .object({
         timeoutNavigazione: z.number().int().positive().default(45000),
+        /** Durata massima di una sessione: oltre, viene interrotta e i dati raccolti fin lì restano nel report. */
+        timeoutSessione: z.number().int().positive().default(300000),
         attesaDopoCaricamento: z.number().int().nonnegative().default(4000),
         scroll: z.boolean().default(true),
         attesaDopoScroll: z.number().int().nonnegative().default(2000),
@@ -101,6 +103,7 @@ export const configSchema = z
       .strict()
       .default({
         timeoutNavigazione: 45000,
+        timeoutSessione: 300000,
         attesaDopoCaricamento: 4000,
         scroll: true,
         attesaDopoScroll: 2000,
@@ -125,6 +128,7 @@ export const configSchema = z
       .default({ modalita: 'percorso', pagineDopoScelta: 3, attivi: ['nessuna-azione', 'rifiuta', 'accetta'] }),
     campionamento: z
       .object({
+        /** Pagine per tipo nel primo giro di campionamento; se i tipi sono pochi, il campione si completa fino a maxPagine. */
         perTipo: z.number().int().positive().default(2),
         maxPagine: z.number().int().positive().default(15),
         /** Numero massimo di URL lette dalle sitemap. */
@@ -143,11 +147,16 @@ export const configSchema = z
     report: z
       .object({
         pdf: z.boolean().default(true),
+        /**
+         * Corpi delle risposte nei file HAR: tutti, testo (solo risposte testuali fino a 512 KB) o nessuno.
+         * I corpi delle richieste (dati inviati ai terzi) restano sempre.
+         */
+        harContenuti: z.enum(['tutti', 'testo', 'nessuno']).default('testo'),
         /** Testo libero da includere nella sezione "Limiti". */
         noteLimiti: z.array(z.string()).default([]),
       })
       .strict()
-      .default({ pdf: true, noteLimiti: [] }),
+      .default({ pdf: true, harContenuti: 'testo', noteLimiti: [] }),
     siti: z.array(siteSchema).min(1),
   })
   .strict();

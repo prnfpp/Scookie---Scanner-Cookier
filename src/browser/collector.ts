@@ -39,6 +39,10 @@ export class Collector {
     private readonly classifier: Classifier,
   ) {
     context.on('request', (r) => this.onRequest(r));
+    context.on('requestfailed', (req) => {
+      const rec = this.byRequest.get(req);
+      if (rec) rec.failure = req.failure()?.errorText ?? 'errore sconosciuto';
+    });
     context.on('response', (res) => {
       const rec = this.byRequest.get(res.request());
       if (rec) rec.status = res.status();
