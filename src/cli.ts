@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { loadConfig } from './config/load.js';
 import { discoverSite } from './discovery/discover.js';
 import { launchOptions, resolveUserAgent, runAudit } from './run.js';
+import { openInBrowser, startUi } from './ui/server.js';
 import { TOOL_VERSION } from './version.js';
 
 const program = new Command();
@@ -49,6 +50,26 @@ program
   .action((opts: { config: string }) => {
     const { config } = loadConfig(opts.config);
     console.log(`Configurazione valida: ${config.siti.length} siti per "${config.cliente}".`);
+  });
+
+program
+  .command('interfaccia')
+  .alias('ui')
+  .description('Apre l\'interfaccia visuale nel browser (resta attiva finché non si chiude il terminale)')
+  .option('--clienti <cartella>', 'cartella delle configurazioni dei clienti', 'clienti')
+  .option('--esecuzioni <cartella>', 'cartella dei risultati', 'runs')
+  .option('-p, --porta <numero>', 'porta locale', '4777')
+  .option('--no-apri', 'non aprire il browser automaticamente')
+  .action(async (opts: { clienti: string; esecuzioni: string; porta: string; apri: boolean }) => {
+    const ui = await startUi({ clientsDir: opts.clienti, runsDir: opts.esecuzioni, port: Number(opts.porta) }).catch((e: NodeJS.ErrnoException) => {
+      if (e.code === 'EADDRINUSE') {
+        throw new Error(`La porta ${opts.porta} è già in uso: forse l'interfaccia è già aperta in un'altra finestra del terminale. In alternativa: npm run interfaccia -- --porta 4778`);
+      }
+      throw e;
+    });
+    console.log(`Interfaccia Scookie attiva su ${ui.url}`);
+    console.log('È raggiungibile solo da questo computer. Per chiuderla: Ctrl+C in questa finestra.');
+    if (opts.apri) openInBrowser(ui.url);
   });
 
 program.parseAsync().catch((e: Error) => {
