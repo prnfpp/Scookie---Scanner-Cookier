@@ -18,6 +18,8 @@ export const endpointServerSide: Rule = {
         site,
         scenario: null,
         pageUrl: group[0].r.pageUrl,
+        groupKey: 'tutti',
+        headline: 'Raccolta di dati tramite un endpoint sul dominio del sito (tagging lato server): i destinatari finali non sono visibili',
         description:
           `Il sito invia dati a endpoint di raccolta ospitati su un dominio proprio (${endpoints.length} endpoint). ` +
           `Ciò che il server inoltra a terzi non è osservabile dal browser. Richieste prima della scelta: ${prima}; dopo il rifiuto: ${dopoRifiuto}.`,

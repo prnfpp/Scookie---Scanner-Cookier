@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { chromium } from 'playwright';
 import { loadConfig } from './config/load.js';
 import { discoverSite } from './discovery/discover.js';
+import { writeComparison } from './report/compare.js';
 import { launchOptions, resolveUserAgent, runAudit } from './run.js';
 import { openInBrowser, startUi } from './ui/server.js';
 import { TOOL_VERSION } from './version.js';
@@ -50,6 +51,18 @@ program
   .action((opts: { config: string }) => {
     const { config } = loadConfig(opts.config);
     console.log(`Configurazione valida: ${config.siti.length} siti per "${config.cliente}".`);
+  });
+
+program
+  .command('confronta')
+  .description('Confronta due esecuzioni: criticità non più osservate, nuove e ancora presenti')
+  .argument('<prima>', 'cartella della prima esecuzione (es. runs/2026-10-01_…)')
+  .argument('<dopo>', 'cartella della seconda esecuzione')
+  .option('-o, --out <file>', 'file HTML da scrivere (predefinito: nella cartella della seconda esecuzione)')
+  .action((prima: string, dopo: string, opts: { out?: string }) => {
+    const { path, comparison: c } = writeComparison(prima, dopo, opts.out);
+    console.log(`${c.risolte.length} non più osservate, ${c.rimaste.length} ancora presenti, ${c.nuove.length} nuove.`);
+    console.log(`Confronto: ${path}`);
   });
 
 program

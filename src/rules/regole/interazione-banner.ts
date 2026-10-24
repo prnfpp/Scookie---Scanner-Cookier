@@ -1,4 +1,5 @@
-import { sessionEvidence } from '../helpers.js';
+import type { Severity } from '../../types.js';
+import { choiceHow, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Rifiuto non disponibile al primo livello o non trovato. */
@@ -12,8 +13,13 @@ export const rifiutoNonAlPrimoLivello: Rule = {
     for (const s of sessions.filter((x) => x.scenario === 'rifiuta')) {
       const i = s.interaction;
       let description: string | null = null;
-      if (i.outcome === 'eseguito' && i.layer === 'secondo-livello') {
-        description = `Il banner non offre un comando di rifiuto al primo livello: il rifiuto è stato possibile solo aprendo le preferenze (${i.detail}).`;
+      let severity: Severity | undefined;
+      if (i.outcome === 'eseguito' && i.layer === 'chiusura-x') {
+        // Fatto da riportare, non necessariamente un problema: la chiusura con la X può valere come rifiuto.
+        severity = 'bassa';
+        description = `Al primo livello del banner non è stato trovato un pulsante o link di rifiuto esplicito: il rifiuto è stato eseguito chiudendo il banner con la ${i.clicked?.[0] ?? 'X di chiusura'}.`;
+      } else if (i.outcome === 'eseguito' && i.layer === 'secondo-livello') {
+        description = `Il banner non offre un comando di rifiuto al primo livello: il rifiuto è stato possibile solo aprendo le preferenze, ${choiceHow(i)}.`;
       } else if (i.outcome === 'eseguito' && i.via === 'api') {
         description = `Nessun pulsante di rifiuto trovato nel banner; la scelta è stata registrata solo tramite l'API del CMP (${i.detail}).`;
       } else if (i.outcome === 'non-trovato') {
@@ -24,7 +30,15 @@ export const rifiutoNonAlPrimoLivello: Rule = {
         site: s.site,
         scenario: s.scenario,
         pageUrl: s.pages[0],
+        severity,
         description,
+        groupKey: `${i.layer}|${i.via}|${i.outcome}|${(i.clicked ?? []).join('>')}`,
+        headline:
+          i.layer === 'chiusura-x'
+            ? 'Al primo livello del banner non c\'è un pulsante "Rifiuta": si rifiuta solo con la X di chiusura'
+            : i.layer === 'secondo-livello'
+              ? 'Il rifiuto è possibile solo aprendo le preferenze del banner'
+              : 'Il banner non offre un modo per rifiutare raggiungibile dal tool',
         details: [`CMP rilevati: ${i.detectedCmps.join(', ') || 'nessuno'}`, `Metodo: ${i.method}`],
         evidence: sessionEvidence(s, ['1-banner', '2-dopo-scelta']),
       });
@@ -44,15 +58,17 @@ export const sceltaNonVerificata: Rule = {
   defaultNorms: ['gdpr4_11', 'gdpr7'],
   evaluate({ sessions }) {
     const out: RawFinding[] = [];
-    for (const s of sessions.filter((x) => x.scenario !== 'nessuna-azione')) {
+    for (const s of sessions.filter((x) => x.scenario === 'rifiuta' || x.scenario === 'accetta' || x.scenario === 'personalizza')) {
       const i = s.interaction;
-      const label = s.scenario === 'rifiuta' ? 'Rifiuta' : 'Accetta';
+      const label = s.scenario === 'rifiuta' ? 'il rifiuto' : s.scenario === 'personalizza' ? "l'accettazione della sola categoria statistica" : "l'accettazione";
       if (i.outcome === 'eseguito' && i.verification === 'incoerente') {
         out.push({
           site: s.site,
           scenario: s.scenario,
           pageUrl: s.pages[0],
-          description: `Dopo "${label}" lo stato del consenso registrato dal CMP non corrisponde alla scelta: ${i.verificationDetail}.`,
+          groupKey: `${s.scenario}|incoerente`,
+          headline: `Dopo ${label} lo stato del consenso registrato dal gestore non corrisponde alla scelta`,
+          description: `Dopo ${label} (eseguito ${choiceHow(i)}) lo stato del consenso registrato dal gestore non corrisponde alla scelta: ${i.verificationDetail}.`,
           details: [`Interazione: ${i.detail}`, `Stato dopo la scelta: ${JSON.stringify(i.consentStateAfter).slice(0, 600)}`],
           evidence: sessionEvidence(s, ['2-dopo-scelta']),
         });

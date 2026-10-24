@@ -139,6 +139,14 @@ tracker:
   - { dominio: monorail-edge.shopifysvc.com, azienda: Shopify, categoria: statistica, nota: Statistiche Shopify }
   - { dominio: cloudflareinsights.com, azienda: Cloudflare, categoria: statistica, nota: Cloudflare Web Analytics }
 
+  # --- Altri fornitori curati ---
+  - { dominio: dynatrace.com, azienda: Dynatrace, categoria: statistica, nota: "Monitoraggio delle prestazioni (APM)" }
+  - { dominio: zenaps.com, azienda: Awin, categoria: marketing }
+  - { dominio: dwin1.com, azienda: Awin, categoria: marketing }
+  - { dominio: stonly.com, azienda: Stonly, categoria: funzionalita, nota: "Guide interattive / assistenza" }
+  - { dominio: trustpilot.com, azienda: Trustpilot, categoria: funzionalita, nota: "Widget recensioni" }
+  - { dominio: stape.io, azienda: Stape, categoria: marketing, nota: "Tagging lato server" }
+
   # --- Infrastruttura: CDN, pagamenti, protezione anti-bot ---
   # Classificate per ridurre il rumore della regola "elementi non classificati". Restano visibili nell'inventario.
   - { dominio: cdnjs.cloudflare.com, azienda: Cloudflare, categoria: tecnico, nota: CDN }

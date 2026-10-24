@@ -1,4 +1,4 @@
-import { nReq, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
+import { choiceHow, describeGoogleConsent, nReq, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /**
@@ -22,7 +22,7 @@ export const consentModeSenzaConsenso: Rule = {
       const { s, r } = group[0];
       const reqs = group.map((g) => g.r);
       const gcs = [...new Set(reqs.map((x) => x.consentParams!.gcs))];
-      const when = r.phase === 'prima' ? stageWhen(reqs.map((x) => x.stage)).when : 'dopo il click su "Rifiuta"';
+      const when = r.phase === 'prima' ? stageWhen(reqs.map((x) => x.stage)).when : `dopo il rifiuto (eseguito ${choiceHow(s.interaction)})`;
       out.push({
         site: s.site,
         scenario: s.scenario,
@@ -31,7 +31,10 @@ export const consentModeSenzaConsenso: Rule = {
           `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${nReq(reqs.length)} con parametro Google Consent Mode ` +
           `gcs=${gcs.join('/')} (consenso negato o non impostato) a ${hostsSummary(reqs)}. ` +
           `Le richieste partono comunque e trasmettono dati della navigazione.`,
-        details: [`Esempio: ${r.url.slice(0, 250)}`, `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`],
+        evidenceLevel: 'raccolta',
+        groupKey: r.phase,
+        headline: `Google riceve segnali di Consent Mode con consenso negato o non impostato ${r.phase === 'prima' ? 'prima della scelta' : 'dopo il rifiuto'}`,
+        details: [`Esempio: ${r.url.slice(0, 250)}`, ...[...new Set(reqs.map((x) => describeGoogleConsent(x.consentParams)).filter(Boolean))].map((d) => `Significato: ${d}`), `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`],
         evidence: sessionEvidence(s, r.phase === 'prima' ? ['1-banner'] : ['2-dopo-scelta', '3-fine']),
         requestExcerpt: requestExcerpt(r, s),
       });

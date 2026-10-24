@@ -1,6 +1,10 @@
 // Tipi condivisi tra raccolta, regole e report.
 
-export type ScenarioName = 'nessuna-azione' | 'rifiuta' | 'accetta';
+/**
+ * Scenari: nessuna azione, rifiuta, accetta; personalizza (accetta solo la categoria statistica);
+ * revoca (accetta, poi revoca il consenso e rifiuta).
+ */
+export type ScenarioName = 'nessuna-azione' | 'rifiuta' | 'accetta' | 'personalizza' | 'revoca';
 
 /** Momento rispetto alla scelta sul banner. */
 export type Phase = 'prima' | 'dopo';
@@ -12,12 +16,13 @@ export type Phase = 'prima' | 'dopo';
  * - scelta: dopo il click sul banner.
  * Separare lo scroll serve per i banner che (illegittimamente) lo trattano come consenso.
  */
-export type Stage = 'caricamento' | 'scroll' | 'scelta';
+export type Stage = 'caricamento' | 'scroll' | 'scelta' | 'revoca';
 
 export const STAGE_LABEL: Record<Stage, string> = {
   caricamento: 'al caricamento, senza interazioni',
   scroll: 'dopo lo scroll della pagina, senza scelta sul banner',
   scelta: 'dopo la scelta sul banner',
+  revoca: 'dopo la revoca del consenso',
 };
 
 export type Party = 'prima' | 'terza';
@@ -41,8 +46,10 @@ export const NON_TECHNICAL: ReadonlySet<Category> = new Set([
 
 export interface Classification {
   category: Category;
-  source: string; // es. "open-cookie-database", "elenco-tracker", "nessuna"
+  source: string; // es. "elenco-curato", "open-cookie-database", "dominio-del-fornitore", "nessuna"
   platform?: string;
+  /** Nota da mostrare nel report (es. "monitoraggio delle prestazioni: da valutare"). */
+  note?: string;
 }
 
 export interface CookieRecord {
@@ -120,6 +127,20 @@ export interface InteractionReport {
   consentStateAfter?: unknown;
   bannerVisibleBefore: boolean;
   bannerVisibleAfter: boolean | null;
+  /** Elementi effettivamente cliccati, con testo e tipo (pulsante, link, X di chiusura). */
+  clicked?: string[];
+}
+
+/** Struttura del banner osservata sulla prima pagina (sessione "nessuna azione"). */
+export interface BannerAnalysis {
+  bannerVisible: boolean;
+  cmp: string[];
+  firstLayer: { accept: string[]; reject: string[]; preferences: string[]; close: string[]; all: string[] };
+  policyLink: { text: string; href: string } | null;
+  /** Modo per riaprire le preferenze nella pagina, fuori dal banner. */
+  revokeLink: { text: string; how: string } | null;
+  /** Secondo livello: categorie con lo stato in cui si presentano, prima di qualsiasi scelta. */
+  preferences: { opened: boolean; via: string; toggles: { label: string; checked: boolean; disabled: boolean }[] } | null;
 }
 
 export interface Evidence {
@@ -146,6 +167,12 @@ export interface SessionResult {
   errors: string[];
   /** Se la sessione è la ripetizione di un'altra, l'id di quella scartata. */
   retryOf?: string;
+  /** Scenario "revoca": come è stato revocato il consenso e quali cookie non tecnici restavano nel browser. */
+  revocation?: { outcome: 'eseguita' | 'non-trovata'; how: string; remaining: string[] };
+  /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */
+  bannerAnalysis?: BannerAnalysis;
+  /** Se presente, la navigazione è stata intercettata da un sistema anti-bot: sessione non valida. */
+  blocked?: { provider: string; signal: string; url: string };
 }
 
 export interface DeclaredItem {
@@ -203,5 +230,13 @@ export interface Finding {
   evidence: Evidence[];
   /** Estratto della richiesta dal HAR, se pertinente. */
   requestExcerpt?: Record<string, unknown>;
+  /** Forza della prova: risorsa scaricata, raccolta inviata, identificativo memorizzato. */
+  evidenceLevel?: 'risorsa' | 'raccolta' | 'identificativo';
+  /** Frase breve e in linguaggio semplice per la sintesi iniziale. */
+  headline?: string;
+  /** Siti a cui si riferisce la scheda (più di uno se raggruppata tra sottodomini). */
+  sites: string[];
+  /** Chiave stabile tra esecuzioni (regola, oggetto, dominio): serve al confronto tra due esecuzioni. */
+  key?: string;
   norms: NormRef[];
 }

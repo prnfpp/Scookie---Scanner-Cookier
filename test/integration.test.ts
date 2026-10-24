@@ -36,6 +36,7 @@ before(async () => {
       { url: url('sito-e.test'), sitemap: false, seguiLink: false },
       { url: url('sito-f.test'), sitemap: false, seguiLink: false, banner: { attesa: 1500 } },
       { url: url('sito-g.test'), sitemap: false, seguiLink: false, banner: { attesa: 2000 } },
+      { url: url('sito-h.test'), sitemap: false, seguiLink: false, banner: { attesa: 1000 } },
       { url: url('sito-d.test'), sitemap: false, dichiarati: join(FIXTURES, 'dichiarati-sito-d.csv'), cookiePolicy: url('www.sito-b.test', '/cookie-policy') },
     ],
   };
@@ -131,7 +132,7 @@ test('sito-e: euristica al secondo livello sceglie "Rifiuta tutti" nelle prefere
   const r = session('sito-e.test', 'rifiuta');
   assert.equal(r.interaction.method, 'euristica');
   assert.equal(r.interaction.layer, 'secondo-livello');
-  assert.match(r.interaction.detail, /"Personalizza" e poi su "Rifiuta tutti"/);
+  assert.match(r.interaction.detail, /"Personalizza".*"Rifiuta tutti"/);
   assert.ok(r.cookies.some((c) => c.name === 'pref' && c.valuePreview === 'no'));
   assert.ok(rules('sito-e.test').includes('rifiuto-non-al-primo-livello'));
 });
@@ -171,6 +172,69 @@ test('sito-g: vanilla-cookieconsent v2 e ripetizione della sessione se lo script
   assert.ok(scartata.requests.some((q) => q.host === 'cdn.flaky.example' && q.failure));
   assert.ok(!rules('sito-g.test').includes('banner-intermittente'));
   assert.ok(!rules('sito-g.test').includes('banner-assente'));
+});
+
+test('analisi del banner: comandi, categorie pre-attivate, informativa, revoca', () => {
+  const e = result.sessions.find((s) => s.site.includes('sito-e.test') && s.bannerAnalysis)!.bannerAnalysis!;
+  assert.deepEqual(e.firstLayer.reject, []);
+  assert.ok(e.firstLayer.preferences.includes('Personalizza'));
+  assert.equal(e.policyLink?.text, 'Cookie policy');
+  assert.equal(e.revokeLink, null);
+  assert.ok(e.preferences?.toggles.some((t) => /Statistiche/.test(t.label) && t.checked && !t.disabled));
+  const r = rules('sito-e.test');
+  for (const id of ['categorie-preattivate', 'revoca-non-trovata', 'struttura-banner']) assert.ok(r.includes(id), id);
+  const pre = result.findings.find((f) => f.ruleId === 'categorie-preattivate' && f.site.includes('sito-e.test'))!;
+  assert.match(pre.description, /"Statistiche"/);
+  assert.doesNotMatch(pre.description, /Necessari/);
+  // OneTrust: link "Impostazioni cookie" nel footer
+  const b = result.sessions.find((s) => s.site.includes('www.sito-b.test') && s.bannerAnalysis)!.bannerAnalysis!;
+  assert.ok(b.revokeLink);
+  assert.ok(!rules('www.sito-b.test').includes('revoca-non-trovata'));
+  // sito-a: nessun link all'informativa nel banner
+  assert.ok(rules('sito-a.test').includes('link-informativa-assente'));
+});
+
+test('sito-e: elenco dichiarato ricavato dalle tabelle della cookie policy', () => {
+  const dati = JSON.parse(readFileSync(join(result.runDir, 'dati.json'), 'utf8')) as { declared: { site: string; source: string; items: { name: string; category: string }[] }[] };
+  const d = dati.declared.find((x) => x.site.includes('sito-e.test'))!;
+  assert.match(d.source, /cookie policy/);
+  assert.deepEqual(d.items.map((i) => [i.name, i.category]), [['pref', 'tecnico'], ['_ga', 'statistica']]);
+});
+
+test('scenario personalizza: rispettato su vanilla-cookieconsent, violato su OneTrust di prova', () => {
+  const g = session('sito-g.test', 'personalizza').interaction;
+  assert.equal(g.method, 'adattatore:vanilla-cookieconsent');
+  assert.equal(g.verification, 'verificato');
+  assert.ok(!rules('sito-g.test').includes('personalizzazione-non-rispettata'));
+  const b = session('www.sito-b.test', 'personalizza').interaction;
+  assert.equal(b.method, 'adattatore:onetrust');
+  assert.equal(b.verification, 'verificato', b.verificationDetail);
+  const f = result.findings.find((x) => x.ruleId === 'personalizzazione-non-rispettata' && x.site.includes('www.sito-b.test'));
+  assert.ok(f, 'pixel pubblicitario con la sola statistica');
+  assert.match(f.description, /AdTest/);
+  // CMP senza supporto affidabile: scenario dichiarato non eseguibile
+  assert.match(session('sito-a.test', 'personalizza').interaction.detail, /non eseguibile/);
+});
+
+test('scenario revoca: link nel footer e cookie rimasti; sito senza modo di revocare', () => {
+  const b = session('www.sito-b.test', 'revoca');
+  assert.equal(b.revocation?.outcome, 'eseguita');
+  assert.match(b.revocation!.how, /Impostazioni cookie/);
+  assert.ok(b.revocation!.remaining.some((c) => c.startsWith('_ga')));
+  assert.ok(!rules('www.sito-b.test').includes('attivazione-dopo-revoca'));
+  assert.ok(result.findings.some((f) => f.ruleId === 'esito-revoca' && f.site.includes('www.sito-b.test')));
+  const a = session('sito-a.test', 'revoca');
+  assert.equal(a.revocation?.outcome, 'non-trovata');
+  assert.ok(result.findings.some((f) => f.ruleId === 'esito-revoca' && f.site.includes('sito-a.test') && /non è stato trovato/.test(f.headline ?? '')));
+});
+
+test('sito-h: pagina di verifica anti-bot riconosciuta, sessioni non valide e nessuna criticità sul sito', () => {
+  const ss = result.sessions.filter((s) => s.site.includes('sito-h.test'));
+  assert.ok(ss.length >= 3);
+  assert.ok(ss.every((s) => s.blocked?.provider === 'Cloudflare'));
+  assert.ok(!ss.some((s) => s.retryOf), 'nessuna ripetizione delle sessioni bloccate');
+  const r = rules('sito-h.test');
+  assert.deepEqual(r, ['accesso-bloccato']);
 });
 
 test('paese di uscita verificato e registrato nel manifest', () => {

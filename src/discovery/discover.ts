@@ -30,7 +30,26 @@ export function parseSitemap(xml: string): { isIndex: boolean; locs: string[] } 
  * Tipo di pagina: prima i pattern della configurazione, poi il primo segmento del path.
  * La home è sempre "home".
  */
-export function pageType(url: string, patterns: Record<string, string>): string {
+/** Primo segmento del percorso (saltando il prefisso lingua), per le URL con almeno due livelli: sono le "sezioni". */
+export function sectionsOf(urls: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const u of urls) {
+    try {
+      const all = new URL(u).pathname.split('/').filter(Boolean);
+      const segs = /^[a-z]{2}(?:-[a-z]{2})?$/i.test(all[0] ?? '') ? all.slice(1) : all;
+      if (segs.length > 1) out.add(segs[0].toLowerCase());
+    } catch {
+      // URL non valida
+    }
+  }
+  return out;
+}
+
+/**
+ * Tipo di pagina. Con `sections` (le sezioni che hanno sottopagine), le pagine a un solo livello che non sono
+ * l'indice di una sezione si raggruppano in "pagina": senza, siti con indirizzi piatti avrebbero un tipo per pagina.
+ */
+export function pageType(url: string, patterns: Record<string, string>, sections?: Set<string>): string {
   const u = new URL(url);
   const path = u.pathname.replace(/\/+$/, '') || '/';
   if (path === '/' || /^\/(?:index\.\w+|[a-z]{2}(?:-[a-z]{2})?)$/i.test(path)) return 'home';
@@ -48,7 +67,8 @@ export function pageType(url: string, patterns: Record<string, string>): string 
   // si raggruppa per forma, altrimenti ogni prodotto diventerebbe un tipo a sé.
   const ext = /\.[a-z0-9]{2,5}$/i.exec(first)?.[0].toLowerCase() ?? '';
   if (ext || /\d/.test(first)) return `${/\d/.test(first) ? 'numerata' : 'pagina'}${ext}`;
-  // Pagina con nome pulito (chi-siamo, contatti): tipo a sé
+  // Pagina con nome pulito (chi-siamo, contatti): tipo a sé se è l'indice di una sezione, altrimenti "pagina"
+  if (sections && !sections.has(first.toLowerCase())) return 'pagina';
   return first.toLowerCase().slice(0, 40);
 }
 
@@ -73,17 +93,18 @@ export function sample(
   extras: string[],
   cfg: { perTipo: number; maxPagine: number; tipi: Record<string, string> },
 ): SampledPage[] {
+  const sections = sectionsOf(urls.map((u) => u.url));
   const out: SampledPage[] = [{ url: homeUrl, type: 'home', source: 'home' }];
   const seen = new Set([homeUrl]);
   for (const e of extras) {
     if (seen.has(e)) continue;
     seen.add(e);
-    out.push({ url: e, type: pageType(e, cfg.tipi), source: 'extra' });
+    out.push({ url: e, type: pageType(e, cfg.tipi, sections), source: 'extra' });
   }
   const groups = new Map<string, { url: string; source: SampledPage['source'] }[]>();
   for (const u of urls) {
     if (seen.has(u.url)) continue;
-    const t = pageType(u.url, cfg.tipi);
+    const t = pageType(u.url, cfg.tipi, sections);
     if (t === 'home') continue;
     const g = groups.get(t) ?? [];
     if (!g.some((x) => x.url === u.url)) g.push(u);
@@ -181,7 +202,17 @@ export function robotsDisallows(robots: string): (path: string) => boolean {
 
 async function readSitemaps(req: Page, origin: string, max: number, notes: string[], robots: string) {
   const declared = [...robots.matchAll(/^\s*sitemap:\s*(\S+)/gim)].map((m) => m[1]);
-  const queue = declared.length ? declared : [`${origin}/sitemap.xml`];
+  // Sitemap dello stesso host dichiarate con un altro protocollo (es. http:// su un sito https): si usa quello del sito.
+  const sameScheme = (u: string) => {
+    try {
+      const x = new URL(u);
+      if (x.hostname === new URL(origin).hostname) x.protocol = new URL(origin).protocol;
+      return x.toString();
+    } catch {
+      return u;
+    }
+  };
+  const queue = (declared.length ? declared : [`${origin}/sitemap.xml`]).map(sameScheme);
   notes.push(declared.length ? `Sitemap da robots.txt: ${declared.join(', ')}` : 'Nessuna sitemap in robots.txt, provata /sitemap.xml');
   const visited = new Set<string>();
   const pages: string[] = [];
@@ -195,7 +226,7 @@ async function readSitemaps(req: Page, origin: string, max: number, notes: strin
       continue;
     }
     const { isIndex, locs } = parseSitemap(xml);
-    if (isIndex) queue.push(...locs);
+    if (isIndex) queue.push(...locs.map(sameScheme));
     else pages.push(...locs.slice(0, max - pages.length));
   }
   return { sitemapUrls: [...visited], pages };
@@ -285,10 +316,13 @@ export async function discoverSite(
   }
 
   if (robotsExcluded) notes.push(`URL escluse perché vietate da robots.txt: ${robotsExcluded}`);
+  if (!candidates.length && !site.soloPagineExtra && !extras.length) {
+    notes.push('Nessuna pagina scoperta automaticamente (es. applicazione web o pagina di accesso): indicare le pagine chiave in "Pagine da includere sempre" (pagineExtra).');
+  }
   const s = sample(candidates, home, extras, cfg.campionamento);
   const byType: Record<string, number> = {};
   for (const c of candidates) {
-    const t = pageType(c.url, cfg.campionamento.tipi);
+    const t = pageType(c.url, cfg.campionamento.tipi, sectionsOf(candidates.map((x) => x.url)));
     byType[t] = (byType[t] ?? 0) + 1;
   }
   return { site: origin, sitemapUrls, found: candidates.length, byType, sample: s, notes };
