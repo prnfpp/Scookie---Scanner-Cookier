@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scookie</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d1d1f;--muted:#5f6368;--line:#dadce0;--accent:#1a5fb4;--accent-fg:#fff;--ok:#1e7e34;--warn:#b26a00;--err:#b3261e;--code:#f1f3f4}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1c1f24;--fg:#e8eaed;--muted:#9aa0a6;--line:#3c4043;--accent:#8ab4f8;--accent-fg:#0b1a33;--ok:#81c995;--warn:#fdd663;--err:#f28b82;--code:#24282e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:14px 24px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:20px;margin:0}
+header .sub{color:var(--muted);font-size:13px}
+nav{margin-left:auto;display:flex;gap:4px}
+nav button{background:none;border:1px solid transparent;color:var(--fg);padding:6px 14px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{border-color:var(--line);background:var(--bg);font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
+.grid{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+.card h2{font-size:16px;margin:0 0 10px}
+.card h3{font-size:14px;margin:14px 0 6px}
+.muted{color:var(--muted);font-size:13px}
+.list button.client{display:block;width:100%;text-align:left;background:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;cursor:pointer;color:var(--fg);font:inherit}
+.list button.client.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.list .name{font-weight:600}
+.list .sites{font-size:12px;color:var(--muted);word-break:break-all}
+label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
+label .hint{font-weight:400;color:var(--muted)}
+input[type=text],input[type=number],input[type=url],select,textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+textarea{min-height:70px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+textarea.yaml{min-height:420px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.check{display:flex;align-items:center;gap:8px;font-weight:400;margin:6px 0}
+.check input{width:auto}
+.site{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:10px 0;background:var(--bg)}
+.site-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+details summary{cursor:pointer;color:var(--accent);font-size:13px;margin-top:10px}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:8px 14px;border-radius:7px;cursor:pointer;font:inherit;text-decoration:none}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+.btn.small{padding:4px 10px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.actions.sticky{position:sticky;bottom:0;background:var(--card);padding:10px 0;border-top:1px solid var(--line);z-index:2}
+.msg{padding:8px 12px;border-radius:6px;margin:10px 0;font-size:14px;white-space:pre-wrap}
+.msg.ok{border:1px solid var(--ok);color:var(--ok)}
+.msg.err{border:1px solid var(--err);color:var(--err)}
+.msg.warn{border:1px solid var(--warn);color:var(--warn)}
+pre.log{background:var(--code);border-radius:6px;padding:10px;max-height:340px;overflow:auto;font-size:12.5px;white-space:pre-wrap;word-break:break-word;margin:8px 0}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-word}
+th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;border:1px solid var(--line)}
+.badge.run{border-color:var(--warn);color:var(--warn)}
+.badge.ok{border-color:var(--ok);color:var(--ok)}
+.badge.err{border-color:var(--err);color:var(--err)}
+.hidden{display:none!important}
+.empty{color:var(--muted);text-align:center;padding:30px 10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Scookie</h1>
+  <span class="sub">Audit tecnico di cookie e consenso · <span id="version"></span></span>
+  <nav>
+    <button id="tab-clienti" class="on">Clienti</button>
+    <button id="tab-esecuzioni">Esecuzioni</button>
+  </nav>
+</header>
+
+<main>
+  <!-- CLIENTI -->
+  <section id="view-clienti" class="grid">
+    <div>
+      <div class="card list">
+        <h2>Clienti</h2>
+        <div id="clients"></div>
+        <button class="btn primary" id="new-client">+ Nuovo cliente</button>
+        <p class="muted" id="clients-dir"></p>
+      </div>
+    </div>
+
+    <div>
+      <div id="editor-empty" class="card empty">Seleziona un cliente o creane uno nuovo.</div>
+
+      <div id="editor" class="hidden">
+        <div class="card">
+          <div class="site-head">
+            <h2 id="editor-title">Cliente</h2>
+            <button class="btn small" id="toggle-yaml">Modifica come testo (YAML)</button>
+          </div>
+          <div id="form">
+            <div class="row">
+              <div><label>Nome del cliente</label><input type="text" id="f-cliente" placeholder="Es. Rossi Srl"></div>
+              <div id="file-box"><label>Nome del file <span class="hint">(solo lettere, numeri, - e _)</span></label><input type="text" id="f-file" placeholder="rossi"></div>
+            </div>
+
+            <h3>Siti da controllare</h3>
+            <p class="muted">Ogni sito o sottodominio (www, shop, blog…) è una voce a sé.</p>
+            <div id="sites"></div>
+            <button class="btn small" id="add-site">+ Aggiungi sito o sottodominio</button>
+
+            <details>
+              <summary>Impostazioni generali (campione, scenari, paese, report)</summary>
+              <div class="row">
+                <div><label>Pagine per tipo <span class="hint">(primo giro)</span></label><input type="number" min="1" id="f-perTipo" placeholder="2"></div>
+                <div><label>Massimo pagine per sito</label><input type="number" min="1" id="f-maxPagine" placeholder="15"></div>
+                <div><label>Pagine visitate dopo la scelta</label><input type="number" min="1" id="f-pagineDopoScelta" placeholder="3"></div>
+              </div>
+              <label>Scenari</label>
+              <label class="check"><input type="checkbox" id="f-sc-nessuna" checked> Nessuna azione sul banner</label>
+              <label class="check"><input type="checkbox" id="f-sc-rifiuta" checked> Rifiuta</label>
+              <label class="check"><input type="checkbox" id="f-sc-accetta" checked> Accetta</label>
+              <div class="row">
+                <div><label>Paese di uscita atteso</label><input type="text" id="f-paese" maxlength="2" placeholder="IT"></div>
+                <div><label>Se il paese non corrisponde</label>
+                  <select id="f-verifica"><option value="blocca">Fermati (consigliato)</option><option value="avvisa">Avvisa nel report</option><option value="no">Non verificare</option></select></div>
+                <div><label>Contenuti nei file HAR</label>
+                  <select id="f-har"><option value="testo">Solo risposte testuali (consigliato)</option><option value="tutti">Tutto (file molto grandi)</option><option value="nessuno">Nessuna risposta</option></select></div>
+              </div>
+              <label class="check"><input type="checkbox" id="f-pdf" checked> Genera anche il PDF del report</label>
+            </details>
+          </div>
+
+          <div id="yaml-box" class="hidden">
+            <p class="muted">Modifica avanzata: tutte le opzioni sono descritte in <code>config/esempio.yaml</code>. Rispettare i rientri (spazi, non tabulazioni).</p>
+            <textarea id="f-yaml" class="yaml" spellcheck="false"></textarea>
+          </div>
+
+          <div id="save-msg"></div>
+          <div class="actions sticky">
+            <button class="btn primary" id="save">Salva</button>
+            <button class="btn" id="preview">Anteprima pagine</button>
+            <button class="btn primary" id="run">Avvia audit</button>
+          </div>
+          <p class="muted">"Anteprima pagine" mostra quali pagine verrebbero visitate (1-2 minuti). "Avvia audit" esegue il controllo completo: alcuni minuti per sito. Le modifiche vengono salvate prima di partire.</p>
+        </div>
+
+        <div class="card hidden" id="job">
+          <div class="site-head"><h2 id="job-title">Operazione in corso</h2><span id="job-badge" class="badge"></span></div>
+          <div id="job-result"></div>
+          <details id="job-log-box" open><summary>Dettaglio avanzamento</summary><pre class="log" id="job-log"></pre></details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ESECUZIONI -->
+  <section id="view-esecuzioni" class="hidden">
+    <div class="card">
+      <div class="site-head"><h2>Esecuzioni</h2><button class="btn small" id="refresh-runs">Aggiorna</button></div>
+      <p class="muted" id="runs-dir"></p>
+      <div id="runs"></div>
+    </div>
+  </section>
+</main>
+
+<template id="site-tpl">
+  <div class="site">
+    <div class="site-head"><strong class="site-title">Sito</strong><button class="btn small remove">Rimuovi</button></div>
+    <label>Indirizzo <span class="hint">(es. https://www.rossi.it/)</span></label>
+    <input type="url" class="s-url" placeholder="https://">
+    <label>Quali pagine controllare</label>
+    <select class="s-mode">
+      <option value="auto">Scelte in automatico (sitemap e link della home)</option>
+      <option value="mix">In automatico + pagine che indico io</option>
+      <option value="solo">Solo la home e le pagine che indico io</option>
+    </select>
+    <div class="s-extra-box">
+      <label>Pagine da includere sempre <span class="hint">(una per riga, es. /preventivo/step-1 oppure indirizzo completo)</span></label>
+      <textarea class="s-extra" placeholder="/contatti&#10;/preventivo/step-1"></textarea>
+    </div>
+    <div class="s-auto-box">
+      <label>Sezioni da escludere <span class="hint">(una per riga, inizio del percorso, es. /area-riservata)</span></label>
+      <textarea class="s-escludi" placeholder="/area-riservata&#10;/en/"></textarea>
+    </div>
+    <details>
+      <summary>Opzioni avanzate del sito</summary>
+      <div class="row">
+        <div><label>Nome nel report <span class="hint">(facoltativo)</span></label><input type="text" class="s-nome"></div>
+        <div><label>Indirizzo della cookie policy</label><input type="url" class="s-policy" placeholder="https://"></div>
+        <div><label>File cookie dichiarati <span class="hint">(CSV, percorso)</span></label><input type="text" class="s-dichiarati" placeholder="./dichiarati-rossi.csv"></div>
+      </div>
+      <label class="check"><input type="checkbox" class="s-sitemap" checked> Leggi la sitemap</label>
+      <label class="check"><input type="checkbox" class="s-link" checked> Segui i link della home</label>
+      <label class="check"><input type="checkbox" class="s-robots" checked> Rispetta le esclusioni di robots.txt</label>
+      <h3>Pulsanti del banner <span class="muted">(solo se il banner non viene riconosciuto da solo)</span></h3>
+      <div class="row">
+        <div><label>Selettore "Rifiuta"</label><input type="text" class="s-b-rifiuta" placeholder="#cookie-bar .rifiuta"></div>
+        <div><label>Selettore "Accetta"</label><input type="text" class="s-b-accetta" placeholder="#cookie-bar .accetta"></div>
+        <div><label>Selettore "Preferenze"</label><input type="text" class="s-b-pref"></div>
+        <div><label>Selettore "Rifiuta" nelle preferenze</label><input type="text" class="s-b-prefrif"></div>
+        <div><label>Iframe del banner</label><input type="text" class="s-b-frame"></div>
+        <div><label>Attesa del banner (ms)</label><input type="number" min="0" class="s-b-attesa" placeholder="6000"></div>
+      </div>
+    </details>
+  </div>
+</template>
+
+<script>
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const fmt = (iso) => (iso ? new Date(iso).toLocaleString('it-IT') : '—');
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers: { 'x-scookie': '1', ...(opts.body ? { 'content-type': 'application/json' } : {}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    credentials: 'same-origin',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = new Error(data.errore || (data.errori ? data.errori.join('\n') : `Errore ${res.status}`));
+    e.errors = data.errori;
+    throw e;
+  }
+  return data;
+}
+
+const state = { file: null, isNew: false, data: null, yamlMode: false, polling: null, lastJobId: null };
+
+/* ---------- Schede ---------- */
+function showTab(name) {
+  for (const t of ['clienti', 'esecuzioni']) {
+    $('#tab-' + t).classList.toggle('on', t === name);
+    $('#view-' + t).classList.toggle('hidden', t !== name);
+  }
+  if (name === 'esecuzioni') loadRuns();
+}
+$('#tab-clienti').onclick = () => showTab('clienti');
+$('#tab-esecuzioni').onclick = () => showTab('esecuzioni');
+
+/* ---------- Clienti ---------- */
+async function loadClients() {
+  const list = await api('/api/clienti');
+  const box = $('#clients');
+  box.innerHTML = list.length ? '' : '<p class="muted">Nessun cliente: creane uno.</p>';
+  for (const c of list) {
+    const b = document.createElement('button');
+    b.className = 'client' + (c.file === state.file ? ' on' : '');
+    b.innerHTML = `<div class="name">${esc(c.cliente)}${c.valido ? '' : ' <span class="badge err">da correggere</span>'}</div><div class="sites">${esc(c.siti.join(' · ') || c.file)}</div>`;
+    b.onclick = () => openClient(c.file);
+    box.appendChild(b);
+  }
+}
+
+async function openClient(file) {
+  const c = await api('/api/clienti/' + encodeURIComponent(file));
+  state.file = file;
+  state.isNew = false;
+  state.data = c.data && typeof c.data === 'object' ? c.data : { cliente: '', siti: [] };
+  $('#editor-empty').classList.add('hidden');
+  $('#editor').classList.remove('hidden');
+  $('#editor-title').textContent = c.data?.cliente || file;
+  $('#file-box').classList.add('hidden');
+  $('#f-yaml').value = c.yaml;
+  setMsg(c.valid ? '' : 'La configurazione contiene errori:\n' + c.errors.join('\n'), 'err');
+  setYamlMode(!c.valid || !c.data);
+  fillForm(state.data);
+  loadClients();
+  refreshJob();
+}
+
+$('#new-client').onclick = () => {
+  state.file = null;
+  state.isNew = true;
+  state.data = { cliente: '', output: '../runs', browser: { paeseUscita: 'IT', verificaUscita: 'blocca' }, siti: [{ url: '' }] };
+  $('#editor-empty').classList.add('hidden');
+  $('#editor').classList.remove('hidden');
+  $('#editor-title').textContent = 'Nuovo cliente';
+  $('#file-box').classList.remove('hidden');
+  $('#f-file').value = '';
+  $('#f-yaml').value = '';
+  setMsg('');
+  setYamlMode(false);
+  fillForm(state.data);
+  loadClients();
+};
+
+$('#f-cliente').addEventListener('input', () => {
+  if (state.isNew) $('#f-file').value = $('#f-cliente').value.toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+});
+
+/* ---------- Modulo <-> dati ---------- */
+const lines = (t) => t.split('\n').map((x) => x.trim()).filter(Boolean);
+const num = (v) => (v === '' || v == null ? undefined : Number(v));
+function setOrDelete(obj, key, value) {
+  if (value === undefined || value === '' || (Array.isArray(value) && !value.length)) delete obj[key];
+  else obj[key] = value;
+}
+// Le esclusioni sono regex sul percorso: dal modulo si scrive "/area", nel file "^/area".
+const toRegex = (p) => '^' + p.replace(/[.+?^${}()|[\]\\*]/g, '\\$&');
+// Le espressioni semplici ("^/area-riservata") si mostrano come percorso; quelle complesse restano com'erano.
+const fromRegex = (r) => (/^\^\/[\w\-\/]*$/.test(r) ? r.slice(1) : r);
+
+function addSiteCard(site = {}) {
+  const node = $('#site-tpl').content.firstElementChild.cloneNode(true);
+  const q = (s) => node.querySelector(s);
+  q('.s-url').value = site.url || '';
+  const mode = site.soloPagineExtra ? 'solo' : (site.pagineExtra || []).length ? 'mix' : 'auto';
+  q('.s-mode').value = mode;
+  q('.s-extra').value = (site.pagineExtra || []).join('\n');
+  q('.s-escludi').value = (site.escludi || []).map(fromRegex).join('\n');
+  q('.s-nome').value = site.nome || '';
+  q('.s-policy').value = site.cookiePolicy || '';
+  q('.s-dichiarati').value = site.dichiarati || '';
+  q('.s-sitemap').checked = site.sitemap !== false;
+  q('.s-link').checked = site.seguiLink !== false;
+  q('.s-robots').checked = site.rispettaRobots !== false;
+  const b = site.banner || {};
+  q('.s-b-rifiuta').value = b.rifiuta || '';
+  q('.s-b-accetta').value = b.accetta || '';
+  q('.s-b-pref').value = b.preferenze || '';
+  q('.s-b-prefrif').value = b.rifiutaNellePreferenze || '';
+  q('.s-b-frame').value = b.frame || '';
+  q('.s-b-attesa').value = b.attesa ?? '';
+  node._original = site;
+  const sync = () => {
+    const m = q('.s-mode').value;
+    q('.s-extra-box').classList.toggle('hidden', m === 'auto');
+    q('.s-auto-box').classList.toggle('hidden', m === 'solo');
+    q('.site-title').textContent = q('.s-url').value || 'Nuovo sito';
+  };
+  q('.s-mode').onchange = sync;
+  q('.s-url').oninput = sync;
+  q('.remove').onclick = () => node.remove();
+  sync();
+  $('#sites').appendChild(node);
+}
+$('#add-site').onclick = () => addSiteCard({});
+
+function fillForm(d) {
+  $('#f-cliente').value = d.cliente || '';
+  $('#sites').innerHTML = '';
+  for (const s of d.siti || []) addSiteCard(s);
+  const c = d.campionamento || {}, sc = d.scenari || {}, br = d.browser || {}, rp = d.report || {};
+  $('#f-perTipo').value = c.perTipo ?? '';
+  $('#f-maxPagine').value = c.maxPagine ?? '';
+  $('#f-pagineDopoScelta').value = sc.pagineDopoScelta ?? '';
+  const attivi = sc.attivi || ['nessuna-azione', 'rifiuta', 'accetta'];
+  $('#f-sc-nessuna').checked = attivi.includes('nessuna-azione');
+  $('#f-sc-rifiuta').checked = attivi.includes('rifiuta');
+  $('#f-sc-accetta').checked = attivi.includes('accetta');
+  $('#f-paese').value = br.paeseUscita || '';
+  $('#f-verifica').value = br.verificaUscita || 'avvisa';
+  $('#f-har').value = rp.harContenuti || 'testo';
+  $('#f-pdf').checked = rp.pdf !== false;
+}
+
+/** Applica il modulo ai dati originali: le opzioni non presenti nel modulo restano intatte. */
+function readForm() {
+  const d = structuredClone(state.data || {});
+  d.cliente = $('#f-cliente').value.trim();
+  if (!d.output) d.output = '../runs';
+  d.siti = [...document.querySelectorAll('#sites .site')].map((node) => {
+    const q = (s) => node.querySelector(s);
+    const s = structuredClone(node._original || {});
+    const mode = q('.s-mode').value;
+    s.url = q('.s-url').value.trim();
+    setOrDelete(s, 'pagineExtra', mode === 'auto' ? [] : lines(q('.s-extra').value));
+    setOrDelete(s, 'soloPagineExtra', mode === 'solo' ? true : undefined);
+    setOrDelete(s, 'escludi', mode === 'solo' ? [] : lines(q('.s-escludi').value).map((p) => (p.startsWith('^') ? p : toRegex(p.startsWith('/') ? p : '/' + p))));
+    setOrDelete(s, 'nome', q('.s-nome').value.trim());
+    setOrDelete(s, 'cookiePolicy', q('.s-policy').value.trim());
+    setOrDelete(s, 'dichiarati', q('.s-dichiarati').value.trim());
+    setOrDelete(s, 'sitemap', q('.s-sitemap').checked ? undefined : false);
+    setOrDelete(s, 'seguiLink', q('.s-link').checked ? undefined : false);
+    setOrDelete(s, 'rispettaRobots', q('.s-robots').checked ? undefined : false);
+    const b = structuredClone(s.banner || {});
+    setOrDelete(b, 'rifiuta', q('.s-b-rifiuta').value.trim());
+    setOrDelete(b, 'accetta', q('.s-b-accetta').value.trim());
+    setOrDelete(b, 'preferenze', q('.s-b-pref').value.trim());
+    setOrDelete(b, 'rifiutaNellePreferenze', q('.s-b-prefrif').value.trim());
+    setOrDelete(b, 'frame', q('.s-b-frame').value.trim());
+    setOrDelete(b, 'attesa', num(q('.s-b-attesa').value));
+    setOrDelete(s, 'banner', Object.keys(b).length ? b : undefined);
+    return s;
+  });
+  const group = (key) => (d[key] = d[key] || {});
+  setOrDelete(group('campionamento'), 'perTipo', num($('#f-perTipo').value));
+  setOrDelete(group('campionamento'), 'maxPagine', num($('#f-maxPagine').value));
+  setOrDelete(group('scenari'), 'pagineDopoScelta', num($('#f-pagineDopoScelta').value));
+  const attivi = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta']].filter(([, id]) => $(id).checked).map(([n]) => n);
+  setOrDelete(group('scenari'), 'attivi', attivi.length === 3 ? undefined : attivi);
+  setOrDelete(group('browser'), 'paeseUscita', $('#f-paese').value.trim().toUpperCase());
+  setOrDelete(group('browser'), 'verificaUscita', $('#f-verifica').value);
+  setOrDelete(group('report'), 'harContenuti', $('#f-har').value === 'testo' ? undefined : $('#f-har').value);
+  setOrDelete(group('report'), 'pdf', $('#f-pdf').checked ? undefined : false);
+  for (const k of ['campionamento', 'scenari', 'browser', 'report']) if (d[k] && !Object.keys(d[k]).length) delete d[k];
+  return d;
+}
+
+function setYamlMode(on) {
+  state.yamlMode = on;
+  $('#form').classList.toggle('hidden', on);
+  $('#yaml-box').classList.toggle('hidden', !on);
+  $('#toggle-yaml').textContent = on ? 'Torna al modulo' : 'Modifica come testo (YAML)';
+}
+$('#toggle-yaml').onclick = async () => {
+  if (!state.yamlMode) {
+    // Dal modulo al testo: si mostra il file salvato (le modifiche al modulo vanno salvate prima).
+    setYamlMode(true);
+    return;
+  }
+  if (!state.file) return setYamlMode(false);
+  await openClient(state.file);
+  setYamlMode(false);
+};
+
+function setMsg(text, kind = 'ok') {
+  $('#save-msg').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : '';
+}
+
+async function save() {
+  const file = state.isNew ? ($('#f-file').value.trim() || '').replace(/\.ya?ml$/i, '') + '.yaml' : state.file;
+  const body = state.yamlMode ? { file, yaml: $('#f-yaml').value } : { file, data: readForm(), nuovo: state.isNew };
+  try {
+    await api('/api/clienti', { method: 'POST', body });
+    await openClient(file);
+    setMsg('Configurazione salvata.', 'ok');
+    return true;
+  } catch (e) {
+    setMsg('Non salvata. ' + (e.errors ? 'Da correggere:\n' + e.errors.map(humanError).join('\n') : e.message), 'err');
+    return false;
+  }
+}
+const humanError = (e) =>
+  e.replace(/^siti\.(\d+)\.url: .*/, (m, i) => `Sito ${Number(i) + 1}: indirizzo mancante o non valido (deve iniziare con https://)`)
+   .replace(/^cliente: .*/, 'Nome del cliente mancante')
+   .replace(/^siti: .*/, 'Aggiungere almeno un sito');
+$('#save').onclick = save;
+
+/* ---------- Operazioni: anteprima e audit ---------- */
+async function startJob(kind) {
+  if (!(await save())) return;
+  try {
+    const body = { file: state.file };
+    if (kind === 'avvia') body.pdf = $('#f-pdf').checked;
+    await api('/api/' + kind, { method: 'POST', body });
+    refreshJob(true);
+  } catch (e) {
+    setMsg(e.message, 'err');
+  }
+}
+$('#preview').onclick = () => startJob('scopri');
+$('#run').onclick = () => startJob('avvia');
+
+async function refreshJob(force) {
+  const j = await api('/api/lavoro').catch(() => null);
+  const box = $('#job');
+  const running = j && j.status === 'in-corso';
+  for (const id of ['#save', '#preview', '#run']) $(id).disabled = !!running;
+  if (!j || (j.file !== state.file && !running)) {
+    box.classList.add('hidden');
+  } else {
+    box.classList.remove('hidden');
+    $('#job-title').textContent = (j.kind === 'audit' ? 'Audit' : 'Anteprima pagine') + (j.file !== state.file ? ` di ${j.file}` : '');
+    const badge = $('#job-badge');
+    badge.className = 'badge ' + (running ? 'run' : j.status === 'completato' ? 'ok' : 'err');
+    badge.textContent = running ? 'in corso…' : j.status === 'completato' ? 'completato' : 'errore';
+    const pre = $('#job-log');
+    const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+    pre.textContent = j.log.join('\n');
+    if (atBottom) pre.scrollTop = pre.scrollHeight;
+    renderJobResult(j);
+  }
+  if (running && !state.polling) state.polling = setInterval(refreshJob, 1500);
+  if (!running && state.polling) {
+    clearInterval(state.polling);
+    state.polling = null;
+  }
+}
+
+function renderJobResult(j) {
+  const r = $('#job-result');
+  if (j.status === 'errore') {
+    r.innerHTML = `<div class="msg err">${esc(j.error)}</div>`;
+  } else if (j.status === 'in-corso') {
+    r.innerHTML = `<p class="muted">Iniziato alle ${esc(fmt(j.startedAt))}. Si può lasciare la pagina aperta: l'avanzamento si aggiorna da solo.</p>`;
+  } else if (j.kind === 'audit' && j.runName) {
+    const base = '/esecuzioni/' + encodeURIComponent(j.runName) + '/';
+    r.innerHTML = `<div class="msg ok">Audit completato.</div>
+      <div class="actions"><a class="btn primary" href="${base}report.html" target="_blank" rel="noopener">Apri il report</a>
+      <a class="btn" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>
+      <button class="btn" onclick="showTab('esecuzioni')">Tutte le esecuzioni</button></div>
+      <p class="muted">Cartella: ${esc(j.runName)}</p>`;
+  } else if (j.kind === 'scopri' && j.discovery) {
+    r.innerHTML = j.discovery.map((d) => `<h3>${esc(d.site)} — ${d.sample.length} pagine su ${d.found} trovate</h3>
+      <table><tr><th>#</th><th>Tipo</th><th>Origine</th><th>Pagina</th></tr>${d.sample.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.type)}</td><td>${esc(p.source)}</td><td>${esc(p.url)}</td></tr>`).join('')}</table>
+      ${d.notes.length ? `<p class="muted">${d.notes.map(esc).join(' · ')}</p>` : ''}`).join('') +
+      '<p class="muted">Se mancano pagine importanti, aggiungile in "Pagine da includere sempre" e ripeti l\'anteprima.</p>';
+  } else r.innerHTML = '';
+}
+
+/* ---------- Esecuzioni ---------- */
+async function loadRuns() {
+  const runs = await api('/api/esecuzioni');
+  const box = $('#runs');
+  if (!runs.length) {
+    box.innerHTML = '<p class="empty">Nessuna esecuzione ancora. Avvia un audit dalla scheda Clienti.</p>';
+    return;
+  }
+  box.innerHTML = `<table><tr><th>Data</th><th>Cliente</th><th>Sessioni</th><th>Criticità</th><th>Paese</th><th>File</th></tr>${runs
+    .map((r) => {
+      const base = '/esecuzioni/' + encodeURIComponent(r.name) + '/';
+      return `<tr><td>${esc(fmt(r.inizio))}</td><td>${esc(r.cliente)}<div class="muted">${esc(r.name)}</div></td><td>${esc(r.sessioni)}</td><td>${esc(r.criticita)}</td>
+        <td>${!r.paese ? '<span class="badge err">non verificato</span>' : r.paese === 'IT' ? esc(r.paese) : `<span class="badge err" title="Uscita da un paese diverso dall'Italia: risultati non rappresentativi di un visitatore italiano">${esc(r.paese)}</span>`}</td>
+        <td><a class="btn small primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>
+        ${r.pdf ? `<a class="btn small" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}
+        <a class="btn small" href="${base}criticita.csv">Criticità CSV</a>
+        <a class="btn small" href="${base}cookie.csv">Cookie CSV</a></td></tr>`;
+    })
+    .join('')}</table>`;
+}
+$('#refresh-runs').onclick = loadRuns;
+
+/* ---------- Avvio ---------- */
+(async () => {
+  try {
+    const info = await api('/api/info');
+    $('#version').textContent = 'versione ' + info.versione;
+    $('#clients-dir').textContent = 'Configurazioni in: ' + info.clienti;
+    $('#runs-dir').textContent = 'Risultati in: ' + info.esecuzioni;
+    await loadClients();
+    await refreshJob();
+  } catch (e) {
+    document.body.insertAdjacentHTML('afterbegin', `<div class="msg err">${esc(e.message)}</div>`);
+  }
+})();
+</script>
+</body>
+</html>
