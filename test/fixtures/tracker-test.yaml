@@ -1,0 +1,5 @@
+# Domini di prova usati dai test di integrazione
+tracker:
+  - { dominio: adtest.example, azienda: AdTest, categoria: marketing }
+  - { dominio: stattest.example, azienda: StatTest, categoria: statistica }
+  - { dominio: sessiontest.example, azienda: SessionTest, categoria: registrazione-sessioni }

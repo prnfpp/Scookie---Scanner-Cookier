@@ -1,0 +1,35 @@
+{
+  "name": "scookie",
+  "version": "0.1.0",
+  "description": "Audit tecnico di cookie e tracciamenti rispetto al consenso dell'utente, con evidenze ripetibili.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "scookie": "dist/src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test --test-concurrency=1 \"dist/test/*.test.js\"",
+    "licenses": "node scripts/check-licenses.mjs",
+    "audit:run": "node dist/src/cli.js run"
+  },
+  "files": [
+    "dist/src",
+    "config",
+    "data"
+  ],
+  "dependencies": {
+    "commander": "15.0.0",
+    "playwright": "1.63.0",
+    "tldts": "7.4.19",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

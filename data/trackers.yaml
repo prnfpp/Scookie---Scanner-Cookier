@@ -1,0 +1,141 @@
+# Elenco di domini di terze parti con categoria, redatto per questo progetto (licenza MIT).
+# Non deriva da Tracker Radar, Disconnect o EasyPrivacy (licenze non compatibili con uso commerciale).
+#
+# Campi:
+#   dominio:   host o dominio (vale anche per i sottodomini)
+#   azienda:   fornitore
+#   categoria: tecnico | funzionalita | statistica | marketing | registrazione-sessioni | social
+#   percorsi:  (opzionale) regex sul path; se presenti, la voce vale solo per quei percorsi
+#   nota:      (opzionale) testo mostrato nel report
+#
+# Le voci con "percorsi" vengono valutate prima di quelle senza. Vince la voce con dominio più specifico.
+# Per aggiungere domini senza toccare questo file: chiave "trackerExtra" nella configurazione.
+
+tracker:
+  # --- Google ---
+  - { dominio: google-analytics.com, azienda: Google, categoria: statistica, nota: Google Analytics }
+  - { dominio: analytics.google.com, azienda: Google, categoria: statistica, nota: Google Analytics }
+  - { dominio: googletagmanager.com, azienda: Google, categoria: funzionalita, nota: "Caricatore di tag (GTM/gtag): può attivare altri strumenti" }
+  - { dominio: doubleclick.net, azienda: Google, categoria: marketing }
+  - { dominio: googleadservices.com, azienda: Google, categoria: marketing }
+  - { dominio: googlesyndication.com, azienda: Google, categoria: marketing }
+  - { dominio: adservice.google.com, azienda: Google, categoria: marketing }
+  - { dominio: adservice.google.it, azienda: Google, categoria: marketing }
+  - { dominio: google.com, azienda: Google, categoria: marketing, percorsi: ["^/pagead/", "^/ccm/", "^/rmkt/", "^/ads/", "^/measurement/"], nota: Google Ads / conversioni }
+  - { dominio: google.it, azienda: Google, categoria: marketing, percorsi: ["^/pagead/", "^/ads/"], nota: Google Ads }
+  - { dominio: google.com, azienda: Google, categoria: tecnico, percorsi: ["^/recaptcha/"], nota: reCAPTCHA }
+  - { dominio: fonts.googleapis.com, azienda: Google, categoria: funzionalita, nota: "Google Fonts: trasmette l'indirizzo IP a terzi" }
+  - { dominio: fonts.gstatic.com, azienda: Google, categoria: funzionalita, nota: "Google Fonts: trasmette l'indirizzo IP a terzi" }
+  - { dominio: maps.googleapis.com, azienda: Google, categoria: funzionalita, nota: Google Maps }
+  - { dominio: youtube.com, azienda: Google, categoria: marketing, nota: "Video YouTube incorporato (non in modalità privacy avanzata)" }
+  - { dominio: youtube-nocookie.com, azienda: Google, categoria: funzionalita, nota: YouTube modalità privacy avanzata }
+  - { dominio: ytimg.com, azienda: Google, categoria: funzionalita }
+
+  # --- Meta ---
+  - { dominio: facebook.com, azienda: Meta, categoria: marketing, percorsi: ["^/tr"], nota: Meta Pixel }
+  - { dominio: facebook.com, azienda: Meta, categoria: social }
+  - { dominio: facebook.net, azienda: Meta, categoria: marketing, nota: Meta Pixel / SDK }
+  - { dominio: instagram.com, azienda: Meta, categoria: social }
+  - { dominio: cdninstagram.com, azienda: Meta, categoria: social }
+
+  # --- Microsoft ---
+  - { dominio: bat.bing.com, azienda: Microsoft, categoria: marketing, nota: Microsoft Advertising UET }
+  - { dominio: c.bing.com, azienda: Microsoft, categoria: marketing }
+  - { dominio: clarity.ms, azienda: Microsoft, categoria: registrazione-sessioni, nota: Microsoft Clarity }
+  - { dominio: ads.linkedin.com, azienda: LinkedIn, categoria: marketing, nota: LinkedIn Insight Tag }
+  - { dominio: snap.licdn.com, azienda: LinkedIn, categoria: marketing, nota: LinkedIn Insight Tag }
+  - { dominio: platform.linkedin.com, azienda: LinkedIn, categoria: social }
+
+  # --- Altri social / pubblicità ---
+  - { dominio: analytics.tiktok.com, azienda: TikTok, categoria: marketing, nota: TikTok Pixel }
+  - { dominio: ads.tiktok.com, azienda: TikTok, categoria: marketing }
+  - { dominio: tiktok.com, azienda: TikTok, categoria: social }
+  - { dominio: ads-twitter.com, azienda: X, categoria: marketing }
+  - { dominio: analytics.twitter.com, azienda: X, categoria: marketing }
+  - { dominio: platform.twitter.com, azienda: X, categoria: social }
+  - { dominio: t.co, azienda: X, categoria: marketing }
+  - { dominio: ct.pinterest.com, azienda: Pinterest, categoria: marketing, nota: Pinterest Tag }
+  - { dominio: tr.snapchat.com, azienda: Snap, categoria: marketing }
+  - { dominio: sc-static.net, azienda: Snap, categoria: marketing }
+  - { dominio: criteo.com, azienda: Criteo, categoria: marketing }
+  - { dominio: criteo.net, azienda: Criteo, categoria: marketing }
+  - { dominio: taboola.com, azienda: Taboola, categoria: marketing }
+  - { dominio: outbrain.com, azienda: Outbrain, categoria: marketing }
+  - { dominio: amazon-adsystem.com, azienda: Amazon, categoria: marketing }
+  - { dominio: adnxs.com, azienda: Xandr, categoria: marketing }
+  - { dominio: rubiconproject.com, azienda: Magnite, categoria: marketing }
+  - { dominio: pubmatic.com, azienda: PubMatic, categoria: marketing }
+  - { dominio: casalemedia.com, azienda: Index Exchange, categoria: marketing }
+  - { dominio: openx.net, azienda: OpenX, categoria: marketing }
+  - { dominio: adsrvr.org, azienda: The Trade Desk, categoria: marketing }
+  - { dominio: demdex.net, azienda: Adobe, categoria: marketing, nota: Adobe Audience Manager }
+  - { dominio: everesttech.net, azienda: Adobe, categoria: marketing }
+  - { dominio: adform.net, azienda: Adform, categoria: marketing }
+  - { dominio: smartadserver.com, azienda: Equativ, categoria: marketing }
+  - { dominio: teads.tv, azienda: Teads, categoria: marketing }
+  - { dominio: seedtag.com, azienda: Seedtag, categoria: marketing }
+  - { dominio: tradedoubler.com, azienda: Tradedoubler, categoria: marketing }
+  - { dominio: awin1.com, azienda: Awin, categoria: marketing }
+  - { dominio: zemanta.com, azienda: Outbrain, categoria: marketing }
+  - { dominio: rlcdn.com, azienda: LiveRamp, categoria: marketing }
+  - { dominio: bluekai.com, azienda: Oracle, categoria: marketing }
+  - { dominio: krxd.net, azienda: Salesforce, categoria: marketing }
+  - { dominio: mathtag.com, azienda: MediaMath, categoria: marketing }
+  - { dominio: 3lift.com, azienda: TripleLift, categoria: marketing }
+  - { dominio: sharethrough.com, azienda: Sharethrough, categoria: marketing }
+  - { dominio: quantserve.com, azienda: Quantcast, categoria: marketing }
+  - { dominio: hsadspixel.net, azienda: HubSpot, categoria: marketing }
+  - { dominio: addthis.com, azienda: Oracle, categoria: social }
+  - { dominio: sharethis.com, azienda: ShareThis, categoria: marketing }
+
+  # --- Statistica ---
+  - { dominio: hs-analytics.net, azienda: HubSpot, categoria: statistica }
+  - { dominio: hs-scripts.com, azienda: HubSpot, categoria: funzionalita, nota: Caricatore script HubSpot }
+  - { dominio: scorecardresearch.com, azienda: Comscore, categoria: statistica }
+  - { dominio: imrworldwide.com, azienda: Nielsen, categoria: statistica }
+  - { dominio: shinystat.com, azienda: ShinyStat, categoria: statistica }
+  - { dominio: matomo.cloud, azienda: Matomo, categoria: statistica }
+  - { dominio: piwik.pro, azienda: Piwik PRO, categoria: statistica }
+  - { dominio: plausible.io, azienda: Plausible, categoria: statistica }
+  - { dominio: mc.yandex.ru, azienda: Yandex, categoria: statistica }
+  - { dominio: segment.com, azienda: Twilio Segment, categoria: statistica }
+  - { dominio: segment.io, azienda: Twilio Segment, categoria: statistica }
+  - { dominio: mixpanel.com, azienda: Mixpanel, categoria: statistica }
+  - { dominio: amplitude.com, azienda: Amplitude, categoria: statistica }
+  - { dominio: heapanalytics.com, azienda: Heap, categoria: statistica }
+  - { dominio: omtrdc.net, azienda: Adobe, categoria: statistica, nota: Adobe Analytics }
+  - { dominio: 2o7.net, azienda: Adobe, categoria: statistica, nota: Adobe Analytics }
+  - { dominio: adobedtm.com, azienda: Adobe, categoria: funzionalita, nota: Caricatore di tag Adobe }
+  - { dominio: chartbeat.com, azienda: Chartbeat, categoria: statistica }
+  - { dominio: chartbeat.net, azienda: Chartbeat, categoria: statistica }
+  - { dominio: statcounter.com, azienda: StatCounter, categoria: statistica }
+  - { dominio: nr-data.net, azienda: New Relic, categoria: statistica, nota: Monitoraggio prestazioni }
+  - { dominio: js-agent.newrelic.com, azienda: New Relic, categoria: statistica, nota: Monitoraggio prestazioni }
+  - { dominio: vimeo.com, azienda: Vimeo, categoria: statistica, nota: Video Vimeo incorporato }
+
+  # --- Registrazione sessioni / heatmap ---
+  - { dominio: hotjar.com, azienda: Hotjar, categoria: registrazione-sessioni }
+  - { dominio: hotjar.io, azienda: Hotjar, categoria: registrazione-sessioni }
+  - { dominio: contentsquare.net, azienda: Contentsquare, categoria: registrazione-sessioni }
+  - { dominio: mouseflow.com, azienda: Mouseflow, categoria: registrazione-sessioni }
+  - { dominio: fullstory.com, azienda: FullStory, categoria: registrazione-sessioni }
+  - { dominio: smartlook.com, azienda: Smartlook, categoria: registrazione-sessioni }
+  - { dominio: smartlook.cloud, azienda: Smartlook, categoria: registrazione-sessioni }
+  - { dominio: luckyorange.com, azienda: Lucky Orange, categoria: registrazione-sessioni }
+  - { dominio: luckyorange.net, azienda: Lucky Orange, categoria: registrazione-sessioni }
+  - { dominio: inspectlet.com, azienda: Inspectlet, categoria: registrazione-sessioni }
+  - { dominio: crazyegg.com, azienda: Crazy Egg, categoria: registrazione-sessioni }
+  - { dominio: logrocket.com, azienda: LogRocket, categoria: registrazione-sessioni }
+  - { dominio: lr-ingest.io, azienda: LogRocket, categoria: registrazione-sessioni }
+  - { dominio: quantummetric.com, azienda: Quantum Metric, categoria: registrazione-sessioni }
+  - { dominio: decibelinsight.net, azienda: Medallia, categoria: registrazione-sessioni }
+
+  # --- Gestori del consenso (CMP) ---
+  - { dominio: cookielaw.org, azienda: OneTrust, categoria: tecnico, nota: CMP }
+  - { dominio: onetrust.com, azienda: OneTrust, categoria: tecnico, nota: CMP }
+  - { dominio: cookiebot.com, azienda: Cookiebot (Usercentrics), categoria: tecnico, nota: CMP }
+  - { dominio: cookiebot.eu, azienda: Cookiebot (Usercentrics), categoria: tecnico, nota: CMP }
+  - { dominio: iubenda.com, azienda: iubenda, categoria: tecnico, nota: CMP }
+  - { dominio: privacy-center.org, azienda: Didomi, categoria: tecnico, nota: CMP }
+  - { dominio: usercentrics.eu, azienda: Usercentrics, categoria: tecnico, nota: CMP }
+  - { dominio: cdn-cookieyes.com, azienda: CookieYes, categoria: tecnico, nota: CMP }

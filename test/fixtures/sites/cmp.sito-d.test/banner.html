@@ -1,0 +1,8 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"></head>
+<body style="background:#fafafa;margin:0;padding:12px;font-family:sans-serif">
+<p>Cookie e privacy: usiamo cookie tecnici e, con il tuo consenso, di profilazione.</p>
+<a href="#" id="no" role="button">Solo necessari</a> <button id="si">Accetta</button>
+<script>
+document.getElementById('no').onclick = function (e) { e.preventDefault(); parent.postMessage('no', '*'); };
+document.getElementById('si').onclick = function () { parent.postMessage('si', '*'); };
+</script></body></html>

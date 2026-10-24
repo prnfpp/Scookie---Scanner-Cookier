@@ -1,0 +1,54 @@
+# Configurazione di esempio. Copiarla in clienti/<nome>.yaml (la cartella clienti/ è esclusa da git).
+# Validare con:  npx scookie verifica-config -c clienti/<nome>.yaml
+
+cliente: Esempio Srl
+output: ../runs            # relativo a questo file
+
+browser:
+  headless: true
+  locale: it-IT
+  timezone: Europe/Rome
+  paeseUscita: IT          # dichiarato nel report; usare un proxy se serve uscire da un altro paese
+  userAgentSuffix: "ScookieAudit/0.1 (+mailto:audit@esempio.it)"
+  # proxy: http://proxy.esempio.it:3128
+
+protocollo:
+  attesaDopoCaricamento: 4000
+  scroll: true
+  attesaDopoScroll: 2000
+  attesaDopoScelta: 4000
+  pausaTraSessioni: 3000   # navigazione lenta: niente tentativi di aggirare blocchi anti-bot
+
+scenari:
+  modalita: percorso       # oppure per-pagina (tutti e tre gli scenari su ogni pagina)
+  pagineDopoScelta: 3
+
+campionamento:
+  perTipo: 2
+  maxPagine: 12
+  tipi:                    # nome -> regex sul path (facoltativo: altrimenti si usa il primo segmento)
+    prodotto: "^/(prodotti|shop)/"
+    preventivo: "^/preventivo"
+    blog: "^/(blog|news)/"
+
+dominiPropri: []           # es. [esempio-cdn.com] se un dominio diverso è dello stesso titolare
+
+siti:
+  - url: https://www.esempio.it/
+    cookiePolicy: https://www.esempio.it/cookie-policy
+    pagineExtra:
+      - /preventivo/step-1
+      - /preventivo/step-2
+    escludi: ["^/area-riservata"]
+
+  - url: https://shop.esempio.it/
+    # Elenco dichiarato da file, se il CMP non lo espone (vedi config/dichiarati-esempio.csv)
+    dichiarati: ./dichiarati-esempio.csv
+    # Selettori manuali, da usare se adattatori ed euristica non riconoscono il banner
+    banner:
+      rifiuta: "#cookie-bar .btn-deny"
+      accetta: "#cookie-bar .btn-accept"
+      # preferenze: "#cookie-bar .btn-settings"
+      # rifiutaNellePreferenze: "#cookie-settings .save"
+      # frame: "iframe#consent"      # se il banner è in un iframe
+      attesa: 8000
