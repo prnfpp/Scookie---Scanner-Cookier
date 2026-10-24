@@ -1,7 +1,8 @@
 import type { Page } from 'playwright';
 import type { BannerConfig } from '../config/schema.js';
 import type { InteractionReport } from '../types.js';
-import { waitFor } from './dom.js';
+import { describeElement, frames, waitFor } from './dom.js';
+import { PERSONALIZERS } from './personalize.js';
 import { heuristicBannerVisible, heuristicChoose } from './heuristic.js';
 import { hasManual, manualBannerVisible, manualChoose } from './manual.js';
 import { ADAPTERS } from './registry.js';
@@ -145,6 +146,7 @@ export async function performChoice(
     outcome: 'eseguito',
     layer: res.layer,
     via: res.via,
+    clicked: res.clicked ?? [],
     detail: res.detail + (attempts.length ? ` (tentativi precedenti: ${attempts.join(' | ')})` : ''),
     verification,
     verificationDetail,
@@ -153,4 +155,129 @@ export async function performChoice(
     bannerVisibleBefore: visible,
     bannerVisibleAfter: stillVisible,
   };
+}
+
+/**
+ * Scenario "personalizza": accetta solo la categoria statistica, per i CMP che lo consentono in modo affidabile.
+ * Prima con i pulsanti reali, poi (ripiego dichiarato) con l'API del CMP.
+ */
+export async function performPersonalize(
+  page: Page,
+  banner: BannerConfig | undefined,
+  waitAfterMs: number,
+  bannerWaitMs: number,
+  onStart?: () => void,
+): Promise<InteractionReport> {
+  const { adapters, visible, states: before } = await observeBanner(page, banner, bannerWaitMs);
+  const detected = adapters.map((a) => a.name);
+  const supported = adapters.filter((a) => PERSONALIZERS[a.id]);
+  const base: InteractionReport = {
+    method: 'nessuno',
+    detectedCmps: detected,
+    outcome: 'non-applicabile',
+    layer: null,
+    via: null,
+    detail: '',
+    verification: 'non-applicabile',
+    verificationDetail: '',
+    consentStateBefore: before,
+    bannerVisibleBefore: visible,
+    bannerVisibleAfter: null,
+  };
+  if (!supported.length) {
+    return {
+      ...base,
+      detail: detected.length
+        ? `scenario non eseguibile in modo affidabile con ${detected.join(', ')}: la scelta per categoria è supportata per OneTrust, Cookiebot e vanilla-cookieconsent`
+        : 'scenario non eseguibile: nessun gestore del consenso riconosciuto',
+    };
+  }
+  onStart?.();
+  const attempts: string[] = [];
+  for (const mode of ['click', 'api'] as const) {
+    for (const a of supported) {
+      const r = await PERSONALIZERS[a.id].choose(page, mode).catch((e: Error) => ({ ok: false, layer: null, via: null, detail: e.message.split('\n')[0] }) as ChoiceResult);
+      if (!r) continue;
+      if (!r.ok) {
+        attempts.push(`${a.id} (${mode}): ${r.detail}`);
+        continue;
+      }
+      await page.waitForTimeout(waitAfterMs);
+      const check = await PERSONALIZERS[a.id].check(page);
+      return {
+        ...base,
+        method: `adattatore:${a.id}${mode === 'api' ? ' (API)' : ''}`,
+        outcome: 'eseguito',
+        layer: r.layer,
+        via: r.via,
+        clicked: r.clicked ?? [],
+        detail: `${r.detail}${r.clicked?.length ? `: ${r.clicked.join(', poi ')}` : ''}${attempts.length ? ` (tentativi precedenti: ${attempts.join(' | ')})` : ''}`,
+        verification: check.consistent === true ? 'verificato' : check.consistent === false ? 'incoerente' : 'non-verificabile',
+        verificationDetail: check.detail,
+        consentStateAfter: await readStates(page, adapters),
+        bannerVisibleAfter: await bannerVisible(page, adapters, banner).catch(() => false),
+      };
+    }
+  }
+  return { ...base, outcome: 'non-trovato', detail: `scelta per categoria non riuscita: ${attempts.join(' | ')}` };
+}
+
+const REVOKE_SELECTORS = [
+  '.ot-sdk-show-settings',
+  '#ot-sdk-btn',
+  'a[href*="Cookiebot.renew"]',
+  'a[href*="CookieConsent.renew"]',
+  '.iubenda-cs-preferences-link',
+  'a[href*="Didomi.preferences.show"]',
+  '[data-cc="c-settings"]',
+  '[data-cc="show-preferencesModal"]',
+  '.cky-btn-revisit',
+  '#cmplz-manage-consent',
+  '#hs-eu-cookie-settings-button',
+];
+const REVOKE_TEXT =
+  /((preferenze|impostazioni|gestisci|gestione|modifica|personalizza)\s.{0,25}cookie|cookie\s.{0,20}(preferenze|impostazioni|settings|preferences)|revoca.{0,30}consenso|privacy (settings|choices)|cookie settings|manage cookies|le tue scelte)/i;
+
+/**
+ * Revoca del consenso dopo l'accettazione, come farebbe un utente: si clicca il link per riaprire le preferenze
+ * (di solito nel footer) e si rifiuta nel banner che si apre. Se il link non c'è, si usa l'API del CMP e lo si dichiara.
+ */
+export async function performRevocation(
+  page: Page,
+  banner: BannerConfig | undefined,
+  waitAfterMs: number,
+  bannerWaitMs: number,
+): Promise<{ outcome: 'eseguita' | 'non-trovata'; how: string }> {
+  let link = null;
+  for (const f of frames(page)) {
+    for (const sel of REVOKE_SELECTORS) {
+      const l = f.locator(sel).first();
+      if ((await l.count().catch(() => 0)) > 0) {
+        link = l;
+        break;
+      }
+    }
+    if (!link) {
+      const byText = f.locator('a, button, [role="button"]').filter({ hasText: REVOKE_TEXT }).first();
+      if ((await byText.count().catch(() => 0)) > 0) link = byText;
+    }
+    if (link) break;
+  }
+  if (link) {
+    const label = await describeElement(link);
+    await link.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+    await link.click({ timeout: 5000 }).catch(() => link!.click({ timeout: 5000, force: true }));
+    await page.waitForTimeout(1000);
+    const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
+    if (r.outcome === 'eseguito') return { outcome: 'eseguita', how: `click su ${label}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
+    return { outcome: 'non-trovata', how: `click su ${label}, ma rifiuto non eseguito: ${r.detail}` };
+  }
+  for (const a of await detectCmps(page)) {
+    const r = await a.choose(page, 'rifiuta', 'api').catch(() => null);
+    if (r?.ok) {
+      await page.waitForTimeout(waitAfterMs);
+      return { outcome: 'eseguita', how: `nessun link per riaprire le preferenze trovato nella pagina; revoca eseguita via API del CMP (${r.detail})` };
+    }
+  }
+  return { outcome: 'non-trovata', how: 'nessun link per riaprire le preferenze trovato nella pagina e nessuna API del CMP utilizzabile' };
 }

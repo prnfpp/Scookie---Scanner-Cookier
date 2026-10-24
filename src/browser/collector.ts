@@ -56,7 +56,20 @@ export class Collector {
     this.choiceEpoch = Date.now();
   }
 
+  /** Revoca del consenso: da qui in poi gli elementi sono "dopo la revoca". */
+  revokeEpoch: number | null = null;
+  markRevoke() {
+    this.stage = 'revoca';
+    this.revokeEpoch = Date.now();
+  }
+
   /** Da chiamare prima di scorrere la pagina: se non c'è stata una scelta, si passa allo stadio "scroll". */
+  /** Ferma la raccolta: ciò che avviene dopo (es. apertura delle preferenze per l'analisi del banner) non è registrato. */
+  paused = false;
+  pause() {
+    this.paused = true;
+  }
+
   markScroll() {
     if (this.stage === 'caricamento') this.stage = 'scroll';
   }
@@ -82,6 +95,7 @@ export class Collector {
   }
 
   private onRequest(r: Request) {
+    if (this.paused) return;
     const url = r.url();
     if (!/^https?:/.test(url)) return;
     let parsed: URL;
@@ -132,6 +146,7 @@ export class Collector {
 
   /** Fotografa cookie (inclusi HttpOnly) e storage di tutti i frame, registrando i nuovi elementi. */
   async snapshot(page: Page) {
+    if (this.paused) return;
     const now = new Date().toISOString();
     for (const c of await this.context.cookies()) {
       const key = `${c.name}|${c.domain}|${c.path}`;

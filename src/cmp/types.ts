@@ -8,6 +8,8 @@ export interface ChoiceResult {
   layer: ChoiceLayer | null;
   via: 'click' | 'api' | null;
   detail: string;
+  /** Elementi cliccati, in ordine, con la loro descrizione (es. pulsante "Impostazioni", poi pulsante "Rifiuta tutti"). */
+  clicked?: string[];
 }
 
 export interface ConsentCheck {

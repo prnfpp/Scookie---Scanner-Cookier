@@ -112,6 +112,8 @@ th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
               <label class="check"><input type="checkbox" id="f-sc-nessuna" checked> Nessuna azione sul banner</label>
               <label class="check"><input type="checkbox" id="f-sc-rifiuta" checked> Rifiuta</label>
               <label class="check"><input type="checkbox" id="f-sc-accetta" checked> Accetta</label>
+              <label class="check"><input type="checkbox" id="f-sc-personalizza" checked> Personalizza (accetta solo la statistica: OneTrust, Cookiebot, vanilla-cookieconsent)</label>
+              <label class="check"><input type="checkbox" id="f-sc-revoca" checked> Accetta e poi revoca il consenso</label>
               <div class="row">
                 <div><label>Paese di uscita atteso</label><input type="text" id="f-paese" maxlength="2" placeholder="IT"></div>
                 <div><label>Se il paese non corrisponde</label>
@@ -120,6 +122,11 @@ th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
                   <select id="f-har"><option value="testo">Solo risposte testuali (consigliato)</option><option value="tutti">Tutto (file molto grandi)</option><option value="nessuno">Nessuna risposta</option></select></div>
               </div>
               <label class="check"><input type="checkbox" id="f-pdf" checked> Genera anche il PDF del report</label>
+              <div class="row">
+                <div><label>Browser</label>
+                  <select id="f-canale"><option value="chromium">Chromium incluso (predefinito)</option><option value="chrome">Google Chrome installato</option><option value="msedge">Microsoft Edge installato</option></select></div>
+              </div>
+              <label class="check"><input type="checkbox" id="f-visibile"> Mostra il browser durante l'audit (utile con siti protetti da sistemi anti-bot)</label>
             </details>
           </div>
 
@@ -285,6 +292,7 @@ $('#f-cliente').addEventListener('input', () => {
 });
 
 /* ---------- Modulo <-> dati ---------- */
+const SCENARI = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta'], ['personalizza', '#f-sc-personalizza'], ['revoca', '#f-sc-revoca']];
 const lines = (t) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
 function setOrDelete(obj, key, value) {
@@ -340,10 +348,10 @@ function fillForm(d) {
   $('#f-perTipo').value = c.perTipo ?? '';
   $('#f-maxPagine').value = c.maxPagine ?? '';
   $('#f-pagineDopoScelta').value = sc.pagineDopoScelta ?? '';
-  const attivi = sc.attivi || ['nessuna-azione', 'rifiuta', 'accetta'];
-  $('#f-sc-nessuna').checked = attivi.includes('nessuna-azione');
-  $('#f-sc-rifiuta').checked = attivi.includes('rifiuta');
-  $('#f-sc-accetta').checked = attivi.includes('accetta');
+  const attivi = sc.attivi || SCENARI.map(([n]) => n);
+  for (const [n, id] of SCENARI) $(id).checked = attivi.includes(n);
+  $('#f-canale').value = br.canale || 'chromium';
+  $('#f-visibile').checked = br.headless === false;
   $('#f-paese').value = br.paeseUscita || '';
   $('#f-verifica').value = br.verificaUscita || 'avvisa';
   $('#f-har').value = rp.harContenuti || 'testo';
@@ -383,8 +391,10 @@ function readForm() {
   setOrDelete(group('campionamento'), 'perTipo', num($('#f-perTipo').value));
   setOrDelete(group('campionamento'), 'maxPagine', num($('#f-maxPagine').value));
   setOrDelete(group('scenari'), 'pagineDopoScelta', num($('#f-pagineDopoScelta').value));
-  const attivi = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta']].filter(([, id]) => $(id).checked).map(([n]) => n);
-  setOrDelete(group('scenari'), 'attivi', attivi.length === 3 ? undefined : attivi);
+  const attivi = SCENARI.filter(([, id]) => $(id).checked).map(([n]) => n);
+  setOrDelete(group('scenari'), 'attivi', attivi.length === SCENARI.length ? undefined : attivi);
+  setOrDelete(group('browser'), 'canale', $('#f-canale').value === 'chromium' ? undefined : $('#f-canale').value);
+  setOrDelete(group('browser'), 'headless', $('#f-visibile').checked ? false : undefined);
   setOrDelete(group('browser'), 'paeseUscita', $('#f-paese').value.trim().toUpperCase());
   setOrDelete(group('browser'), 'verificaUscita', $('#f-verifica').value);
   setOrDelete(group('report'), 'harContenuti', $('#f-har').value === 'testo' ? undefined : $('#f-har').value);
@@ -504,18 +514,36 @@ async function loadRuns() {
     return;
   }
   box.innerHTML = `<table><tr><th>Data</th><th>Cliente</th><th>Sessioni</th><th>Criticità</th><th>Paese</th><th>File</th></tr>${runs
-    .map((r) => {
+    .map((r, i) => {
       const base = '/esecuzioni/' + encodeURIComponent(r.name) + '/';
+      // esecuzione precedente dello stesso cliente (l'elenco è dal più recente)
+      const prev = runs.slice(i + 1).find((x) => x.cliente === r.cliente);
       return `<tr><td>${esc(fmt(r.inizio))}</td><td>${esc(r.cliente)}<div class="muted">${esc(r.name)}</div></td><td>${esc(r.sessioni)}</td><td>${esc(r.criticita)}</td>
         <td>${!r.paese ? '<span class="badge err">non verificato</span>' : r.paese === 'IT' ? esc(r.paese) : `<span class="badge err" title="Uscita da un paese diverso dall'Italia: risultati non rappresentativi di un visitatore italiano">${esc(r.paese)}</span>`}</td>
         <td><a class="btn small primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>
         ${r.pdf ? `<a class="btn small" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}
         <a class="btn small" href="${base}criticita.csv">Criticità CSV</a>
-        <a class="btn small" href="${base}cookie.csv">Cookie CSV</a></td></tr>`;
+        <a class="btn small" href="${base}cookie.csv">Cookie CSV</a>
+        ${prev ? `<button class="btn small" data-prima="${esc(prev.name)}" data-dopo="${esc(r.name)}" title="Confronta con l'esecuzione del ${esc(fmt(prev.inizio))}">Confronta con precedente</button>` : ''}</td></tr>`;
     })
     .join('')}</table>`;
 }
 $('#refresh-runs').onclick = loadRuns;
+$('#runs').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-prima]');
+  if (!b) return;
+  b.disabled = true;
+  b.textContent = 'Confronto…';
+  try {
+    const c = await api('/api/confronta', { method: 'POST', body: { prima: b.dataset.prima, dopo: b.dataset.dopo } });
+    const href = '/esecuzioni/' + encodeURIComponent(b.dataset.dopo) + '/' + encodeURIComponent(c.file);
+    b.outerHTML = `<a class="btn small primary" href="${href}" target="_blank" rel="noopener" title="${c.risolte} non più osservate, ${c.rimaste} ancora presenti, ${c.nuove} nuove">Confronto: −${c.risolte} / =${c.rimaste} / +${c.nuove}</a>`;
+  } catch (e) {
+    b.disabled = false;
+    b.textContent = 'Confronta con precedente';
+    alert(e.message);
+  }
+});
 
 /* ---------- Avvio ---------- */
 (async () => {

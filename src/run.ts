@@ -7,6 +7,7 @@ import type { LoadedConfig } from './config/load.js';
 import type { AuditConfig } from './config/schema.js';
 import { compareDeclared } from './declared/compare.js';
 import { loadDeclaredFile } from './declared/declared.js';
+import { readPolicyDeclared } from './declared/policy.js';
 import { discoverSite, type DiscoveryResult } from './discovery/discover.js';
 import { detectExit, type ExitInfo } from './browser/exit.js';
 import { runSession, type SessionPlan } from './browser/session.js';
@@ -39,6 +40,7 @@ export function launchOptions(cfg: AuditConfig, headless = cfg.browser.headless)
   return {
     headless,
     args,
+    channel: cfg.browser.canale === 'chromium' ? undefined : cfg.browser.canale,
     executablePath: cfg.browser.executablePath,
     proxy: cfg.browser.proxy ? { server: cfg.browser.proxy } : undefined,
   };
@@ -71,9 +73,11 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
   };
 
   if (active.has('nessuna-azione')) {
-    for (const p of sample) plans.push({ id: id('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url] });
+    for (const [k, p] of sample.entries()) {
+      plans.push({ id: id('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url], analyzeBanner: k === 0 });
+    }
   }
-  const choiceScenarios = (['rifiuta', 'accetta'] as const).filter((s) => active.has(s));
+  const choiceScenarios = (['rifiuta', 'accetta', 'personalizza', 'revoca'] as const).filter((s) => active.has(s));
   const starts = cfg.scenari.modalita === 'per-pagina' ? sample.map((_, i) => i) : [0];
   for (const i of starts) {
     for (const scenario of choiceScenarios) {
@@ -216,10 +220,16 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       // Se il sito mostra il banner in alcune sessioni e non in altre, le sessioni senza banner
       // si ripetono una volta: spesso lo script del CMP non è stato scaricato (errore di rete).
       // La sessione scartata resta tra i dati e le evidenze, per trasparenza.
-      if (siteResults.some((s) => s.interaction.bannerVisibleBefore)) {
-        for (let k = 0; k < siteResults.length; k++) {
+      // Non si ripetono le sessioni bloccate da un sistema anti-bot (ripetere non aiuta e insiste sul sito),
+      // e le ripetizioni si fermano se una ripetizione non mostra il banner o dopo MAX_RETRIES tentativi.
+      const MAX_RETRIES = 3;
+      let retries = 0;
+      const valid = (s: SessionResult) => !s.blocked;
+      if (siteResults.some((s) => valid(s) && s.interaction.bannerVisibleBefore)) {
+        for (let k = 0; k < siteResults.length && retries < MAX_RETRIES; k++) {
           const first = siteResults[k];
-          if (first.interaction.bannerVisibleBefore) continue;
+          if (first.interaction.bannerVisibleBefore || !valid(first)) continue;
+          retries++;
           const plan = plans.find((p) => p.id === first.id)!;
           log(`    banner assente solo in questa sessione: ripetizione di ${first.id}`);
           const retry = await exec({ ...plan, id: `${plan.id}_ripetuta` });
@@ -230,19 +240,43 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
           );
           discarded.push(first);
           siteResults[k] = retry;
+          if (!retry.interaction.bannerVisibleBefore || retry.blocked) break;
         }
       }
+      const blockedCount = siteResults.filter((s) => s.blocked).length;
+      if (blockedCount) log(`    ${blockedCount} sessioni su ${siteResults.length} bloccate da un sistema anti-bot: escluse dalle regole`);
       sessions.push(...siteResults);
-      if (!decl.source) decl.note = 'Nessun elenco leggibile dal CMP e nessun file configurato: confronto con i dichiarati non eseguito.';
+      if (!decl.source) {
+        // Ultima fonte: le tabelle della cookie policy (indirizzo configurato, link nel banner, pagina "cookie" scoperta).
+        const fromBanner = siteResults.find((s) => s.bannerAnalysis?.policyLink?.href)?.bannerAnalysis?.policyLink?.href;
+        const fromSample = d.sample.find((p) => /cookie/i.test(new URL(p.url).pathname))?.url;
+        const policyUrl = site.cookiePolicy ?? (fromBanner && /cookie/i.test(fromBanner) ? fromBanner : undefined) ?? fromSample ?? fromBanner;
+        if (policyUrl) {
+          log(`  lettura dell'elenco dichiarato dalla cookie policy: ${policyUrl}`);
+          const items = await readPolicyDeclared(browser, new URL(policyUrl, site.url).toString(), userAgent, config.browser.locale).catch((e: Error) => {
+            log(`    non riuscita: ${e.message.split('\n')[0]}`);
+            return [];
+          });
+          if (items.length) {
+            decl.items = items;
+            decl.source = `cookie policy (${policyUrl})`;
+            decl.note = 'Elenco ricavato dalle tabelle della cookie policy: va verificato a vista, la struttura delle pagine varia.';
+          }
+        }
+      }
+      if (!decl.source) decl.note = 'Nessun elenco leggibile dal CMP, dalla cookie policy o da un file configurato: confronto con i dichiarati non eseguito.';
     }
   } finally {
     await browser.close();
   }
 
+  // Le sessioni bloccate da un sistema anti-bot non descrivono il sito: restano nei dati ma non entrano nelle regole.
+  const validSessions = sessions.filter((s) => !s.blocked);
+  const blockedSessions = sessions.filter((s) => s.blocked);
   const comparison: ComparisonRow[] = declared.flatMap((d) =>
-    compareDeclared(d.site, sessions.filter((s) => s.site === d.site), d),
+    compareDeclared(d.site, validSessions.filter((s) => s.site === d.site), d),
   );
-  const findings = evaluateRules({ config, sessions, declared, comparison, exit }, norms);
+  const findings = evaluateRules({ config, sessions: validSessions, blocked: blockedSessions, declared, comparison, exit }, norms);
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));

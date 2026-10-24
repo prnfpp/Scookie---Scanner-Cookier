@@ -6,6 +6,13 @@ import { selectorAdapter } from './base.js';
 // C0004 targeting, C0005 social. I siti possono definire gruppi propri.
 const NON_ESSENTIAL = ['C0002', 'C0003', 'C0004', 'C0005'];
 
+interface OtGroup {
+  id: string;
+  nome: string;
+  stato: string;
+  elementi: number;
+}
+
 interface OtRawItem {
   name: string;
   host: string;
@@ -31,24 +38,65 @@ export const onetrust = selectorAdapter({
     firstLayer: ['#onetrust-accept-btn-handler', '#accept-recommended-btn-handler'],
     api: 'OneTrust.AllowAll()',
   },
-  stateExpr: `({
-    activeGroups: window.OnetrustActiveGroups || window.OptanonActiveGroups || null,
-    alertBoxClosed: /OptanonAlertBoxClosed=/.test(document.cookie),
-    optanonConsent: (document.cookie.match(/OptanonConsent=([^;]+)/) || [])[1] || null
-  })`,
+  // Lo stato include i gruppi configurati (GetDomainData): i siti possono usare ID propri al posto di C000x.
+  stateExpr: `(() => {
+    let gruppi = null;
+    try {
+      const d = window.OneTrust && OneTrust.GetDomainData ? OneTrust.GetDomainData() : null;
+      if (d && Array.isArray(d.Groups)) {
+        gruppi = [];
+        const walk = (g) => {
+          const n = (g.Cookies || []).length + (g.FirstPartyCookies || []).length + (g.Hosts || []).length;
+          gruppi.push({ id: String(g.OptanonGroupId ?? g.CustomGroupId ?? ''), nome: g.GroupName || '', stato: String(g.Status || '').toLowerCase(), elementi: n });
+          (g.SubGroups || []).forEach(walk);
+        };
+        d.Groups.forEach(walk);
+      }
+    } catch (e) {}
+    return {
+      activeGroups: window.OnetrustActiveGroups || window.OptanonActiveGroups || null,
+      gruppi,
+      alertBoxClosed: /OptanonAlertBoxClosed=/.test(document.cookie),
+      optanonConsent: (document.cookie.match(/OptanonConsent=([^;]+)/) || [])[1] || null,
+    };
+  })()`,
   check(state, choice) {
-    const s = state as { activeGroups?: string | null } | null;
+    const s = state as { activeGroups?: string | null; gruppi?: OtGroup[] | null } | null;
     if (!s?.activeGroups) return { consistent: null, detail: 'OnetrustActiveGroups non disponibile' };
     const active = s.activeGroups.split(',').filter(Boolean);
-    const on = NON_ESSENTIAL.filter((g) => active.includes(g));
+    const groups = (s.gruppi ?? []).filter((g) => g.id);
+    const label = (id: string) => {
+      const g = groups.find((x) => x.id === id);
+      return g?.nome ? `${id} "${g.nome}"` : id;
+    };
+    if (!groups.length) {
+      // Senza configurazione leggibile si confrontano solo gli ID standard; con ID propri il risultato non è determinabile.
+      const standard = active.every((g) => /^C\d{4}$/.test(g));
+      const on = NON_ESSENTIAL.filter((g) => active.includes(g));
+      if (choice === 'rifiuta') {
+        return on.length
+          ? { consistent: false, detail: `dopo il rifiuto risultano attivi i gruppi ${on.join(', ')} (attivi: ${active.join(', ')})` }
+          : { consistent: standard ? true : null, detail: `gruppi attivi: ${active.join(', ')}` };
+      }
+      if (!standard) return { consistent: null, detail: `gruppi attivi: ${active.join(', ')}; configurazione dei gruppi non leggibile` };
+      return on.length
+        ? { consistent: true, detail: `gruppi attivi: ${active.join(', ')}` }
+        : { consistent: false, detail: `dopo l'accettazione risultano attivi solo: ${active.join(', ')}` };
+    }
+    // Gruppi non essenziali = configurati, non "sempre attivi" e con almeno un cookie o fornitore associato.
+    const nonEssential = groups.filter((g) => !g.stato.includes('always') && g.id !== 'C0001' && g.elementi > 0).map((g) => g.id);
+    const on = nonEssential.filter((g) => active.includes(g));
+    const summary = `gruppi configurati: ${groups.map((g) => `${label(g.id)}${g.stato.includes('always') ? ' (sempre attivo)' : ''}`).join(', ')}; attivi: ${active.map(label).join(', ') || 'nessuno'}`;
     if (choice === 'rifiuta') {
       return on.length
-        ? { consistent: false, detail: `dopo il rifiuto risultano attivi i gruppi ${on.join(', ')} (attivi: ${active.join(', ')})` }
-        : { consistent: true, detail: `gruppi attivi: ${active.join(', ')}` };
+        ? { consistent: false, detail: `dopo il rifiuto risultano attivi gruppi non essenziali: ${on.map(label).join(', ')} (${summary})` }
+        : { consistent: true, detail: summary };
     }
-    return on.length
-      ? { consistent: true, detail: `gruppi attivi: ${active.join(', ')}` }
-      : { consistent: false, detail: `dopo l'accettazione risultano attivi solo: ${active.join(', ')}` };
+    const missing = nonEssential.filter((g) => !active.includes(g));
+    if (!nonEssential.length) return { consistent: null, detail: `nessun gruppo non essenziale configurato (${summary})` };
+    return missing.length
+      ? { consistent: false, detail: `dopo l'accettazione non risultano attivi: ${missing.map(label).join(', ')} (${summary})` }
+      : { consistent: true, detail: summary };
   },
   async declared(page) {
     const raw = await page

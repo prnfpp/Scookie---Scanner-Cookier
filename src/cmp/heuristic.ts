@@ -1,6 +1,6 @@
 import type { Frame, Page } from 'playwright';
 import type { ChoiceLayer } from '../types.js';
-import { frames, waitFor } from './dom.js';
+import { describeElement, frames, waitFor } from './dom.js';
 import type { Choice, ChoiceResult } from './types.js';
 
 // Testi dei pulsanti (italiano e inglese). Il confronto avviene sul testo intero, normalizzato.
@@ -20,6 +20,8 @@ export const TEXTS = {
 export interface Candidate {
   index: number;
   text: string;
+  /** Indirizzo, se l'elemento è un link. */
+  href?: string | null;
   frame: Frame;
 }
 
@@ -62,7 +64,7 @@ async function scanFrame(frame: Frame, isMain: boolean): Promise<{ banner: boole
         });
         // In un iframe dedicato al consenso il banner è l'intero documento.
         if (!banners.length && !isMain && document.body && kw.test(textOf(document.body)) && visible(document.body)) banners = [document.body];
-        const out: { index: number; text: string }[] = [];
+        const out: { index: number; text: string; href: string | null }[] = [];
         let i = 0;
         const seen = new Set<Element>();
         for (const b of banners) {
@@ -80,9 +82,10 @@ async function scanFrame(frame: Frame, isMain: boolean): Promise<{ banner: boole
             const text = raw.replace(/\s+/g, ' ').replace(/[›»→>]+$/, '').trim();
             if (!text || text.length > 80) continue;
             el.setAttribute(attr, String(i));
-            out.push({ index: i++, text });
+            const href = el.tagName === 'A' ? (el as HTMLAnchorElement).href || null : null;
+            out.push({ index: i++, text, href });
             const aria = el.getAttribute('aria-label');
-            if (aria && aria.trim() !== text) out.push({ index: i - 1, text: aria.trim() });
+            if (aria && aria.trim() !== text) out.push({ index: i - 1, text: aria.trim(), href });
           }
         }
         return { banner: banners.length > 0, candidates: out };
@@ -111,20 +114,29 @@ export async function heuristicBannerVisible(page: Page): Promise<boolean> {
   return (await scan(page)).banner;
 }
 
-async function clickCandidate(c: Candidate): Promise<void> {
+/** Clicca un candidato e ritorna la descrizione dell'elemento cliccato. */
+export async function clickCandidate(c: Candidate): Promise<string> {
   const loc = c.frame.locator(`[${SCAN_ATTR}="${c.index}"]`).first();
+  const label = await describeElement(loc);
   try {
     await loc.click({ timeout: 5000 });
   } catch {
     await loc.click({ timeout: 5000, force: true });
   }
+  return label;
 }
 
 function pick(candidates: Candidate[], re: RegExp): Candidate | undefined {
   return candidates.find((c) => re.test(c.text));
 }
 
-const done = (layer: ChoiceLayer, detail: string): ChoiceResult => ({ ok: true, layer, via: 'click', detail });
+const done = (layer: ChoiceLayer, ...labels: string[]): ChoiceResult => ({
+  ok: true,
+  layer,
+  via: 'click',
+  detail: `click su ${labels.join(', poi su ')}`,
+  clicked: labels,
+});
 
 export async function heuristicChoose(page: Page, choice: Choice): Promise<ChoiceResult> {
   const { banner, candidates } = await scan(page);
@@ -134,23 +146,20 @@ export async function heuristicChoose(page: Page, choice: Choice): Promise<Choic
   if (choice === 'accetta') {
     const c = pick(candidates, TEXTS.accept);
     if (!c) return { ok: false, layer: null, via: null, detail: `pulsante "Accetta" non trovato; pulsanti nel banner: ${list || 'nessuno'}` };
-    await clickCandidate(c);
-    return done('primo-livello', `click sul pulsante "${c.text}"`);
+    return done('primo-livello', await clickCandidate(c));
   }
 
   const reject = pick(candidates, TEXTS.reject);
   if (reject) {
-    await clickCandidate(reject);
-    return done('primo-livello', `click sul pulsante "${reject.text}"`);
+    return done('primo-livello', await clickCandidate(reject));
   }
   const close = pick(candidates, TEXTS.close);
   if (close) {
-    await clickCandidate(close);
-    return done('chiusura-x', `click sul pulsante di chiusura "${close.text}"`);
+    return done('chiusura-x', await clickCandidate(close));
   }
   const prefs = pick(candidates, TEXTS.preferences);
   if (prefs) {
-    await clickCandidate(prefs);
+    const first = await clickCandidate(prefs);
     let second: Candidate | undefined;
     await waitFor(
       async () => {
@@ -162,8 +171,7 @@ export async function heuristicChoose(page: Page, choice: Choice): Promise<Choic
       500,
     );
     if (second) {
-      await clickCandidate(second);
-      return done('secondo-livello', `click su "${prefs.text}" e poi su "${second.text}"`);
+      return done('secondo-livello', first, await clickCandidate(second));
     }
     return { ok: false, layer: null, via: null, detail: `aperte le preferenze con "${prefs.text}" ma nessun pulsante di rifiuto o salvataggio trovato` };
   }

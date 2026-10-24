@@ -23,20 +23,25 @@ export const elementiNonClassificati: Rule = {
         .map((st) => ({ s, key: `${st.kind} "${st.key}" (${st.origin})`, kind: 'storage' })),
       ...s.requests
         .filter((r) => r.party === 'terza' && !r.tracker && relevant(r.phase, s.scenario))
-        .map((r) => ({ s, key: `terza parte ${r.host}`, kind: 'host' })),
+        .map((r) => ({ s, key: `terza parte ${r.host}`, kind: r.phase === 'prima' ? 'host-prima' : 'host' })),
     ]);
     const out: RawFinding[] = [];
     for (const [site, list] of groupBy(rows, (r) => r.s.site)) {
       const unique = [...new Map(list.map((r) => [r.key, r])).values()];
-      const count = (k: string) => unique.filter((u) => u.kind === k).length;
+      const count = (...k: string[]) => unique.filter((u) => k.includes(u.kind)).length;
+      // Una terza parte sconosciuta contattata prima della scelta va verificata con priorità media.
+      const unknownBefore = count('host-prima');
       const first = list[0].s;
       out.push({
         site,
         scenario: null,
         pageUrl: null,
+        severity: unknownBefore ? 'media' : undefined,
+        groupKey: 'tutti',
+        headline: unknownBefore ? `${unknownBefore} terze parti non classificate vengono contattate prima della scelta` : undefined,
         description:
           `${unique.length} elementi osservati prima della scelta o dopo il rifiuto non sono riconosciuti dalle fonti di classificazione ` +
-          `(${count('cookie')} cookie, ${count('storage')} chiavi di storage di terze parti, ${count('host')} domini di terze parti). ` +
+          `(${count('cookie')} cookie, ${count('storage')} chiavi di storage di terze parti, ${count('host', 'host-prima')} domini di terze parti, di cui ${unknownBefore} contattati prima della scelta). ` +
           `Non sono stati valutati dalle altre regole: la loro natura (tecnica o di tracciamento) va verificata.`,
         details: unique.map((u) => `${u.key} — scenari: ${[...new Set(list.filter((l) => l.key === u.key).map((l) => l.s.scenario))].join(', ')}`),
         evidence: sessionEvidence(first, ['1-banner']).filter((e) => !e.file.endsWith('.har')),

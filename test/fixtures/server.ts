@@ -44,6 +44,13 @@ export async function startFixtureServer(): Promise<{ server: Server; port: numb
       // senza estensione: testo semplice, come il servizio reale /cdn-cgi/trace
       const type = TYPES[extname(file)] ?? 'text/plain';
       const body = readFileSync(file, 'utf8').replaceAll('{{PORT}}', String(port));
+      // Intestazioni e stato personalizzati per sito (es. pagina di verifica anti-bot)
+      const meta = join(siteDir, '_risposta.json');
+      if (existsSync(meta) && extname(file) === '.html') {
+        const m = JSON.parse(readFileSync(meta, 'utf8')) as { status: number; headers: Record<string, string> };
+        res.writeHead(m.status, { 'content-type': type, ...m.headers });
+        return res.end(body);
+      }
       return send(200, body, type);
     }
     // Host di terze parti: script finti o pixel

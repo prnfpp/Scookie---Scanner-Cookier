@@ -4,7 +4,10 @@ import type { ComparisonRow, DeclaredSet, Evidence, ScenarioName, SessionResult,
 
 export interface RuleContext {
   config: AuditConfig;
+  /** Sessioni valide (escluse quelle bloccate da sistemi anti-bot). */
   sessions: SessionResult[];
+  /** Sessioni intercettate da un sistema anti-bot. */
+  blocked: SessionResult[];
   declared: DeclaredSet[];
   comparison: ComparisonRow[];
   /** IP e paese di uscita rilevati all'avvio. */
@@ -20,6 +23,14 @@ export interface RawFinding {
   details: string[];
   evidence: Evidence[];
   requestExcerpt?: Record<string, unknown>;
+  evidenceLevel?: 'risorsa' | 'raccolta' | 'identificativo';
+  /** Frase breve in linguaggio semplice per la sintesi iniziale. */
+  headline?: string;
+  /**
+   * Chiave di raggruppamento: schede della stessa regola con la stessa chiave, su siti dello stesso
+   * dominio, diventano una sola scheda con l'elenco dei siti (es. stessa configurazione su www e app).
+   */
+  groupKey?: string;
   /** Sostituisce la gravità predefinita della regola per questo caso. */
   severity?: Severity;
 }
