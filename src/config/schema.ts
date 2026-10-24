@@ -91,6 +91,8 @@ export const configSchema = z
     protocollo: z
       .object({
         timeoutNavigazione: z.number().int().positive().default(45000),
+        /** Durata massima di una sessione: oltre, viene interrotta e i dati raccolti fin lì restano nel report. */
+        timeoutSessione: z.number().int().positive().default(300000),
         attesaDopoCaricamento: z.number().int().nonnegative().default(4000),
         scroll: z.boolean().default(true),
         attesaDopoScroll: z.number().int().nonnegative().default(2000),
@@ -101,6 +103,7 @@ export const configSchema = z
       .strict()
       .default({
         timeoutNavigazione: 45000,
+        timeoutSessione: 300000,
         attesaDopoCaricamento: 4000,
         scroll: true,
         attesaDopoScroll: 2000,

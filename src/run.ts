@@ -14,7 +14,7 @@ import { renderHtml } from './report/html.js';
 import { writeCsvs } from './report/csv.js';
 import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms } from './rules/engine.js';
 import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult } from './types.js';
-import { sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
+import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
 import { TOOL_VERSION } from './version.js';
 
 export interface RunOptions {
@@ -44,7 +44,7 @@ export async function resolveUserAgent(browser: Browser, cfg: AuditConfig): Prom
   if (cfg.browser.userAgent) return cfg.browser.userAgent;
   const ctx = await browser.newContext();
   const ua = await (await ctx.newPage()).evaluate(() => navigator.userAgent);
-  await ctx.close();
+  await closeSafely(ctx, 15000);
   return cfg.browser.userAgentSuffix ? `${ua} ${cfg.browser.userAgentSuffix}` : ua;
 }
 
