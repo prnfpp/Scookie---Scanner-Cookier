@@ -1,0 +1,148 @@
+import { z } from 'zod';
+
+const bannerSchema = z
+  .object({
+    /** Selettore CSS (o Playwright) del pulsante di rifiuto al primo livello. */
+    rifiuta: z.string().optional(),
+    /** Selettore del pulsante "accetta tutti". */
+    accetta: z.string().optional(),
+    /** Selettore del pulsante che apre le preferenze (secondo livello). */
+    preferenze: z.string().optional(),
+    /** Selettore del pulsante di rifiuto/salvataggio dentro le preferenze. */
+    rifiutaNellePreferenze: z.string().optional(),
+    /** Selettore dell'iframe che contiene il banner, se c'è. */
+    frame: z.string().optional(),
+    /** Selettore di un elemento che indica che il banner è visibile. */
+    contenitore: z.string().optional(),
+    /** Attesa extra (ms) prima di cercare il banner. */
+    attesa: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const siteSchema = z
+  .object({
+    url: z.url(),
+    /** Etichetta leggibile nel report. */
+    nome: z.string().optional(),
+    /** Legge robots.txt e sitemap.xml per scoprire le pagine. */
+    sitemap: z.boolean().default(true),
+    /** Segue i link interni della home per scoprire le pagine. */
+    seguiLink: z.boolean().default(true),
+    /** URL aggiunte a mano (es. step del preventivo). Sempre incluse. */
+    pagineExtra: z.array(z.string()).default([]),
+    /** Se true usa solo la home e le pagine extra. */
+    soloPagineExtra: z.boolean().default(false),
+    /** Pattern (regex sul path) da escludere dal campione. */
+    escludi: z.array(z.string()).default([]),
+    /** URL della cookie policy (documentata nel report). */
+    cookiePolicy: z.string().optional(),
+    /** File CSV o YAML con l'elenco dichiarato, se non leggibile dal CMP. */
+    dichiarati: z.string().optional(),
+    /** Selettori manuali del banner: hanno la precedenza su adattatori ed euristica. */
+    banner: bannerSchema.optional(),
+  })
+  .strict();
+
+export const configSchema = z
+  .object({
+    cliente: z.string(),
+    /** Cartella in cui creare le esecuzioni. */
+    output: z.string().default('./runs'),
+    browser: z
+      .object({
+        headless: z.boolean().default(true),
+        locale: z.string().default('it-IT'),
+        timezone: z.string().default('Europe/Rome'),
+        viewport: z
+          .object({ width: z.number().int(), height: z.number().int() })
+          .default({ width: 1366, height: 900 }),
+        /** Testo aggiunto allo user agent standard per dichiarare l'audit. */
+        userAgentSuffix: z.string().default('ScookieAudit/0.1'),
+        /** User agent completo (sostituisce quello standard). */
+        userAgent: z.string().optional(),
+        /** Paese da cui parte la navigazione, dichiarato nel report (non verificato dal tool). */
+        paeseUscita: z.string().default('IT'),
+        /** Proxy opzionale, es. per uscire da un paese specifico. */
+        proxy: z.string().optional(),
+        /** Percorso dell'eseguibile Chromium, se diverso da quello di Playwright. */
+        executablePath: z.string().optional(),
+        /** Solo per test: regole di risoluzione host di Chromium. */
+        hostResolverRules: z.string().optional(),
+      })
+      .strict()
+      .default({
+        headless: true,
+        locale: 'it-IT',
+        timezone: 'Europe/Rome',
+        viewport: { width: 1366, height: 900 },
+        userAgentSuffix: 'ScookieAudit/0.1',
+        paeseUscita: 'IT',
+      }),
+    /** Protocollo di osservazione: identico per ogni pagina e sessione. */
+    protocollo: z
+      .object({
+        timeoutNavigazione: z.number().int().positive().default(45000),
+        attesaDopoCaricamento: z.number().int().nonnegative().default(4000),
+        scroll: z.boolean().default(true),
+        attesaDopoScroll: z.number().int().nonnegative().default(2000),
+        attesaDopoScelta: z.number().int().nonnegative().default(4000),
+        /** Pausa tra una sessione e l'altra (navigazione lenta). */
+        pausaTraSessioni: z.number().int().nonnegative().default(3000),
+      })
+      .strict()
+      .default({
+        timeoutNavigazione: 45000,
+        attesaDopoCaricamento: 4000,
+        scroll: true,
+        attesaDopoScroll: 2000,
+        attesaDopoScelta: 4000,
+        pausaTraSessioni: 3000,
+      }),
+    scenari: z
+      .object({
+        /**
+         * percorso: "nessuna azione" su ogni pagina; "rifiuta" e "accetta" una volta per sito
+         * partendo dalla home e navigando le altre pagine del campione.
+         * per-pagina: tutti e tre gli scenari su ogni pagina campionata.
+         */
+        modalita: z.enum(['percorso', 'per-pagina']).default('percorso'),
+        /** Pagine da visitare dopo la scelta (minimo 1). */
+        pagineDopoScelta: z.number().int().min(1).default(3),
+        attivi: z
+          .array(z.enum(['nessuna-azione', 'rifiuta', 'accetta']))
+          .default(['nessuna-azione', 'rifiuta', 'accetta']),
+      })
+      .strict()
+      .default({ modalita: 'percorso', pagineDopoScelta: 3, attivi: ['nessuna-azione', 'rifiuta', 'accetta'] }),
+    campionamento: z
+      .object({
+        perTipo: z.number().int().positive().default(2),
+        maxPagine: z.number().int().positive().default(15),
+        /** Numero massimo di URL lette dalle sitemap. */
+        maxUrlSitemap: z.number().int().positive().default(5000),
+        /** Tipi di pagina: nome -> regex sul path. Il primo che corrisponde vince. */
+        tipi: z.record(z.string(), z.string()).default({}),
+      })
+      .strict()
+      .default({ perTipo: 2, maxPagine: 15, maxUrlSitemap: 5000, tipi: {} }),
+    /** Domini (registrabili) da considerare di prima parte oltre a quello del sito. */
+    dominiPropri: z.array(z.string()).default([]),
+    /** File YAML con norme e collegamento regole -> norme. */
+    norme: z.string().optional(),
+    /** File YAML aggiuntivo di domini tracker (si somma all'elenco incluso). */
+    trackerExtra: z.string().optional(),
+    report: z
+      .object({
+        pdf: z.boolean().default(true),
+        /** Testo libero da includere nella sezione "Limiti". */
+        noteLimiti: z.array(z.string()).default([]),
+      })
+      .strict()
+      .default({ pdf: true, noteLimiti: [] }),
+    siti: z.array(siteSchema).min(1),
+  })
+  .strict();
+
+export type AuditConfig = z.infer<typeof configSchema>;
+export type SiteConfig = z.infer<typeof siteSchema>;
+export type BannerConfig = z.infer<typeof bannerSchema>;

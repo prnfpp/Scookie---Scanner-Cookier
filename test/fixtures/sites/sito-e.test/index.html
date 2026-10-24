@@ -1,0 +1,18 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Sito E</title></head>
+<body><h1>Sito E</h1><a href="/">Home</a>
+<div id="b1" style="position:fixed;bottom:0;left:0;right:0;background:#eee;padding:16px">
+  <p>Usiamo cookie tecnici e, previo consenso, di profilazione.</p>
+  <button id="pers">Personalizza</button> <button id="ok">Accetta tutti</button>
+</div>
+<div id="b2" style="display:none;position:fixed;top:10%;left:10%;right:10%;background:#fff;border:1px solid;padding:16px">
+  <p>Preferenze cookie</p><button id="no">Rifiuta tutti</button> <button id="save">Salva preferenze</button>
+</div>
+<script>
+  var c = (document.cookie.match(/(?:^|; )pref=([^;]*)/) || [])[1];
+  if (c) { document.getElementById('b1').remove(); document.getElementById('b2').remove(); }
+  if (c === 'si') new Image().src = 'http://pixel.adtest.example:' + location.port + '/tr?e=1';
+  document.getElementById('pers').onclick = function () { document.getElementById('b1').style.display = 'none'; document.getElementById('b2').style.display = 'block'; };
+  document.getElementById('ok').onclick = function () { document.cookie = 'pref=si; path=/'; document.getElementById('b1').remove(); };
+  document.getElementById('no').onclick = function () { document.cookie = 'pref=no; path=/'; document.getElementById('b2').remove(); };
+  document.getElementById('save').onclick = function () { document.cookie = 'pref=salva; path=/'; document.getElementById('b2').remove(); };
+</script></body></html>

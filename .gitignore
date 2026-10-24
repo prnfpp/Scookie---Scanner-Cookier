@@ -1,0 +1,11 @@
+node_modules/
+dist/
+
+# Esecuzioni, evidenze e dati dei clienti: MAI nel repository
+runs/
+clienti/
+*.har
+*.har.zip
+/config/*.local.yaml
+
+.DS_Store
