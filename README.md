@@ -39,9 +39,9 @@ npm run build
 
 ```sh
 cp config/esempio.yaml clienti/cliente.yaml          # clienti/ è esclusa da git
-npx scookie verifica-config -c clienti/cliente.yaml  # controlla la configurazione
-npx scookie scopri -c clienti/cliente.yaml           # mostra il campione di pagine senza eseguire gli scenari
-npx scookie run -c clienti/cliente.yaml              # audit completo
+npm run scookie -- verifica-config -c clienti/cliente.yaml  # controlla la configurazione
+npm run scookie -- scopri -c clienti/cliente.yaml           # mostra il campione di pagine senza eseguire gli scenari
+npm run scookie -- run -c clienti/cliente.yaml              # audit completo
 ```
 
 Per la validazione su siti reali c'è già [`config/validazione.yaml`](config/validazione.yaml).

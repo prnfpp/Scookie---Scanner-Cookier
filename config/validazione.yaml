@@ -1,4 +1,4 @@
-# Validazione su siti reali (v0.2). Avvio:  npx scookie run -c config/validazione.yaml
+# Validazione su siti reali (v0.2). Avvio:  npm run scookie -- run -c config/validazione.yaml
 # Per ogni sito, confrontare a mano il report con quello che si vede in un browser normale:
 #   1. il banner è stato riconosciuto? (tabella "Interazione con il banner")
 #   2. il click è andato a segno? (screenshot 2-dopo-scelta)
