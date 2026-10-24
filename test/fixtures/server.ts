@@ -34,7 +34,8 @@ export async function startFixtureServer(): Promise<{ server: Server; port: numb
       if (!file.startsWith(siteDir)) return send(403, '', 'text/plain');
       if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
       if (!existsSync(file)) return send(404, 'non trovato', 'text/plain');
-      const type = TYPES[extname(file)] ?? 'application/octet-stream';
+      // senza estensione: testo semplice, come il servizio reale /cdn-cgi/trace
+      const type = TYPES[extname(file)] ?? 'text/plain';
       const body = readFileSync(file, 'utf8').replaceAll('{{PORT}}', String(port));
       return send(200, body, type);
     }
