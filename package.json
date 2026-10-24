@@ -15,12 +15,14 @@
     "build": "tsc -p tsconfig.json",
     "scookie": "node dist/src/cli.js",
     "test": "npm run build && node --test --test-concurrency=1 \"dist/test/*.test.js\"",
-    "licenses": "node scripts/check-licenses.mjs"
+    "licenses": "node scripts/check-licenses.mjs",
+    "interfaccia": "node dist/src/cli.js interfaccia"
   },
   "files": [
     "dist/src",
     "config",
-    "data"
+    "data",
+    "ui"
   ],
   "dependencies": {
     "commander": "15.0.0",

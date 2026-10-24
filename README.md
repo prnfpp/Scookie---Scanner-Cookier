@@ -36,7 +36,27 @@ Per aggiornare il tool in futuro, dalla stessa cartella: `git pull`, poi `npm in
 
 Ogni volta che si riapre il Terminale bisogna prima entrare nella cartella del tool: `cd Scookie---Scanner-Cookier`.
 
-### 3. Preparare l'audit di un cliente
+### 3. Il modo più semplice: l'interfaccia visuale
+
+Dalla cartella del tool:
+
+```sh
+npm run interfaccia
+```
+
+Si apre il browser su una pagina di Scookie (indirizzo `http://127.0.0.1:4777`). La pagina funziona solo sul tuo computer: non è pubblicata su internet e i dati dei clienti restano in locale. Il Terminale deve restare aperto finché si usa l'interfaccia; per chiuderla, `Ctrl+C` nel Terminale.
+
+Nell'interfaccia:
+
+- **Clienti** → **+ Nuovo cliente**: nome del cliente, poi uno o più siti (dominio e sottodomini). Per ogni sito si sceglie quali pagine controllare: in automatico, in automatico più alcune indicate a mano, oppure solo quelle indicate a mano. In "Opzioni avanzate" si trovano cookie policy, file dei cookie dichiarati e pulsanti del banner da indicare a mano; in "Impostazioni generali" numero di pagine, scenari, paese di uscita e PDF.
+- **Salva**: le configurazioni sono gli stessi file YAML della cartella `clienti/` descritti sotto, quindi si possono usare anche dal Terminale.
+- **Anteprima pagine**: mostra quali pagine verrebbero visitate, prima di lanciare l'audit.
+- **Avvia audit**: l'avanzamento si aggiorna in tempo reale; alla fine il pulsante **Apri il report**.
+- **Esecuzioni**: tutti i report passati, con PDF e file CSV. Il paese di uscita è evidenziato in rosso se non è l'Italia.
+
+Le sezioni 4 e 5 descrivono le stesse operazioni dal Terminale, utili anche per capire le opzioni del file di configurazione.
+
+### 4. Preparare l'audit di un cliente (dal Terminale)
 
 Ogni cliente ha un **file di configurazione** (formato YAML: testo semplice con rientri). Si parte dall'esempio:
 
@@ -111,7 +131,7 @@ Il tool riconosce da solo i gestori del consenso più diffusi e i pulsanti con t
 
 Se il gestore del consenso lo espone (es. OneTrust), il tool legge da solo l'elenco dei cookie dichiarati. Altrimenti si può preparare un file CSV (si fa anche con Excel, salvando in CSV) come [`config/dichiarati-esempio.csv`](config/dichiarati-esempio.csv) e indicarlo con `dichiarati: ./dichiarati-rossi.csv`.
 
-### 4. Controllare, provare, lanciare
+### 5. Controllare, provare, lanciare
 
 ```sh
 npm run scookie -- verifica-config -c clienti/rossi.yaml   # controlla che il file sia scritto bene
@@ -123,7 +143,7 @@ npm run scookie -- run -c clienti/rossi.yaml               # esegue l'audit
 
 L'audit richiede alcuni minuti per sito (circa 3-5 minuti con le impostazioni dell'esempio). La prima riga indica il paese di uscita rilevato: deve essere **IT**.
 
-### 5. Leggere il risultato
+### 6. Leggere il risultato
 
 Ogni esecuzione crea una cartella in `runs/` con data, ora e nome del cliente:
 
@@ -134,7 +154,7 @@ Ogni esecuzione crea una cartella in `runs/` con data, ora e nome del cliente:
 
 **La cartella va conservata intera e senza modifiche**: le impronte SHA-256 servono proprio a dimostrare che i file non sono stati toccati dopo la raccolta.
 
-### 6. Come usarlo bene
+### 7. Come usarlo bene
 
 1. **Prima dell'audit** concordare con il cliente il perimetro (domini, sottodomini, pagine importanti come preventivi o checkout) e annotarlo nel file di configurazione.
 2. **Eseguire l'audit due volte** a qualche minuto di distanza: se i risultati coincidono, sono stabili; se differiscono, il report lo mostra e va approfondito.
@@ -142,7 +162,7 @@ Ogni esecuzione crea una cartella in `runs/` con data, ora e nome del cliente:
 4. **Consegnare** report e cartella al consulente legale o al DPO, che valuta la conformità. Il tool non dà indicazioni su come sistemare.
 5. **Dopo le correzioni** del cliente, rilanciare lo stesso file di configurazione: il confronto tra i due report mostra cosa è cambiato.
 
-### 7. Domande frequenti
+### 8. Domande frequenti
 
 **Il report ha valore legale?**
 È una documentazione tecnica di parte, raccolta con un metodo descritto e ripetibile, con prove e impronte dei file. Non è una perizia giurata né un parere legale. Il suo valore come prova dipende da come viene usata: per un contenzioso conviene farla esaminare da un consulente tecnico e aggiungere una data certa, per esempio inviando l'archivio della cartella via PEC a sé stessi o facendolo marcare temporalmente da un servizio qualificato. Le "gravità" sono priorità di verifica suggerite, non qualificazioni giuridiche.
@@ -200,7 +220,10 @@ cp config/esempio.yaml clienti/cliente.yaml          # clienti/ è esclusa da gi
 npm run scookie -- verifica-config -c clienti/cliente.yaml  # controlla la configurazione
 npm run scookie -- scopri -c clienti/cliente.yaml           # mostra il campione di pagine senza eseguire gli scenari
 npm run scookie -- run -c clienti/cliente.yaml              # audit completo
+npm run interfaccia                                         # interfaccia visuale locale (http://127.0.0.1:4777)
 ```
+
+L'interfaccia (`src/ui/server.ts`, pagina in `ui/index.html`) ascolta solo su `127.0.0.1`, verifica l'intestazione Host (contro il DNS rebinding) e accetta le chiamate solo con un cookie di sessione `SameSite=Strict` e un'intestazione dedicata. Opzioni: `--clienti <cartella>`, `--esecuzioni <cartella>`, `--porta <numero>`, `--no-apri`.
 
 Per la validazione su siti reali c'è già [`config/validazione.yaml`](config/validazione.yaml).
 
@@ -299,7 +322,6 @@ Software proprietario, © 2026 Filippo Pirini (vedi [`LICENSE`](LICENSE)): nessu
 - I risultati possono variare con geolocalizzazione, test A/B e aste pubblicitarie.
 - I siti con protezioni anti-bot possono bloccare il browser automatizzato. Il tool naviga lentamente, dichiara lo user agent e non tenta di aggirare i blocchi.
 - Non ancora implementati (in ordine di priorità suggerita):
-  - interfaccia visuale locale per configurare e lanciare gli audit senza modificare file;
   - confronto automatico tra due esecuzioni (prima e dopo le correzioni del cliente);
   - marca temporale qualificata (RFC 3161) sul manifest, per dare data certa alle prove;
   - lettura automatica della pagina cookie policy;

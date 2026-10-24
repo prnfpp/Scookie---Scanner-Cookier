@@ -1,0 +1,354 @@
+import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { extname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+import { parse, stringify } from 'yaml';
+import { loadConfig } from '../config/load.js';
+import { configSchema } from '../config/schema.js';
+import { discoverSite, type DiscoveryResult } from '../discovery/discover.js';
+import { launchOptions, resolveUserAgent, runAudit } from '../run.js';
+import { closeSafely } from '../util/misc.js';
+import { TOOL_VERSION } from '../version.js';
+
+const PAGE_FILE = fileURLToPath(new URL('../../../ui/index.html', import.meta.url));
+const EXAMPLE_FILE = fileURLToPath(new URL('../../../config/esempio.yaml', import.meta.url));
+
+const FILE_RE = /^[\w.-]+\.ya?ml$/i;
+const RUN_RE = /^[\w.-]+$/;
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+  '.png': 'image/png',
+  '.pdf': 'application/pdf',
+  '.har': 'application/json; charset=utf-8',
+  '.sha256': 'text/plain; charset=utf-8',
+};
+
+export interface UiOptions {
+  /** Cartella dei file di configurazione dei clienti. */
+  clientsDir: string;
+  /** Cartella in cui l'interfaccia salva le esecuzioni. */
+  runsDir: string;
+  port: number;
+  log?: (msg: string) => void;
+}
+
+interface Job {
+  id: number;
+  kind: 'audit' | 'scopri';
+  file: string;
+  status: 'in-corso' | 'completato' | 'errore';
+  startedAt: string;
+  endedAt: string | null;
+  log: string[];
+  error: string | null;
+  runName: string | null;
+  discovery: DiscoveryResult[] | null;
+}
+
+class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Contenuto di un file YAML di configurazione, letto in modo tollerante (anche se non valido). */
+function readClient(dir: string, file: string) {
+  const yaml = readFileSync(join(dir, file), 'utf8');
+  let data: unknown = null;
+  try {
+    data = parse(yaml);
+  } catch {
+    // YAML non leggibile: l'interfaccia mostra il testo grezzo
+  }
+  const check = configSchema.safeParse(data);
+  return {
+    file,
+    yaml,
+    data,
+    valid: check.success,
+    errors: check.success ? [] : check.error.issues.map((i) => `${i.path.join('.') || '(radice)'}: ${i.message}`),
+  };
+}
+
+function listRuns(runsDir: string) {
+  if (!existsSync(runsDir)) return [];
+  return readdirSync(runsDir)
+    .filter((n) => RUN_RE.test(n) && existsSync(join(runsDir, n, 'manifest.json')))
+    .map((name) => {
+      try {
+        const m = JSON.parse(readFileSync(join(runsDir, name, 'manifest.json'), 'utf8')) as {
+          cliente?: string;
+          inizio?: string;
+          fine?: string;
+          sessioni?: number;
+          criticita?: number;
+          ambiente?: { uscita?: { country?: string | null; verified?: boolean } };
+        };
+        return {
+          name,
+          cliente: m.cliente ?? name,
+          inizio: m.inizio ?? null,
+          fine: m.fine ?? null,
+          sessioni: m.sessioni ?? null,
+          criticita: m.criticita ?? null,
+          paese: m.ambiente?.uscita?.verified ? m.ambiente.uscita.country : null,
+          pdf: existsSync(join(runsDir, name, 'report.pdf')),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((r) => r !== null)
+    .sort((a, b) => String(b.inizio).localeCompare(String(a.inizio)));
+}
+
+/**
+ * Interfaccia visuale locale: un piccolo server raggiungibile solo da questo computer.
+ * Protezioni: ascolto su 127.0.0.1, controllo dell'intestazione Host (contro il DNS rebinding),
+ * cookie di sessione SameSite=Strict e intestazione personalizzata per le API (contro richieste da altri siti).
+ */
+export async function startUi(opts: UiOptions): Promise<{ server: Server; url: string; close: () => Promise<void> }> {
+  const log = opts.log ?? ((m: string) => console.log(m));
+  const clientsDir = resolve(opts.clientsDir);
+  const runsDir = resolve(opts.runsDir);
+  mkdirSync(clientsDir, { recursive: true });
+  mkdirSync(runsDir, { recursive: true });
+  const token = randomBytes(24).toString('hex');
+  let job: Job | null = null;
+  let jobSeq = 0;
+  let port = opts.port;
+
+  const allowedHosts = () => new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+
+  const send = (res: ServerResponse, status: number, body: string | Buffer, type = 'application/json; charset=utf-8', extra: Record<string, string> = {}) => {
+    res.writeHead(status, {
+      'content-type': type,
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      ...extra,
+    });
+    res.end(body);
+  };
+  const json = (res: ServerResponse, status: number, data: unknown) => send(res, status, JSON.stringify(data));
+
+  const readBody = (req: IncomingMessage): Promise<unknown> =>
+    new Promise((ok, ko) => {
+      let size = 0;
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > 2_000_000) {
+          ko(new HttpError(413, 'Richiesta troppo grande'));
+          req.destroy();
+        } else chunks.push(c);
+      });
+      req.on('end', () => {
+        try {
+          ok(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {});
+        } catch {
+          ko(new HttpError(400, 'JSON non valido'));
+        }
+      });
+      req.on('error', ko);
+    });
+
+  const hasCookie = (req: IncomingMessage) => (req.headers.cookie ?? '').split(/;\s*/).includes(`scookie=${token}`);
+
+  const startJob = (kind: Job['kind'], file: string, work: (j: Job) => Promise<void>) => {
+    if (job?.status === 'in-corso') throw new HttpError(409, 'È già in corso un\'altra operazione: attendere che finisca.');
+    const j: Job = {
+      id: ++jobSeq,
+      kind,
+      file,
+      status: 'in-corso',
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      log: [],
+      error: null,
+      runName: null,
+      discovery: null,
+    };
+    job = j;
+    work(j)
+      .then(() => {
+        j.status = 'completato';
+      })
+      .catch((e: Error) => {
+        j.status = 'errore';
+        j.error = e.message;
+        j.log.push(`Errore: ${e.message}`);
+      })
+      .finally(() => {
+        j.endedAt = new Date().toISOString();
+      });
+    return j;
+  };
+
+  const clientPath = (file: unknown) => {
+    if (typeof file !== 'string' || !FILE_RE.test(file)) throw new HttpError(400, 'Nome file non valido (lettere, numeri, - _ . e estensione .yaml)');
+    return join(clientsDir, file);
+  };
+
+  async function api(req: IncomingMessage, res: ServerResponse, path: string) {
+    const method = req.method ?? 'GET';
+
+    if (path === '/api/info' && method === 'GET') {
+      return json(res, 200, { versione: TOOL_VERSION, clienti: clientsDir, esecuzioni: runsDir });
+    }
+    if (path === '/api/clienti' && method === 'GET') {
+      const files = readdirSync(clientsDir).filter((f) => FILE_RE.test(f));
+      return json(
+        res,
+        200,
+        files.map((f) => {
+          const c = readClient(clientsDir, f);
+          const d = c.data as { cliente?: string; siti?: { url?: string }[] } | null;
+          return { file: f, cliente: d?.cliente ?? f, siti: (d?.siti ?? []).map((s) => s?.url).filter(Boolean), valido: c.valid, modificato: statSync(join(clientsDir, f)).mtime.toISOString() };
+        }),
+      );
+    }
+    if (path === '/api/esempio' && method === 'GET') {
+      return json(res, 200, { yaml: readFileSync(EXAMPLE_FILE, 'utf8'), data: parse(readFileSync(EXAMPLE_FILE, 'utf8')) });
+    }
+    const one = /^\/api\/clienti\/([^/]+)$/.exec(path);
+    if (one && method === 'GET') {
+      const p = clientPath(decodeURIComponent(one[1]));
+      if (!existsSync(p)) throw new HttpError(404, 'Configurazione non trovata');
+      return json(res, 200, readClient(clientsDir, decodeURIComponent(one[1])));
+    }
+    if (path === '/api/clienti' && method === 'POST') {
+      // Salva dal modulo (data) o dal testo YAML (yaml). Si salva solo se la configurazione è valida.
+      const body = (await readBody(req)) as { file?: string; data?: unknown; yaml?: string; nuovo?: boolean };
+      const p = clientPath(body.file);
+      if (body.nuovo && existsSync(p)) throw new HttpError(409, 'Esiste già una configurazione con questo nome');
+      let data: unknown;
+      try {
+        data = typeof body.yaml === 'string' ? parse(body.yaml) : body.data;
+      } catch (e) {
+        throw new HttpError(400, `YAML non valido: ${(e as Error).message.split('\n')[0]}`);
+      }
+      const check = configSchema.safeParse(data);
+      if (!check.success) {
+        return json(res, 422, { errori: check.error.issues.map((i) => `${i.path.join('.') || '(radice)'}: ${i.message}`) });
+      }
+      const text = typeof body.yaml === 'string' ? body.yaml : stringify(data, { lineWidth: 0 });
+      writeFileSync(p, text);
+      return json(res, 200, { file: body.file });
+    }
+    if ((path === '/api/scopri' || path === '/api/avvia') && method === 'POST') {
+      const body = (await readBody(req)) as { file?: string; pdf?: boolean };
+      const p = clientPath(body.file);
+      if (!existsSync(p)) throw new HttpError(404, 'Configurazione non trovata');
+      const loaded = loadConfig(p); // lancia un errore leggibile se la configurazione non è valida
+      if (path === '/api/scopri') {
+        const j = startJob('scopri', body.file!, async (jj) => {
+          const { config } = loaded;
+          const browser = await chromium.launch(launchOptions(config));
+          try {
+            const ua = await resolveUserAgent(browser, config);
+            jj.discovery = [];
+            for (const site of config.siti) {
+              jj.log.push(`Scoperta pagine di ${site.url}…`);
+              const d = await discoverSite(browser, site, config, ua);
+              jj.discovery.push(d);
+              jj.log.push(`  ${d.found} URL trovate, campione di ${d.sample.length} pagine`);
+            }
+          } finally {
+            await closeSafely(browser, 30000);
+          }
+        });
+        return json(res, 202, { id: j.id });
+      }
+      const j = startJob('audit', body.file!, async (jj) => {
+        const result = await runAudit(loaded, {
+          outDir: runsDir,
+          pdf: body.pdf === false ? false : undefined,
+          log: (m) => {
+            for (const line of m.split('\n')) if (line.trim()) jj.log.push(line);
+            if (jj.log.length > 2000) jj.log.splice(0, jj.log.length - 2000);
+          },
+        });
+        jj.runName = result.runDir.split(sep).pop() ?? null;
+      });
+      return json(res, 202, { id: j.id });
+    }
+    if (path === '/api/lavoro' && method === 'GET') {
+      return json(res, 200, job);
+    }
+    if (path === '/api/esecuzioni' && method === 'GET') {
+      return json(res, 200, listRuns(runsDir));
+    }
+    throw new HttpError(404, 'Risorsa non trovata');
+  }
+
+  /** File delle esecuzioni (report, immagini, CSV): solo dentro la cartella esecuzioni. */
+  function serveRunFile(res: ServerResponse, rel: string) {
+    const parts = rel.split('/').map(decodeURIComponent);
+    if (!parts.length || !RUN_RE.test(parts[0]) || parts.some((x) => x === '..' || x === '' || x.includes('\\'))) {
+      throw new HttpError(400, 'Percorso non valido');
+    }
+    const abs = resolve(runsDir, ...parts);
+    if (!abs.startsWith(runsDir + sep) || !existsSync(abs) || !statSync(abs).isFile()) throw new HttpError(404, 'File non trovato');
+    const ext = extname(abs).toLowerCase();
+    const download = ['.har', '.csv', '.json', '.sha256'].includes(ext);
+    send(res, 200, readFileSync(abs), TYPES[ext] ?? 'application/octet-stream', download ? { 'content-disposition': `attachment; filename="${parts[parts.length - 1]}"` } : {});
+  }
+
+  const server = createServer(async (req, res) => {
+    try {
+      // Contro il DNS rebinding: si accettano solo richieste indirizzate a questo computer.
+      if (!allowedHosts().has(req.headers.host ?? '')) throw new HttpError(403, 'Host non consentito');
+      const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+      const path = url.pathname;
+      if (path === '/' && req.method === 'GET') {
+        const page = readFileSync(PAGE_FILE, 'utf8');
+        return send(res, 200, page, 'text/html; charset=utf-8', {
+          'set-cookie': `scookie=${token}; HttpOnly; SameSite=Strict; Path=/`,
+          'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'",
+          'x-frame-options': 'DENY',
+        });
+      }
+      if (!hasCookie(req)) throw new HttpError(401, 'Sessione non valida: ricaricare la pagina iniziale');
+      if (path.startsWith('/api/')) {
+        // Intestazione personalizzata: una pagina di un altro sito non può inviarla senza permesso (CORS).
+        if (req.headers['x-scookie'] !== '1') throw new HttpError(403, 'Richiesta non consentita');
+        return await api(req, res, path);
+      }
+      if (path.startsWith('/esecuzioni/')) return serveRunFile(res, path.slice('/esecuzioni/'.length));
+      throw new HttpError(404, 'Risorsa non trovata');
+    } catch (e) {
+      const status = e instanceof HttpError ? e.status : 500;
+      if (status === 500) log(`Errore interfaccia: ${(e as Error).message}`);
+      if (!res.headersSent) json(res, status, { errore: (e as Error).message.split('\n')[0] });
+    }
+  });
+
+  await new Promise<void>((ok, ko) => {
+    server.once('error', ko);
+    server.listen(opts.port, '127.0.0.1', () => ok());
+  });
+  port = (server.address() as AddressInfo).port;
+  const url = `http://127.0.0.1:${port}/`;
+  return { server, url, close: () => new Promise((ok) => server.close(() => ok())) };
+}
+
+/** Apre l'indirizzo nel browser predefinito del sistema. */
+export function openInBrowser(url: string) {
+  const [cmd, args] =
+    process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
+  try {
+    spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+  } catch {
+    // nessun browser disponibile: l'indirizzo è comunque stampato nel terminale
+  }
+}
