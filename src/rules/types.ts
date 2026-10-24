@@ -1,3 +1,4 @@
+import type { ExitInfo } from '../browser/exit.js';
 import type { AuditConfig } from '../config/schema.js';
 import type { ComparisonRow, DeclaredSet, Evidence, ScenarioName, SessionResult, Severity } from '../types.js';
 
@@ -6,6 +7,8 @@ export interface RuleContext {
   sessions: SessionResult[];
   declared: DeclaredSet[];
   comparison: ComparisonRow[];
+  /** IP e paese di uscita rilevati all'avvio. */
+  exit: ExitInfo;
 }
 
 /** Criticità prodotta da una regola, prima della numerazione e del collegamento alle norme. */

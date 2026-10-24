@@ -1,6 +1,6 @@
 import type { BrowserContext, Page, Request } from 'playwright';
 import type { Classifier } from '../classify/classifier.js';
-import type { CookieRecord, Phase, RequestRecord, StorageRecord } from '../types.js';
+import type { CookieRecord, Phase, RequestRecord, Stage, StorageRecord } from '../types.js';
 import { hostOf, type PartyResolver } from '../util/domains.js';
 import { preview } from '../util/misc.js';
 
@@ -23,7 +23,9 @@ const SERVER_SIDE_PATHS: { re: RegExp; label: string }[] = [
  */
 export class Collector {
   phase: Phase = 'prima';
+  stage: Stage = 'caricamento';
   choiceEpoch: number | null = null;
+  private stageBeforeChoice: Stage = 'caricamento';
   currentUrl = '';
   readonly requests: (RequestRecord & { epoch: number })[] = [];
   private readonly cookies = new Map<string, CookieRecord>();
@@ -45,16 +47,33 @@ export class Collector {
 
   markChoice() {
     this.phase = 'dopo';
+    this.stageBeforeChoice = this.stage;
+    this.stage = 'scelta';
     this.choiceEpoch = Date.now();
+  }
+
+  /** Da chiamare prima di scorrere la pagina: se non c'è stata una scelta, si passa allo stadio "scroll". */
+  markScroll() {
+    if (this.stage === 'caricamento') this.stage = 'scroll';
   }
 
   /** Annulla la marcatura se la scelta non è stata eseguita: tutto resta "prima". */
   undoChoice() {
     if (this.choiceEpoch === null) return;
-    for (const r of this.requests) if (r.epoch >= this.choiceEpoch) r.phase = 'prima';
-    for (const c of this.cookies.values()) c.phase = 'prima';
-    for (const s of this.storage.values()) s.phase = 'prima';
+    const since = this.choiceEpoch;
+    const back = this.stageBeforeChoice;
+    for (const r of this.requests) {
+      if (r.epoch >= since) {
+        r.phase = 'prima';
+        r.stage = back;
+      }
+    }
+    for (const x of [...this.cookies.values(), ...this.storage.values()]) {
+      x.phase = 'prima';
+      if (Date.parse(x.firstSeenAt) >= since) x.stage = back;
+    }
     this.phase = 'prima';
+    this.stage = back;
     this.choiceEpoch = null;
   }
 
@@ -81,6 +100,7 @@ export class Collector {
       resourceType: r.resourceType(),
       party,
       phase: this.phase,
+      stage: this.stage,
       pageUrl: this.currentUrl,
       status: null,
     };
@@ -122,6 +142,7 @@ export class Collector {
         sameSite: c.sameSite,
         party: this.party.party(c.domain),
         phase: this.phase,
+        stage: this.stage,
         firstSeenUrl: this.currentUrl,
         firstSeenAt: now,
         valuePreview: preview(c.value),
@@ -160,6 +181,7 @@ export class Collector {
             valuePreview: preview(v),
             party: this.party.party(host),
             phase: this.phase,
+            stage: this.stage,
             firstSeenUrl: this.currentUrl,
             firstSeenAt: now,
             classification: this.classifier.classifyName(k, host),

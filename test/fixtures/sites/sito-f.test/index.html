@@ -1,0 +1,17 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Sito F</title></head>
+<body style="min-height:3000px"><h1>Sito F</h1>
+<div id="b" style="position:fixed;bottom:0;left:0;right:0;background:#eee;padding:16px">
+  <p>Proseguendo con la navigazione accetti l'uso dei cookie.</p><button id="ok">Ok</button>
+</div>
+<script>
+  // Cookie tecnico al caricamento; tracciamento "consenso da scroll" alla prima rotellata
+  document.cookie = 'tecnico_f=1; path=/';
+  var fired = false;
+  window.addEventListener('scroll', function () {
+    if (fired) return;
+    fired = true;
+    document.cookie = '_ga=GA1.1.77; max-age=63072000; path=/';
+    new Image().src = 'http://pixel.adtest.example:' + location.port + '/tr?f=scroll';
+  });
+  document.getElementById('ok').onclick = function () { document.getElementById('b').remove(); };
+</script></body></html>

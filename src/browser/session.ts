@@ -90,6 +90,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
 
   const settle = async () => {
     if (p.scroll) {
+      // Lo scroll è un'azione dell'utente: ciò che compare da qui in poi non è più "al caricamento".
+      collector.markScroll();
       await scrollPage(page);
       await page.waitForTimeout(p.attesaDopoScroll);
     }

@@ -23,7 +23,7 @@ before(async () => {
   const config = {
     cliente: 'Cliente di prova',
     output: join(dir, 'runs'),
-    browser: { hostResolverRules: 'MAP * 127.0.0.1', userAgentSuffix: 'ScookieAudit/test' },
+    browser: { hostResolverRules: 'MAP * 127.0.0.1', userAgentSuffix: 'ScookieAudit/test', servizioUscita: url('trace.test', '/cdn-cgi/trace') },
     protocollo: { attesaDopoCaricamento: 300, attesaDopoScroll: 200, attesaDopoScelta: 800, pausaTraSessioni: 0, timeoutNavigazione: 15000 },
     scenari: { modalita: 'percorso', pagineDopoScelta: 2 },
     campionamento: { perTipo: 1, maxPagine: 4 },
@@ -34,6 +34,7 @@ before(async () => {
       { url: url('shop.sito-b.test'), sitemap: false, banner: { attesa: 1500 } },
       { url: url('sito-c.test'), sitemap: false },
       { url: url('sito-e.test'), sitemap: false, seguiLink: false },
+      { url: url('sito-f.test'), sitemap: false, seguiLink: false, banner: { attesa: 1500 } },
       { url: url('sito-d.test'), sitemap: false, dichiarati: join(FIXTURES, 'dichiarati-sito-d.csv'), cookiePolicy: url('www.sito-b.test', '/cookie-policy') },
     ],
   };
@@ -132,6 +133,35 @@ test('sito-e: euristica al secondo livello sceglie "Rifiuta tutti" nelle prefere
   assert.match(r.interaction.detail, /"Personalizza" e poi su "Rifiuta tutti"/);
   assert.ok(r.cookies.some((c) => c.name === 'pref' && c.valuePreview === 'no'));
   assert.ok(rules('sito-e.test').includes('rifiuto-non-al-primo-livello'));
+});
+
+test('sito-f: tracciamento attivato dallo scroll distinto dal caricamento', () => {
+  const s = session('sito-f.test', 'nessuna-azione');
+  assert.equal(s.cookies.find((c) => c.name === '_ga')?.stage, 'scroll');
+  assert.equal(s.cookies.find((c) => c.name === 'tecnico_f')?.stage, 'caricamento');
+  const f = result.findings.find((x) => x.site.includes('sito-f.test') && x.ruleId === 'cookie-prima-del-consenso')!;
+  assert.match(f.description, /solo dopo lo scroll/);
+  const t = result.findings.find((x) => x.site.includes('sito-f.test') && x.ruleId === 'richiesta-tracker-prima-del-consenso')!;
+  assert.match(t.description, /solo dopo lo scroll/);
+  // sito-a invece traccia già al caricamento
+  const a = result.findings.find((x) => x.site.includes('sito-a.test') && x.ruleId === 'cookie-prima-del-consenso')!;
+  assert.match(a.description, /già al caricamento/);
+});
+
+test('sito-a: elementi non classificati segnalati invece di restare invisibili', () => {
+  const f = result.findings.find((x) => x.site.includes('sito-a.test') && x.ruleId === 'elementi-non-classificati');
+  assert.ok(f);
+  assert.ok(f.details.some((d) => d.includes('xyz_misterioso')));
+  assert.ok(f.details.some((d) => d.includes('widget.ignoto.example')));
+  assert.ok(!f.details.some((d) => d.includes('pixel.adtest.example')), 'i tracker classificati non compaiono');
+});
+
+test('paese di uscita verificato e registrato nel manifest', () => {
+  const m = JSON.parse(readFileSync(join(result.runDir, 'manifest.json'), 'utf8')) as { ambiente: { uscita: { verified: boolean; country: string; matches: boolean } } };
+  assert.equal(m.ambiente.uscita.verified, true);
+  assert.equal(m.ambiente.uscita.country, 'IT');
+  assert.equal(m.ambiente.uscita.matches, true);
+  assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /rilevato <strong>IT<\/strong>/);
 });
 
 test('output: report, dati, evidenze con hash verificabili', () => {

@@ -8,6 +8,7 @@ import { isConsentModeDeniedPing } from '../src/rules/helpers.js';
 import { PartyResolver, registrableDomain } from '../src/util/domains.js';
 import { parseCsv, toCsv } from '../src/util/csv.js';
 import type { RequestRecord } from '../src/types.js';
+import { parseTrace } from '../src/browser/exit.js';
 
 test('pattern dei nomi dichiarati', () => {
   assert.ok(declaredPattern('_ga_xxxxxxx').test('_ga_ABC123'));
@@ -96,4 +97,9 @@ test('CSV andata e ritorno', () => {
   const out = toCsv(['a', 'b'], [['x;y', 'con "virgolette"'], [1, null]]);
   const rows = parseCsv(out, ';');
   assert.deepEqual(rows, [['a', 'b'], ['x;y', 'con "virgolette"'], ['1', '']]);
+});
+
+test('lettura IP e paese di uscita', () => {
+  assert.deepEqual(parseTrace('fl=1\nip=203.0.113.5\nts=1\nloc=it\ncolo=MXP\n'), { ip: '203.0.113.5', country: 'IT' });
+  assert.deepEqual(parseTrace('niente'), { ip: null, country: null });
 });

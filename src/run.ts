@@ -8,6 +8,7 @@ import type { AuditConfig } from './config/schema.js';
 import { compareDeclared } from './declared/compare.js';
 import { loadDeclaredFile } from './declared/declared.js';
 import { discoverSite, type DiscoveryResult } from './discovery/discover.js';
+import { detectExit, type ExitInfo } from './browser/exit.js';
 import { runSession, type SessionPlan } from './browser/session.js';
 import { renderHtml } from './report/html.js';
 import { writeCsvs } from './report/csv.js';
@@ -136,10 +137,27 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const declared: DeclaredSet[] = [];
   let userAgent = '';
   let browserVersion = '';
+  let exit: ExitInfo = {
+    verified: false,
+    ip: null,
+    country: null,
+    declared: config.browser.paeseUscita.toUpperCase(),
+    source: '',
+    matches: false,
+    inEu: null,
+    note: 'Verifica del paese di uscita disattivata nella configurazione: vale solo quello dichiarato.',
+  };
 
   try {
     browserVersion = `Chromium ${browser.version()}`;
     userAgent = await resolveUserAgent(browser, config);
+    if (config.browser.verificaUscita !== 'no') {
+      exit = await detectExit(browser, config.browser.servizioUscita, config.browser.paeseUscita);
+      log(`Uscita: ${exit.note}${exit.ip ? ` IP ${exit.ip}.` : ''}`);
+      if (config.browser.verificaUscita === 'blocca' && !exit.matches) {
+        throw new Error(`Esecuzione interrotta: ${exit.note} (impostare browser.verificaUscita: avvisa per proseguire comunque)`);
+      }
+    }
 
     let nextId = 1;
     for (let i = 0; i < config.siti.length; i++) {
@@ -189,7 +207,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const comparison: ComparisonRow[] = declared.flatMap((d) =>
     compareDeclared(d.site, sessions.filter((s) => s.site === d.site), d),
   );
-  const findings = evaluateRules({ config, sessions, declared, comparison }, norms);
+  const findings = evaluateRules({ config, sessions, declared, comparison, exit }, norms);
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
@@ -211,6 +229,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
     findings,
     files: evidenceFiles,
     normsPath: basename(normsPath),
+    exit,
   });
   writeFileSync(join(runDir, 'report.html'), html);
 
@@ -235,7 +254,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
     cliente: config.cliente,
     inizio: startedAt,
     fine: endedAt,
-    ambiente: { node: process.version, piattaforma: `${process.platform} ${process.arch}`, browser: browserVersion, userAgent },
+    ambiente: { node: process.version, piattaforma: `${process.platform} ${process.arch}`, browser: browserVersion, userAgent, uscita: exit },
     configurazione: { file: basename(loaded.path), sha256: sha256(loaded.raw), contenuto: loaded.raw },
     norme: { file: basename(normsPath), sha256: await sha256File(normsPath) },
     datiClassificazione: {
