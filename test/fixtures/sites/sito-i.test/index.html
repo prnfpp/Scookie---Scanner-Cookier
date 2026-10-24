@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><title>App di prova</title></head>
+<body>
+<!-- Applicazione a pagina singola: nessun link nella home, si naviga con i pulsanti. -->
+<div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;background:#eee;padding:10px">
+  Usiamo i cookie. <button onclick="location.href='/accettato'">Accetta tutti</button>
+</div>
+<nav>
+  <button onclick="go('/prodotti')">Prodotti</button>
+  <button onclick="document.getElementById('menu').hidden = !document.getElementById('menu').hidden">Menu</button>
+  <div id="menu" hidden><a href="/chi-siamo">Chi siamo</a></div>
+  <button onclick="location.href='/preventivo/passo-1'">Preventivo</button>
+  <button onclick="window.open('/assistenza')">Assistenza</button>
+  <span role="button" onclick="location.hash='#/offerte'">Offerte</span>
+  <button onclick="location.href='/logout'">Esci</button>
+</nav>
+<form onsubmit="event.preventDefault(); location.href='/inviato'">
+  <input name="targa"><button>Calcola</button>
+</form>
+<main id="main"></main>
+<footer><a href="http://info.sito-i.test:{{PORT}}/">Informazioni</a></footer>
+<script>
+  function go(p) { history.pushState({}, '', p); render(); }
+  function render() {
+    const m = document.getElementById('main');
+    if (location.pathname === '/preventivo/passo-1') m.innerHTML = '<button onclick="location.href=\'/preventivo/passo-2\'">Avanti</button>';
+    else m.textContent = 'Pagina ' + location.pathname;
+  }
+  render();
+</script>
+</body></html>
