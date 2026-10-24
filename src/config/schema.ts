@@ -147,11 +147,16 @@ export const configSchema = z
     report: z
       .object({
         pdf: z.boolean().default(true),
+        /**
+         * Corpi delle risposte nei file HAR: tutti, testo (solo risposte testuali fino a 512 KB) o nessuno.
+         * I corpi delle richieste (dati inviati ai terzi) restano sempre.
+         */
+        harContenuti: z.enum(['tutti', 'testo', 'nessuno']).default('testo'),
         /** Testo libero da includere nella sezione "Limiti". */
         noteLimiti: z.array(z.string()).default([]),
       })
       .strict()
-      .default({ pdf: true, noteLimiti: [] }),
+      .default({ pdf: true, harContenuti: 'testo', noteLimiti: [] }),
     siti: z.array(siteSchema).min(1),
   })
   .strict();

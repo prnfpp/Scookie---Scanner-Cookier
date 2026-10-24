@@ -34,6 +34,10 @@ campionamento:
 
 dominiPropri: []           # es. [esempio-cdn.com] se un dominio diverso è dello stesso titolare
 
+report:
+  pdf: true
+  harContenuti: testo     # tutti | testo | nessuno — corpi delle risposte nei HAR (le richieste restano sempre)
+
 siti:
   - url: https://www.esempio.it/
     cookiePolicy: https://www.esempio.it/cookie-policy

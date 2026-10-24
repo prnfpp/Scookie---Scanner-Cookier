@@ -7,6 +7,7 @@ import type { DeclaredItem, Evidence, InteractionReport, ScenarioName, SessionRe
 import { PartyResolver, registrableDomain } from '../util/domains.js';
 import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { Collector } from './collector.js';
+import { trimHar } from './har.js';
 
 export interface SessionPlan {
   id: string;
@@ -169,6 +170,13 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     // La chiusura salva il file HAR: se non avviene, la sessione resta senza HAR e lo si annota.
     const err = await closeSafely(context, 90000, 'chiusura contesto (salvataggio HAR)');
     if (err) errors.push(err);
+    else {
+      try {
+        trimHar(join(env.runDir, harRel), config.report.harContenuti);
+      } catch (e) {
+        errors.push(`riduzione del file HAR non riuscita: ${(e as Error).message.split('\n')[0]}`);
+      }
+    }
   }
 
   const { cookies, storage, requests } = collector.results();
