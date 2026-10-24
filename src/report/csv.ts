@@ -20,10 +20,10 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
     [
       'cookie.csv',
       toCsv(
-        ['sessione', 'sito', 'scenario', 'nome', 'dominio', 'path', 'parte', 'fase', 'scadenza', 'httpOnly', 'secure', 'sameSite', 'categoria', 'fonte_categoria', 'piattaforma', 'prima_pagina', 'prima_osservazione', 'valore_anteprima'],
+        ['sessione', 'sito', 'scenario', 'nome', 'dominio', 'path', 'parte', 'fase', 'momento', 'scadenza', 'httpOnly', 'secure', 'sameSite', 'categoria', 'fonte_categoria', 'piattaforma', 'prima_pagina', 'prima_osservazione', 'valore_anteprima'],
         sessions.flatMap((s) =>
           s.cookies.map((c) => [
-            s.id, s.site, s.scenario, c.name, c.domain, c.path, c.party, c.phase, c.expires ?? 'sessione', c.httpOnly, c.secure, c.sameSite,
+            s.id, s.site, s.scenario, c.name, c.domain, c.path, c.party, c.phase, c.stage, c.expires ?? 'sessione', c.httpOnly, c.secure, c.sameSite,
             c.classification.category, c.classification.source, c.classification.platform, c.firstSeenUrl, c.firstSeenAt, c.valuePreview,
           ]),
         ),
@@ -32,10 +32,10 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
     [
       'storage.csv',
       toCsv(
-        ['sessione', 'sito', 'scenario', 'origine', 'tipo', 'chiave', 'parte', 'fase', 'categoria', 'fonte_categoria', 'piattaforma', 'prima_pagina', 'prima_osservazione', 'valore_anteprima'],
+        ['sessione', 'sito', 'scenario', 'origine', 'tipo', 'chiave', 'parte', 'fase', 'momento', 'categoria', 'fonte_categoria', 'piattaforma', 'prima_pagina', 'prima_osservazione', 'valore_anteprima'],
         sessions.flatMap((s) =>
           s.storage.map((st) => [
-            s.id, s.site, s.scenario, st.origin, st.kind, st.key, st.party, st.phase, st.classification.category, st.classification.source,
+            s.id, s.site, s.scenario, st.origin, st.kind, st.key, st.party, st.phase, st.stage, st.classification.category, st.classification.source,
             st.classification.platform, st.firstSeenUrl, st.firstSeenAt, st.valuePreview,
           ]),
         ),
@@ -44,10 +44,10 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
     [
       'richieste.csv',
       toCsv(
-        ['sessione', 'sito', 'scenario', 'seq', 'momento', 'ms_dalla_scelta', 'fase', 'metodo', 'tipo', 'stato', 'host', 'parte', 'fornitore', 'categoria', 'parametri_consenso', 'server_side', 'pagina', 'url'],
+        ['sessione', 'sito', 'scenario', 'seq', 'orario', 'ms_dalla_scelta', 'fase', 'momento', 'metodo', 'tipo', 'stato', 'host', 'parte', 'fornitore', 'categoria', 'parametri_consenso', 'server_side', 'pagina', 'url'],
         sessions.flatMap((s) =>
           s.requests.map((r) => [
-            s.id, s.site, s.scenario, r.seq, r.at, r.msFromChoice, r.phase, r.method, r.resourceType, r.status, r.host, r.party,
+            s.id, s.site, s.scenario, r.seq, r.at, r.msFromChoice, r.phase, r.stage, r.method, r.resourceType, r.status, r.host, r.party,
             r.tracker?.company, r.tracker?.category, r.consentParams ? JSON.stringify(r.consentParams) : '', r.serverSide, r.pageUrl, r.url,
           ]),
         ),

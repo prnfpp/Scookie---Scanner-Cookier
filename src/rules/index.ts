@@ -5,6 +5,7 @@ import { consentModeSenzaConsenso } from './regole/consent-mode-senza-consenso.j
 import { cookiePrimaDelConsenso } from './regole/cookie-prima-del-consenso.js';
 import { rifiutoNonAlPrimoLivello, sceltaNonVerificata } from './regole/interazione-banner.js';
 import { richiestaTrackerPrimaDelConsenso } from './regole/richiesta-tracker-prima-del-consenso.js';
+import { elementiNonClassificati } from './regole/elementi-non-classificati.js';
 import { endpointServerSide } from './regole/server-side.js';
 import type { Rule } from './types.js';
 
@@ -21,5 +22,6 @@ export const RULES: Rule[] = [
   nonDichiarati,
   categoriaIncoerente,
   dichiaratiNonOsservati,
+  elementiNonClassificati,
   endpointServerSide,
 ];

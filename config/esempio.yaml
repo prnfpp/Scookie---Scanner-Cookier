@@ -8,7 +8,8 @@ browser:
   headless: true
   locale: it-IT
   timezone: Europe/Rome
-  paeseUscita: IT          # dichiarato nel report; usare un proxy se serve uscire da un altro paese
+  paeseUscita: IT          # paese da cui deve partire la navigazione; usare un proxy se serve
+  verificaUscita: avvisa   # avvisa | blocca | no — confronta con IP e paese rilevati all'avvio
   userAgentSuffix: "ScookieAudit/0.1 (+mailto:audit@esempio.it)"
   # proxy: http://proxy.esempio.it:3128
 

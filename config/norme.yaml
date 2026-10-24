@@ -68,6 +68,9 @@ regole:
   categoria-incoerente:
     norme: [gdpr13, garante2021, art122]
     gravita: media
+  elementi-non-classificati:
+    norme: [art122, eprivacy53, garante2021]
+    gravita: bassa
   endpoint-server-side:
     norme: [gdpr13]
     gravita: informativa

@@ -1,4 +1,4 @@
-# Elenco di domini di terze parti con categoria, redatto per questo progetto (licenza MIT).
+# Elenco di domini di terze parti con categoria, redatto per questo progetto (stessi diritti del resto del codice).
 # Non deriva da Tracker Radar, Disconnect o EasyPrivacy (licenze non compatibili con uso commerciale).
 #
 # Campi:
@@ -129,6 +129,37 @@ tracker:
   - { dominio: lr-ingest.io, azienda: LogRocket, categoria: registrazione-sessioni }
   - { dominio: quantummetric.com, azienda: Quantum Metric, categoria: registrazione-sessioni }
   - { dominio: decibelinsight.net, azienda: Medallia, categoria: registrazione-sessioni }
+
+  # --- Altri strumenti di marketing ed e-commerce ---
+  - { dominio: googletagservices.com, azienda: Google, categoria: marketing }
+  - { dominio: klaviyo.com, azienda: Klaviyo, categoria: marketing }
+  - { dominio: chimpstatic.com, azienda: Mailchimp, categoria: marketing }
+  - { dominio: list-manage.com, azienda: Mailchimp, categoria: marketing }
+  - { dominio: sibautomation.com, azienda: Brevo, categoria: marketing }
+  - { dominio: monorail-edge.shopifysvc.com, azienda: Shopify, categoria: statistica, nota: Statistiche Shopify }
+  - { dominio: cloudflareinsights.com, azienda: Cloudflare, categoria: statistica, nota: Cloudflare Web Analytics }
+
+  # --- Infrastruttura: CDN, pagamenti, protezione anti-bot ---
+  # Classificate per ridurre il rumore della regola "elementi non classificati". Restano visibili nell'inventario.
+  - { dominio: cdnjs.cloudflare.com, azienda: Cloudflare, categoria: tecnico, nota: CDN }
+  - { dominio: challenges.cloudflare.com, azienda: Cloudflare, categoria: tecnico, nota: Protezione anti-bot }
+  - { dominio: cdn.jsdelivr.net, azienda: jsDelivr, categoria: tecnico, nota: CDN }
+  - { dominio: unpkg.com, azienda: unpkg, categoria: tecnico, nota: CDN }
+  - { dominio: code.jquery.com, azienda: jQuery, categoria: tecnico, nota: CDN }
+  - { dominio: ajax.googleapis.com, azienda: Google, categoria: tecnico, nota: CDN }
+  - { dominio: gstatic.com, azienda: Google, categoria: tecnico, nota: Risorse statiche Google }
+  - { dominio: cloudfront.net, azienda: Amazon, categoria: tecnico, nota: CDN }
+  - { dominio: akamaihd.net, azienda: Akamai, categoria: tecnico, nota: CDN }
+  - { dominio: akamaized.net, azienda: Akamai, categoria: tecnico, nota: CDN }
+  - { dominio: fastly.net, azienda: Fastly, categoria: tecnico, nota: CDN }
+  - { dominio: cdn.shopify.com, azienda: Shopify, categoria: tecnico, nota: CDN Shopify }
+  - { dominio: shopifycdn.com, azienda: Shopify, categoria: tecnico, nota: CDN Shopify }
+  - { dominio: wp.com, azienda: Automattic, categoria: tecnico, nota: CDN WordPress }
+  - { dominio: s.w.org, azienda: WordPress, categoria: tecnico, nota: Risorse WordPress }
+  - { dominio: js.stripe.com, azienda: Stripe, categoria: tecnico, nota: Pagamenti }
+  - { dominio: m.stripe.network, azienda: Stripe, categoria: tecnico, nota: Pagamenti (antifrode) }
+  - { dominio: paypal.com, azienda: PayPal, categoria: tecnico, nota: Pagamenti }
+  - { dominio: paypalobjects.com, azienda: PayPal, categoria: tecnico, nota: Pagamenti }
 
   # --- Gestori del consenso (CMP) ---
   - { dominio: cookielaw.org, azienda: OneTrust, categoria: tecnico, nota: CMP }

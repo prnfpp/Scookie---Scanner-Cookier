@@ -1,3 +1,4 @@
+import type { ExitInfo } from '../browser/exit.js';
 import type { AuditConfig } from '../config/schema.js';
 import type { DiscoveryResult } from '../discovery/discover.js';
 import { CATEGORY_LABEL, groupBy } from '../rules/helpers.js';
@@ -18,6 +19,7 @@ export interface ReportInput {
   findings: Finding[];
   files: { path: string; sha256: string; bytes: number }[];
   normsPath: string;
+  exit: ExitInfo;
 }
 
 const esc = (v: unknown) =>
@@ -32,7 +34,7 @@ const LIMITS = [
   'Ogni scenario parte da un profilo browser pulito. Il risultato può variare con test A/B, aste pubblicitarie, geolocalizzazione e configurazioni del CMP diverse per paese.',
   'Il tracciamento lato server non è osservabile: se il sito invia dati a un proprio endpoint (es. /g/collect su un sottodominio proprio), i destinatari finali non sono visibili dal browser.',
   'La classificazione di cookie e domini si basa su Open Cookie Database e su un elenco di domini curato; gli elementi "non classificati" vanno valutati caso per caso.',
-  'Il paese di uscita è quello dichiarato nella configurazione e non è verificato dal tool.',
+  'Il paese di uscita è rilevato una volta all\'avvio tramite un servizio esterno (vedi Perimetro e metodo); la geolocalizzazione per IP può essere imprecisa.',
   'Il tool documenta fatti tecnici e li collega a riferimenti normativi; la valutazione di conformità spetta al consulente legale o al DPO.',
 ];
 
@@ -40,7 +42,7 @@ const CSS = `
 :root{--fg:#1d1d1f;--muted:#5f6368;--line:#dadce0;--bg:#fff;--alt:#f6f7f9;--alta:#b3261e;--media:#b26a00;--bassa:#1a73e8;--info:#5f6368}
 *{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg);margin:0;padding:24px;max-width:1100px;margin:auto}
 h1{font-size:26px;margin:0 0 4px}h2{font-size:20px;border-bottom:2px solid var(--fg);padding-bottom:4px;margin-top:40px;page-break-after:avoid}h3{font-size:16px;margin:18px 0 6px}
-.muted{color:var(--muted)}table{border-collapse:collapse;width:100%;margin:8px 0 16px;font-size:12.5px}th,td{border:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;word-break:break-word}th{background:var(--alt)}
+.muted{color:var(--muted)}.warn{border:1px solid var(--media);background:#fff4e5;padding:8px 12px;border-radius:6px}table{border-collapse:collapse;width:100%;margin:8px 0 16px;font-size:12.5px}th,td{border:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;word-break:break-word}th{background:var(--alt)}
 .sev{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-size:12px;font-weight:600;text-transform:uppercase}.sev-alta{background:var(--alta)}.sev-media{background:var(--media)}.sev-bassa{background:var(--bassa)}.sev-informativa{background:var(--info)}
 .card{border:1px solid var(--line);border-left:5px solid var(--info);border-radius:6px;padding:12px 16px;margin:14px 0;page-break-inside:avoid}.card.alta{border-left-color:var(--alta)}.card.media{border-left-color:var(--media)}.card.bassa{border-left-color:var(--bassa)}
 .card h3{margin-top:0}.shots{display:flex;gap:8px;flex-wrap:wrap}.shots figure{margin:0;width:calc(50% - 4px)}.shots img{width:100%;border:1px solid var(--line)}figcaption{font-size:11px;color:var(--muted)}
@@ -57,6 +59,7 @@ export function renderHtml(r: ReportInput): string {
 <title>Audit cookie – ${esc(config.cliente)}</title><style>${CSS}</style></head><body>
 <h1>Audit tecnico cookie e tracciamenti</h1>
 <p class="muted">${esc(config.cliente)} · esecuzione del ${esc(fmt(r.startedAt))} · Scookie ${esc(r.toolVersion)}</p>
+${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</strong> ${esc(r.exit.note)}</p>` : ''}
 <p>Questo documento descrive cosa avviene nel browser dell'utente rispetto alle scelte sul banner di consenso, con le relative prove. Non contiene valutazioni di conformità né indicazioni correttive.</p>`);
 
   // 1. Perimetro e metodo
@@ -66,7 +69,7 @@ export function renderHtml(r: ReportInput): string {
 <tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}; browser ${esc(r.browserVersion)}</td></tr>
 <tr><td>User agent</td><td><code>${esc(r.userAgent)}</code></td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
-<tr><td>Paese di uscita (dichiarato)</td><td>${esc(config.browser.paeseUscita)}${config.browser.proxy ? ' (tramite proxy)' : ''}</td></tr>
+<tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (IP ${esc(r.exit.ip)}, fonte ${esc(r.exit.source)})` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
 <tr><td>Scenari</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta</td></tr>
 <tr><td>Protocollo di osservazione</td><td>Per ogni pagina: caricamento completo, attesa della rete inattiva (max 5 s), attesa fissa di ${config.protocollo.attesaDopoCaricamento} ms${config.protocollo.scroll ? `, scroll fino a fondo pagina e attesa di ${config.protocollo.attesaDopoScroll} ms` : ''}. Sulla prima pagina il banner viene fotografato e l'eventuale scelta avviene <em>prima</em> dello scroll; dopo la scelta si attendono ${config.protocollo.attesaDopoScelta} ms. Pausa tra sessioni: ${config.protocollo.pausaTraSessioni} ms. Ogni sessione usa un profilo browser nuovo.</td></tr>
 <tr><td>Tabella norme</td><td>${esc(r.normsPath)}</td></tr>
@@ -127,13 +130,14 @@ ${others.length ? `<p class="muted">File: ${others.map((e) => esc(e.file)).join(
   const declaredStatus = new Map(r.comparison.map((c) => [`${c.site}|${c.name}|${c.domain}`, c]));
   for (const site of sites) {
     const ss = sessions.filter((s) => s.site === site);
-    const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: boolean; afterReject: boolean }>();
+    const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: '' | 'al caricamento' | 'dopo scroll'; afterReject: boolean }>();
     for (const s of ss) {
       for (const c of s.cookies) {
         const k = `${c.name}|${c.domain}`;
-        const cur = cookies.get(k) ?? { c, scen: new Set<string>(), pre: false, afterReject: false };
+        const cur = cookies.get(k) ?? { c, scen: new Set<string>(), pre: '', afterReject: false };
         cur.scen.add(s.scenario);
-        if (c.phase === 'prima') cur.pre = true;
+        // "al caricamento" prevale su "dopo scroll" se il cookie compare in entrambi i modi
+        if (c.phase === 'prima' && cur.pre !== 'al caricamento') cur.pre = c.stage === 'caricamento' ? 'al caricamento' : 'dopo scroll';
         if (s.scenario === 'rifiuta' && c.phase === 'dopo') cur.afterReject = true;
         cookies.set(k, cur);
       }
@@ -143,7 +147,7 @@ ${[...cookies.values()]
   .sort((a, b) => a.c.name.localeCompare(b.c.name))
   .map(({ c, scen, pre, afterReject }) => {
     const d = declaredStatus.get(`${site}|${c.name}|${c.domain.replace(/^\./, '')}`);
-    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${pre ? 'sì' : ''}</td><td>${afterReject ? 'sì' : ''}</td><td>${esc([...scen].join(', '))}</td></tr>`;
+    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${esc(pre)}</td><td>${afterReject ? 'sì' : ''}</td><td>${esc([...scen].join(', '))}</td></tr>`;
   })
   .join('')}</table>`);
 
@@ -151,12 +155,12 @@ ${[...cookies.values()]
       ss.flatMap((s) => s.requests.filter((q) => q.party === 'terza').map((q) => ({ s, q }))),
       (x) => x.q.host,
     );
-    parts.push(`<h3>${esc(site)} — terze parti contattate (${third.size})</h3><table><tr><th>Host</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta</th><th>Dopo rifiuto</th></tr>
+    parts.push(`<h3>${esc(site)} — terze parti contattate (${third.size})</h3><table><tr><th>Host</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
 ${[...third]
   .sort((a, b) => Number(NON_TECHNICAL.has(b[1][0].q.tracker?.category ?? 'sconosciuta')) - Number(NON_TECHNICAL.has(a[1][0].q.tracker?.category ?? 'sconosciuta')) || a[0].localeCompare(b[0]))
   .map(([host, list]) => {
     const t = list[0].q.tracker;
-    return `<tr><td>${esc(host)}</td><td>${esc(t?.company ?? '—')}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.phase === 'prima').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
+    return `<tr><td>${esc(host)}</td><td>${esc(t?.company ?? '—')}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
   })
   .join('')}</table>`);
   }

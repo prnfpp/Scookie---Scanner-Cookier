@@ -1,6 +1,8 @@
 # Componenti di terze parti
 
-Scookie è distribuito con licenza MIT. Usa i componenti seguenti, tutti con licenze che consentono l'uso commerciale.
+Scookie è software proprietario (© 2026 Filippo Pirini, vedi `LICENSE`), destinato all'uso del titolare.
+Usa i componenti seguenti, tutti con licenze permissive: ne consentono l'uso anche in software proprietario e commerciale,
+a condizione di conservarne le note di copyright e di licenza.
 `npm run licenses` verifica automaticamente le licenze di tutte le dipendenze installate (dirette e transitive)
 e fallisce se ne trova una non ammessa.
 
@@ -16,7 +18,7 @@ Il file è una copia non modificata, scaricata il 23/10/2026. Per aggiornarlo:
 curl -sSf https://raw.githubusercontent.com/jkwakman/Open-Cookie-Database/master/open-cookie-database.csv -o data/vendor/open-cookie-database.csv
 ```
 
-`data/trackers.yaml` è stato redatto per questo progetto (licenza MIT) e **non** deriva da elenchi con licenze
+`data/trackers.yaml` è stato redatto per questo progetto (stessi diritti del resto del codice) e **non** deriva da elenchi con licenze
 non commerciali o copyleft.
 
 ## Dipendenze npm (runtime)

@@ -1,4 +1,4 @@
-import { groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
+import { groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /**
@@ -22,7 +22,7 @@ export const consentModeSenzaConsenso: Rule = {
       const { s, r } = group[0];
       const reqs = group.map((g) => g.r);
       const gcs = [...new Set(reqs.map((x) => x.consentParams!.gcs))];
-      const when = r.phase === 'prima' ? 'prima di qualsiasi scelta sul banner' : 'dopo il click su "Rifiuta"';
+      const when = r.phase === 'prima' ? stageWhen(reqs.map((x) => x.stage)).when : 'dopo il click su "Rifiuta"';
       out.push({
         site: s.site,
         scenario: s.scenario,

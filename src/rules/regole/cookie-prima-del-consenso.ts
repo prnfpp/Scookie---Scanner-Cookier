@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { CATEGORY_LABEL, fmtDate, groupBy, sessionEvidence } from '../helpers.js';
+import { CATEGORY_LABEL, fmtDate, groupBy, sessionEvidence, stageLabel, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Cookie o storage non tecnici scritti prima di qualsiasi scelta sul banner. */
@@ -19,6 +19,7 @@ export const cookiePrimaDelConsenso: Rule = {
           where: c.domain,
           cls: c.classification,
           url: c.firstSeenUrl,
+          stage: c.stage,
           extra: `scadenza ${fmtDate(c.expires)}, ${c.party} parte${c.httpOnly ? ', HttpOnly' : ''}`,
         })),
       ...s.storage
@@ -30,6 +31,7 @@ export const cookiePrimaDelConsenso: Rule = {
           where: st.origin,
           cls: st.classification,
           url: st.firstSeenUrl,
+          stage: st.stage,
           extra: `${st.party} parte`,
         })),
     ]);
@@ -39,20 +41,21 @@ export const cookiePrimaDelConsenso: Rule = {
       const names = [...new Set(group.map((g) => g.what))];
       const pages = [...new Set(group.map((g) => g.url))];
       const scen = [...new Set(group.map((g) => g.s.scenario))];
+      const { when, onlyAfterScroll } = stageWhen(group.map((g) => g.stage));
       out.push({
         site: first.s.site,
         scenario: first.s.scenario,
         pageUrl: first.url,
         description:
           `${names.length === 1 ? `Il ${names[0]} viene scritto` : `${names.length} elementi (${names.join(', ')}) vengono scritti`} ` +
-          `prima di qualsiasi scelta sul banner. Categoria: ${CATEGORY_LABEL[first.cls.category]}` +
+          `${when}. Categoria: ${CATEGORY_LABEL[first.cls.category]}` +
           `${first.cls.platform ? ` (${first.cls.platform})` : ''}, secondo ${first.cls.source}.`,
         details: [
-          ...[...new Map(group.map((g) => [g.what, g])).values()].map((g) => `${g.what} — dominio/origine ${g.where}; ${g.extra}`),
+          ...[...new Map(group.map((g) => [g.what, g])).values()].map((g) => `${g.what} — dominio/origine ${g.where}; ${g.extra}; ${stageLabel(g.stage)}`),
           `Pagine: ${pages.join(', ')}`,
           `Osservato negli scenari: ${scen.join(', ')} (fase precedente alla scelta)`,
         ],
-        evidence: sessionEvidence(first.s, ['1-banner']),
+        evidence: sessionEvidence(first.s, onlyAfterScroll ? ['1-banner', '3-fine'] : ['1-banner']),
       });
     }
     return out;
