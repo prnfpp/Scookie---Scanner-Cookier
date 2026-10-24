@@ -31,7 +31,11 @@ export interface RunResult {
 
 export function launchOptions(cfg: AuditConfig, headless = cfg.browser.headless): LaunchOptions {
   const args: string[] = [];
-  if (cfg.browser.hostResolverRules) args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`);
+  if (cfg.browser.hostResolverRules) {
+    // Solo per i test: tutti gli host puntano a 127.0.0.1 e la protezione della rete locale di Chromium
+    // bloccherebbe le letture di robots.txt e sitemap fatte dal documento fittizio (vedi discovery).
+    args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`, '--disable-features=LocalNetworkAccessChecks');
+  }
   return {
     headless,
     args,
