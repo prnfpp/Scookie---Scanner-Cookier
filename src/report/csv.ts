@@ -44,11 +44,11 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
     [
       'richieste.csv',
       toCsv(
-        ['sessione', 'sito', 'scenario', 'seq', 'orario', 'ms_dalla_scelta', 'fase', 'momento', 'metodo', 'tipo', 'stato', 'host', 'parte', 'fornitore', 'categoria', 'parametri_consenso', 'server_side', 'pagina', 'url'],
+        ['sessione', 'sito', 'scenario', 'seq', 'orario', 'ms_dalla_scelta', 'fase', 'momento', 'metodo', 'tipo', 'stato', 'host', 'parte', 'fornitore', 'categoria', 'parametri_consenso', 'server_side', 'errore', 'pagina', 'url'],
         sessions.flatMap((s) =>
           s.requests.map((r) => [
             s.id, s.site, s.scenario, r.seq, r.at, r.msFromChoice, r.phase, r.stage, r.method, r.resourceType, r.status, r.host, r.party,
-            r.tracker?.company, r.tracker?.category, r.consentParams ? JSON.stringify(r.consentParams) : '', r.serverSide, r.pageUrl, r.url,
+            r.tracker?.company, r.tracker?.category, r.consentParams ? JSON.stringify(r.consentParams) : '', r.serverSide, r.failure, r.pageUrl, r.url,
           ]),
         ),
       ),

@@ -73,6 +73,9 @@ test('campionamento deterministico e vario', () => {
     'https://a.it/contatti',
   ].map((url) => ({ url, source: 'sitemap' as const }));
   const cfg = { perTipo: 2, maxPagine: 5, tipi: {} };
+  // Con pochi tipi il campione si completa fino al massimo
+  const few = Array.from({ length: 6 }, (_, i) => ({ url: `https://a.it/online/p${i}`, source: 'link' as const }));
+  assert.equal(sample(few, 'https://a.it/', [], { perTipo: 1, maxPagine: 4, tipi: {} }).length, 4);
   const s1 = sample(urls, 'https://a.it/', ['https://a.it/preventivo/step-2'], cfg);
   const s2 = sample([...urls].reverse(), 'https://a.it/', ['https://a.it/preventivo/step-2'], cfg);
   assert.deepEqual(s1, s2);

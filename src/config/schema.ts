@@ -128,6 +128,7 @@ export const configSchema = z
       .default({ modalita: 'percorso', pagineDopoScelta: 3, attivi: ['nessuna-azione', 'rifiuta', 'accetta'] }),
     campionamento: z
       .object({
+        /** Pagine per tipo nel primo giro di campionamento; se i tipi sono pochi, il campione si completa fino a maxPagine. */
         perTipo: z.number().int().positive().default(2),
         maxPagine: z.number().int().positive().default(15),
         /** Numero massimo di URL lette dalle sitemap. */

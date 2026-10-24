@@ -91,6 +91,11 @@ ${sessions
   )
   .join('')}</table>`);
 
+  const retried = sessions.filter((s) => s.retryOf);
+  if (retried.length) {
+    parts.push(`<p><strong>Sessioni ripetute.</strong> Quando un sito mostra il banner in alcune sessioni e non in altre, le sessioni senza banner vengono ripetute una volta. La sessione originale resta nei dati (<code>dati.json</code>, voce <code>sessioniScartate</code>) e nelle evidenze.</p>
+<ul>${retried.map((s) => `<li>${esc(s.retryOf)} → ${esc(s.id)}: ${esc(s.errors[0] ?? '')}</li>`).join('')}</ul>`);
+  }
   parts.push(`<h3>Elenco dichiarato</h3><table><tr><th>Sito</th><th>Fonte</th><th>Voci</th><th>Note</th></tr>${r.declared
     .map((d) => `<tr><td>${esc(d.site)}</td><td>${esc(d.source ?? 'non disponibile')}</td><td>${d.items.length}</td><td>${esc(d.note ?? '')}</td></tr>`)
     .join('')}</table>`);

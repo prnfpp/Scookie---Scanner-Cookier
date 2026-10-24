@@ -94,14 +94,16 @@ export function sample(
   const picked = new Map<string, SampledPage[]>();
   for (const [type, list] of types) {
     list.sort((a, b) => a.url.localeCompare(b.url));
-    const n = Math.min(cfg.perTipo, list.length);
+    // Si preparano più pagine di perTipo: servono a completare il campione se i tipi sono pochi.
+    const n = Math.min(cfg.maxPagine, list.length);
     const step = list.length / n;
     picked.set(
       type,
       Array.from({ length: n }, (_, i) => ({ ...list[Math.floor(i * step)], type })),
     );
   }
-  // Round-robin tra i tipi finché non si raggiunge il massimo, così il campione resta vario.
+  // Round-robin tra i tipi, così il campione resta vario: prima fino a perTipo pagine per tipo,
+  // poi, se i tipi sono pochi, si completa fino a maxPagine.
   for (let round = 0; out.length < cfg.maxPagine; round++) {
     let added = false;
     for (const [, list] of picked) {
@@ -178,6 +180,12 @@ export async function discoverSite(
   const origin = new URL(home).origin;
   const host = new URL(home).hostname;
   const notes: string[] = [];
+  // Link interni scritti con un protocollo diverso (es. http:// su un sito https): si usa quello del sito.
+  const sameScheme = (u: string) => {
+    const x = new URL(u);
+    if (x.hostname === host && x.protocol !== new URL(home).protocol) x.protocol = new URL(home).protocol;
+    return x.toString();
+  };
   const extras = site.pagineExtra.map((p) => normalize(p, home)).filter((u): u is string => !!u);
   const exclude = site.escludi.map((e) => new RegExp(e, 'i'));
   const keep = (u: string) => {
@@ -198,7 +206,7 @@ export async function discoverSite(
         sitemapUrls = sm.sitemapUrls;
         for (const p of sm.pages) {
           const n = normalize(p, home);
-          if (n && keep(n)) candidates.push({ url: n, source: 'sitemap' });
+          if (n && keep(n)) candidates.push({ url: sameScheme(n), source: 'sitemap' });
         }
         notes.push(`URL da sitemap sullo stesso host: ${candidates.length}`);
       }
@@ -215,8 +223,9 @@ export async function discoverSite(
           );
           let n = 0;
           for (const h of hrefs) {
-            const u = normalize(h, home);
-            if (u && keep(u) && !candidates.some((c) => c.url === u)) {
+            const norm = normalize(h, home);
+            const u = norm && keep(norm) ? sameScheme(norm) : null;
+            if (u && !candidates.some((c) => c.url === u)) {
               candidates.push({ url: u, source: 'link' });
               n++;
             }
