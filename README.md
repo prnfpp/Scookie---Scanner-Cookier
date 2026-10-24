@@ -117,6 +117,19 @@ campionamento:
 
 Per **escludere** sezioni dal campione automatico: `escludi: ["^/area-riservata", "^/en/"]` (inizio del percorso). Le pagine che il sito vieta ai robot nel file robots.txt sono escluse in automatico (`rispettaRobots: true`); quelle indicate in `pagineExtra` vengono visitate comunque, perché sono una scelta esplicita.
 
+#### Pagine che non sono nella sitemap (applicazioni web)
+
+Alcuni siti, come le aree preventivo o le applicazioni web, non hanno sitemap né link: si cambia pagina cliccando pulsanti. Se con sitemap e link il tool trova meno di 5 pagine, prova da solo un'**esplorazione con clic**: apre la home e le pagine extra, clicca pulsanti, menu e schede dello stesso sito (fino a 2 livelli, 40 clic, 25 pagine, 4 minuti) e aggiunge al campione gli indirizzi che compaiono. Le pagine trovate così hanno origine "esplorazione" nel report. Durante l'esplorazione può passare per gli altri sottodomini dello stesso dominio (es. da www.esempio.it all'area preventivo su app.esempio.it), ma nel campione entrano solo le pagine del sito in esame. Se compare una verifica anti-bot si ferma subito.
+
+Non clicca mai: le scelte sul banner dei cookie, i pulsanti che inviano moduli, e quelli come "Esci", "Paga", "Acquista", "Elimina", "Conferma", "Iscriviti". Non compila moduli: nei percorsi come il preventivo arriva al primo passaggio, i successivi vanno indicati in `pagineExtra`. L'esplorazione usa un browser separato, quindi non altera i dati dell'audit, ed è ripetibile (stesso ordine di clic a ogni esecuzione).
+
+```yaml
+  - url: https://app.esempio.it/
+    esplora: sempre        # auto (predefinito) | sempre | no
+```
+
+I limiti si cambiano in `campionamento.esplorazione` (`sePaginaMeno`, `profondita`, `maxClic`, `maxPagine`, `maxSecondi`). Nell'interfaccia: "Opzioni avanzate del sito" → "Esplorazione con clic".
+
 #### Se il sito blocca il tool
 
 Alcuni siti mostrano ai browser automatici una pagina di verifica ("Verifica di essere umano", Cloudflare, DataDome…). Il tool la riconosce: la sessione viene **scartata** (non produce criticità sul sito) e il report lo dichiara nella scheda "Accesso bloccato" e nella sintesi. Si può riprovare con il browser visibile:
@@ -198,7 +211,7 @@ Alcuni siti grandi bloccano i browser automatici. Il report lo segnala (sessioni
 
 ## Cosa fa (dettaglio tecnico)
 
-Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte a mano), ne estrae un campione per tipo e lo visita con un browser pulito in cinque scenari (si possono ridurre con `scenari.attivi`):
+Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte a mano e, se servono, esplorazione con clic), ne estrae un campione per tipo e lo visita con un browser pulito in cinque scenari (si possono ridurre con `scenari.attivi`):
 
 | Scenario | Cosa succede |
 | --- | --- |
@@ -344,6 +357,7 @@ I test di integrazione usano siti di prova locali (`test/fixtures/sites/`), uno 
 - tracciamento attivato dallo scroll;
 - vanilla-cookieconsent il cui script non si carica alla prima visita (ripetizione automatica);
 - pagina di verifica anti-bot (Cloudflare);
+- applicazione a pagina singola senza sitemap né link (esplorazione con clic);
 - analisi del banner, cookie policy con tabelle, scenari personalizza e revoca.
 
 Il tool è stato inoltre validato su 5 siti reali (e-commerce, agenzia, PA, grande distribuzione) con esecuzioni ripetute dall'Italia e dagli USA: banner gestiti e verificati in tutti i casi in cui erano presenti, risultati coincidenti tra esecuzioni.
