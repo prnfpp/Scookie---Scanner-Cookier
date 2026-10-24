@@ -96,6 +96,8 @@ export interface RequestRecord {
   consentParams?: Record<string, string>;
   /** Endpoint di raccolta riconosciuto su un dominio proprio (probabile server-side tagging). */
   serverSide?: string;
+  /** Motivo del fallimento, se la richiesta non ha ricevuto risposta (es. net::ERR_TIMED_OUT). */
+  failure?: string;
 }
 
 export type ChoiceLayer = 'primo-livello' | 'secondo-livello' | 'chiusura-x';
@@ -142,6 +144,8 @@ export interface SessionResult {
   screenshots: Evidence[];
   har: string | null;
   errors: string[];
+  /** Se la sessione è la ripetizione di un'altra, l'id di quella scartata. */
+  retryOf?: string;
 }
 
 export interface DeclaredItem {

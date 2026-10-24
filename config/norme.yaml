@@ -56,6 +56,9 @@ regole:
   banner-assente:
     norme: [garante2021, gdpr13]
     gravita: informativa
+  banner-intermittente:
+    norme: [garante2021, gdpr13]
+    gravita: bassa
   sottodomini-disomogenei:
     norme: [garante2021, gdpr13]
     gravita: bassa

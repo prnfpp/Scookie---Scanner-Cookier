@@ -81,3 +81,35 @@ export const sottodominiDisomogenei: Rule = {
     return out;
   },
 };
+
+/**
+ * Banner comparso in alcune sessioni e non in altre dello stesso sito, anche dopo la ripetizione automatica.
+ * Spesso dipende da script del CMP che non si caricano: per l'utente significa nessun banner in quella visita.
+ */
+export const bannerIntermittente: Rule = {
+  id: 'banner-intermittente',
+  title: 'Banner non sempre presente',
+  defaultSeverity: 'bassa',
+  defaultNorms: ['garante2021', 'gdpr13'],
+  evaluate({ sessions }) {
+    const out: RawFinding[] = [];
+    for (const [site, list] of groupBy(sessions, (s) => s.site)) {
+      const without = list.filter((s) => !s.interaction.bannerVisibleBefore);
+      if (!without.length || without.length === list.length) continue;
+      out.push({
+        site,
+        scenario: null,
+        pageUrl: without[0].pages[0],
+        description:
+          `Il banner non è comparso in ${without.length} sessioni su ${list.length}` +
+          `${without.some((s) => s.retryOf) ? ', anche dopo una ripetizione automatica' : ''}. Nelle altre sessioni lo stesso sito lo mostra.`,
+        details: without.map((s) => {
+          const failed = [...new Set(s.requests.filter((r) => r.failure).map((r) => `${r.host} (${r.failure})`))];
+          return `${s.id} (${s.scenario}, ${s.pages[0]})${failed.length ? ` — richieste senza risposta: ${failed.slice(0, 5).join(', ')}` : ''}`;
+        }),
+        evidence: sessionEvidence(without[0], ['1-banner']),
+      });
+    }
+    return out;
+  },
+};
