@@ -3,7 +3,9 @@ import { CATEGORY_LABEL, groupBy } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 const label = (r: ComparisonRow) =>
-  `${r.kind === 'servizio' ? 'servizio' : r.kind === 'storage' ? 'storage' : 'cookie'} "${r.name}"${r.domain ? ` (${r.domain})` : ''}`;
+  `${r.kind === 'servizio' ? 'servizio' : r.kind === 'storage' ? 'chiave di storage' : 'cookie'} "${r.name}"${r.domain ? ` (${r.domain})` : ''}`;
+/** Etichetta con articolo: "Il cookie …", "La chiave di storage …". */
+const theLabel = (r: ComparisonRow) => `${r.kind === 'storage' ? 'La' : 'Il'} ${label(r)}`;
 
 /** Elementi osservati ma assenti dall'elenco dichiarato. */
 export const nonDichiarati: Rule = {
@@ -68,8 +70,8 @@ export const categoriaIncoerente: Rule = {
         severity: r.categoryIssue === 'categorie-multiple' ? ('bassa' as const) : undefined,
         description:
           r.categoryIssue === 'incoerente'
-            ? `Il ${label(r)} è dichiarato come ${r.declaredAlwaysActive ? '"sempre attivo"/' : ''}tecnico (${r.declaredCategories.join(', ')}), ma è riconosciuto come ${CATEGORY_LABEL[r.observedCategory ?? 'sconosciuta']}.`
-            : `Il ${label(r)} compare in più categorie dell'elenco dichiarato: ${r.declaredCategories.join(', ')}.`,
+            ? `${theLabel(r)} è dichiarat${r.kind === 'storage' ? 'a' : 'o'} come ${r.declaredAlwaysActive ? '"sempre attivo"/' : ''}tecnico (${r.declaredCategories.join(', ')}), ma è riconosciuto come ${CATEGORY_LABEL[r.observedCategory ?? 'sconosciuta']}.`
+            : `${theLabel(r)} compare in più categorie dell'elenco dichiarato: ${r.declaredCategories.join(', ')}.`,
         details: [`Scenari in cui è osservato: ${r.scenarios.join(', ') || 'nessuno'}`],
         evidence: [],
       }));

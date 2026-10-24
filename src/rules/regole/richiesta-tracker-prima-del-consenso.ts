@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
+import { nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Richieste verso tracker (pubblicità, statistica, registrazione sessioni, social) prima della scelta. */
@@ -26,7 +26,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         scenario: s.scenario,
         pageUrl: r.pageUrl,
         description:
-          `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${reqs.length} richieste a ${r.tracker!.company} ` +
+          `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${nReq(reqs.length)} a ${r.tracker!.company} ` +
           `(${CATEGORY_LABEL[r.tracker!.category]}): ${hostsSummary(reqs)}.`,
         details: [
           `Prima richiesta: ${firstAtLoad.method} ${firstAtLoad.url.slice(0, 200)}`,

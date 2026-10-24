@@ -47,7 +47,7 @@ export const cookiePrimaDelConsenso: Rule = {
         scenario: first.s.scenario,
         pageUrl: first.url,
         description:
-          `${names.length === 1 ? `Il ${names[0]} viene scritto` : `${names.length} elementi (${names.join(', ')}) vengono scritti`} ` +
+          `${names.length === 1 ? (names[0].startsWith('chiave') ? `La ${names[0]} viene scritta` : `Il ${names[0]} viene scritto`) : `${names.length} elementi (${names.join(', ')}) vengono scritti`} ` +
           `${when}. Categoria: ${CATEGORY_LABEL[first.cls.category]}` +
           `${first.cls.platform ? ` (${first.cls.platform})` : ''}, secondo ${first.cls.source}.`,
         details: [
