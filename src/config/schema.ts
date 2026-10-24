@@ -32,6 +32,8 @@ const siteSchema = z
     pagineExtra: z.array(z.string()).default([]),
     /** Se true usa solo la home e le pagine extra. */
     soloPagineExtra: z.boolean().default(false),
+    /** Esclude dal campione automatico le pagine vietate da robots.txt (le pagine extra restano). */
+    rispettaRobots: z.boolean().default(true),
     /** Pattern (regex sul path) da escludere dal campione. */
     escludi: z.array(z.string()).default([]),
     /** URL della cookie policy (documentata nel report). */

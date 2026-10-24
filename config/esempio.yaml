@@ -45,6 +45,8 @@ siti:
       - /preventivo/step-1
       - /preventivo/step-2
     escludi: ["^/area-riservata"]
+    # soloPagineExtra: true   # visita solo la home e le pagineExtra, senza scoperta automatica
+    # rispettaRobots: true    # esclude dal campione automatico le pagine vietate da robots.txt (predefinito)
 
   - url: https://shop.esempio.it/
     # Elenco dichiarato da file, se il CMP non lo espone (vedi config/dichiarati-esempio.csv)
