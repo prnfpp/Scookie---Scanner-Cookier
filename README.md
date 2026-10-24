@@ -117,6 +117,18 @@ campionamento:
 
 Per **escludere** sezioni dal campione automatico: `escludi: ["^/area-riservata", "^/en/"]` (inizio del percorso). Le pagine che il sito vieta ai robot nel file robots.txt sono escluse in automatico (`rispettaRobots: true`); quelle indicate in `pagineExtra` vengono visitate comunque, perché sono una scelta esplicita.
 
+#### Se il sito blocca il tool
+
+Alcuni siti mostrano ai browser automatici una pagina di verifica ("Verifica di essere umano", Cloudflare, DataDome…). Il tool la riconosce: la sessione viene **scartata** (non produce criticità sul sito) e il report lo dichiara nella scheda "Accesso bloccato" e nella sintesi. Si può riprovare con il browser visibile:
+
+```yaml
+browser:
+  headless: false     # il browser si apre sullo schermo durante l'audit
+  canale: chrome      # facoltativo: usa Google Chrome installato sul computer
+```
+
+Nell'interfaccia sono le opzioni "Browser" e "Mostra il browser durante l'audit". Il tool non tenta di superare le verifiche: se il blocco resta, va annotato come limite.
+
 #### Se il banner non viene riconosciuto
 
 Il tool riconosce da solo i gestori del consenso più diffusi e i pulsanti con testi come "Rifiuta", "Accetta", "Solo necessari". Se in un report compare "pulsante Rifiuta non trovato", si possono indicare i pulsanti a mano (chi ha dimestichezza con il browser li trova con "Ispeziona"):
@@ -129,7 +141,7 @@ Il tool riconosce da solo i gestori del consenso più diffusi e i pulsanti con t
 
 #### Elenco dei cookie dichiarati
 
-Se il gestore del consenso lo espone (es. OneTrust), il tool legge da solo l'elenco dei cookie dichiarati. Altrimenti si può preparare un file CSV (si fa anche con Excel, salvando in CSV) come [`config/dichiarati-esempio.csv`](config/dichiarati-esempio.csv) e indicarlo con `dichiarati: ./dichiarati-rossi.csv`.
+Se il gestore del consenso lo espone (es. OneTrust), il tool legge da solo l'elenco dei cookie dichiarati. Altrimenti prova a leggerlo dalle tabelle della pagina di cookie policy: quella indicata in `cookiePolicy:` per il sito, oppure quella collegata dal banner. Se nemmeno così si trova, si può preparare un file CSV (si fa anche con Excel, salvando in CSV) come [`config/dichiarati-esempio.csv`](config/dichiarati-esempio.csv) e indicarlo con `dichiarati: ./dichiarati-rossi.csv`.
 
 ### 5. Controllare, provare, lanciare
 
@@ -147,10 +159,12 @@ L'audit richiede alcuni minuti per sito (circa 3-5 minuti con le impostazioni de
 
 Ogni esecuzione crea una cartella in `runs/` con data, ora e nome del cliente:
 
-- **`report.html`** (si apre con doppio clic) e **`report.pdf`**: il documento. Inizia con "Come leggere questo report", poi perimetro e metodo, sintesi, una scheda per ogni criticità con descrizione, prova e riferimenti normativi, l'inventario di cookie e terze parti, e l'elenco dei file con le impronte;
+- **`report.html`** (si apre con doppio clic) e **`report.pdf`**: il documento. Inizia con "Come leggere questo report" e una **sintesi per il legale** di una o due pagine (le criticità principali in parole semplici), poi perimetro e metodo, analisi del banner, una scheda per ogni criticità con descrizione, prova e riferimenti normativi, l'inventario di cookie e terze parti, e l'elenco dei file con le impronte;
 - **file `.csv`**: i dati grezzi, si aprono con Excel;
 - **cartella `evidenze/`**: screenshot e registrazioni del traffico (file HAR);
 - **`manifest.json`**: configurazione usata, versioni, impronte di ogni file.
+
+Ogni scheda indica la **forza della prova**: *risorsa scaricata* (es. lo script di un fornitore, che da solo non dimostra una raccolta di dati), *dati inviati* (una richiesta di raccolta, es. un pixel con parametri) o *identificativo memorizzato* (un cookie o uno storage del fornitore). Le stesse criticità osservate su più sottodomini sono riunite in un'unica scheda.
 
 **La cartella va conservata intera e senza modifiche**: le impronte SHA-256 servono proprio a dimostrare che i file non sono stati toccati dopo la raccolta.
 
@@ -160,7 +174,7 @@ Ogni esecuzione crea una cartella in `runs/` con data, ora e nome del cliente:
 2. **Eseguire l'audit due volte** a qualche minuto di distanza: se i risultati coincidono, sono stabili; se differiscono, il report lo mostra e va approfondito.
 3. **Controllare a campione** le criticità più gravi aprendo il sito in un browser normale in finestra anonima.
 4. **Consegnare** report e cartella al consulente legale o al DPO, che valuta la conformità. Il tool non dà indicazioni su come sistemare.
-5. **Dopo le correzioni** del cliente, rilanciare lo stesso file di configurazione: il confronto tra i due report mostra cosa è cambiato.
+5. **Dopo le correzioni** del cliente, rilanciare lo stesso file di configurazione e confrontare le due esecuzioni: nell'interfaccia, scheda Esecuzioni, pulsante **Confronta con precedente**; dal Terminale `npm run scookie -- confronta runs/<prima> runs/<dopo>`. Il confronto elenca le criticità non più osservate, quelle nuove e quelle ancora presenti (con l'eventuale cambio di gravità).
 
 ### 8. Domande frequenti
 
@@ -184,13 +198,23 @@ Alcuni siti grandi bloccano i browser automatici. Il report lo segnala (sessioni
 
 ## Cosa fa (dettaglio tecnico)
 
-Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte a mano), ne estrae un campione per tipo e lo visita con un browser pulito in tre scenari:
+Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte a mano), ne estrae un campione per tipo e lo visita con un browser pulito in cinque scenari (si possono ridurre con `scenari.attivi`):
 
 | Scenario | Cosa succede |
 | --- | --- |
-| `nessuna-azione` | la pagina viene caricata e osservata senza toccare il banner |
+| `nessuna-azione` | la pagina viene caricata e osservata senza toccare il banner; al termine si analizza la struttura del banner |
 | `rifiuta` | click su "Rifiuta", poi navigazione di altre pagine per vedere se la scelta è rispettata |
 | `accetta` | click su "Accetta", poi navigazione di altre pagine |
+| `personalizza` | dalle preferenze si attiva solo la categoria statistica e si verifica che non partano marketing e simili (OneTrust, Cookiebot, vanilla-cookieconsent) |
+| `revoca` | si accetta, si naviga, poi si riapre il banner dal link "preferenze cookie" e si rifiuta: si osserva cosa resta attivo e cosa parte ancora |
+
+Il report descrive sempre l'elemento esatto cliccato (es. `pulsante "Rifiuta tutti" (#onetrust-reject-all-handler)`), così si distingue un vero "Rifiuta" da una X di chiusura o da un "Continua senza accettare".
+
+**Analisi del banner**: pulsanti presenti al primo livello (accetta, rifiuta, preferenze, chiusura), link alla cookie policy, categorie già attive quando si aprono le preferenze, presenza di un link per riaprire le preferenze fuori dal banner (di solito nel footer). Le preferenze vengono aperte a fine sessione, dopo aver fermato la registrazione, quindi non alterano i dati raccolti.
+
+**Classificazione**: un cookie è riconosciuto per nome **e** dominio (es. `sessionId` di Stonly non viene scambiato per quello di Instagram; `__cf_bm` e `cf_clearance` sono cookie tecnici di Cloudflare). Prima si consulta l'elenco curato [`data/cookies.yaml`](data/cookies.yaml), poi Open Cookie Database filtrato per dominio. Una terza parte sconosciuta contattata prima della scelta è segnalata con gravità media.
+
+**Consent Mode**: i parametri `gcs` e `gcd` delle richieste Google sono tradotti in chiaro (es. `gcs=G101: ad_storage negato, analytics_storage concesso`).
 
 Per ogni sessione registra tutti i cookie (anche HttpOnly), localStorage e sessionStorage di tutti i frame, e tutte le richieste di rete. Ogni elemento viene marcato *prima/terza parte* e con il momento in cui compare: *al caricamento* (nessuna interazione), *dopo lo scroll* (nessuna scelta sul banner) o *dopo la scelta*. Separare lo scroll serve per i banner che lo trattano come consenso. Le prove sono screenshot e file HAR, con hash SHA-256.
 
@@ -228,6 +252,8 @@ L'interfaccia (`src/ui/server.ts`, pagina in `ui/index.html`) ascolta solo su `1
 Per la validazione su siti reali c'è già [`config/validazione.yaml`](config/validazione.yaml).
 
 Opzioni di `run`: `--out <cartella>` per cambiare la cartella di output, `--no-pdf` per saltare il PDF.
+
+Confronto tra due esecuzioni: `npm run scookie -- confronta <cartella-prima> <cartella-dopo> [-o file.html]`. Le criticità sono abbinate per regola, oggetto e dominio (non per numero di scheda); il file va nella cartella della seconda esecuzione.
 
 Tutto si regola dal file YAML, senza toccare il codice. I campi sono commentati in [`config/esempio.yaml`](config/esempio.yaml) e definiti in [`src/config/schema.ts`](src/config/schema.ts).
 
@@ -268,6 +294,14 @@ Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Coo
 | `scelta-non-verificata` | stato del consenso registrato non coerente con la scelta |
 | `banner-assente` | nessun banner né CMP rilevato |
 | `banner-intermittente` | banner presente in alcune sessioni e non in altre, anche dopo la ripetizione automatica |
+| `accesso-bloccato` | pagina di verifica anti-bot al posto del sito: le sessioni sono escluse dalle regole |
+| `struttura-banner` | primo livello senza un pulsante di rifiuto (solo accetta, preferenze o X) |
+| `categorie-preattivate` | categorie non tecniche già attive all'apertura delle preferenze |
+| `revoca-non-trovata` | nessun link o pulsante per riaprire le preferenze fuori dal banner |
+| `link-informativa-assente` | nessun link alla cookie policy nel banner |
+| `personalizzazione-non-rispettata` | accettata solo la statistica, ma partono marketing o altre categorie |
+| `esito-revoca` | revoca non eseguibile o cookie non tecnici che restano dopo la revoca |
+| `attivazione-dopo-revoca` | richieste di tracciamento dopo la revoca del consenso |
 | `sottodomini-disomogenei` | sottodomini con CMP diversi o senza banner; cookie policy su altro host |
 | `elementi-non-dichiarati` | elementi osservati assenti dall'elenco dichiarato |
 | `dichiarati-non-osservati` | voci dichiarate mai osservate |
@@ -281,7 +315,10 @@ Norme collegate e gravità si cambiano in [`config/norme.yaml`](config/norme.yam
 
 In ordine di precedenza:
 1. il file indicato in `dichiarati:` per il sito, in CSV o YAML (vedi [`config/dichiarati-esempio.csv`](config/dichiarati-esempio.csv));
-2. le API del CMP (`OneTrust.GetDomainData()`, `UC_UI.getServicesBaseInfo()`).
+2. le API del CMP (`OneTrust.GetDomainData()`, `UC_UI.getServicesBaseInfo()`);
+3. le tabelle della cookie policy (`cookiePolicy:` del sito, altrimenti il link del banner o una pagina del campione con "cookie" nell'indirizzo).
+
+Le voci dichiarate ma mai osservate sono riassunte nel report (prime 15) e elencate per intero in `confronto-dichiarati.csv`.
 
 I nomi con segnaposto (`_ga_xxxxxxx`, `_ga_*`, `_hjSession_<id>`) sono riconosciuti come pattern.
 
@@ -305,7 +342,9 @@ I test di integrazione usano siti di prova locali (`test/fixtures/sites/`), uno 
 - banner in shadow DOM e in iframe;
 - rifiuto raggiungibile solo dalle preferenze;
 - tracciamento attivato dallo scroll;
-- vanilla-cookieconsent il cui script non si carica alla prima visita (ripetizione automatica).
+- vanilla-cookieconsent il cui script non si carica alla prima visita (ripetizione automatica);
+- pagina di verifica anti-bot (Cloudflare);
+- analisi del banner, cookie policy con tabelle, scenari personalizza e revoca.
 
 Il tool è stato inoltre validato su 5 siti reali (e-commerce, agenzia, PA, grande distribuzione) con esecuzioni ripetute dall'Italia e dagli USA: banner gestiti e verificati in tutti i casi in cui erano presenti, risultati coincidenti tra esecuzioni.
 
@@ -322,11 +361,10 @@ Software proprietario, © 2026 Filippo Pirini (vedi [`LICENSE`](LICENSE)): nessu
 - I risultati possono variare con geolocalizzazione, test A/B e aste pubblicitarie.
 - I siti con protezioni anti-bot possono bloccare il browser automatizzato. Il tool naviga lentamente, dichiara lo user agent e non tenta di aggirare i blocchi.
 - Non ancora implementati (in ordine di priorità suggerita):
-  - confronto automatico tra due esecuzioni (prima e dopo le correzioni del cliente);
   - marca temporale qualificata (RFC 3161) sul manifest, per dare data certa alle prove;
-  - lettura automatica della pagina cookie policy;
   - rilevamento di identificativi senza cookie (fingerprint, ID nei parametri);
   - step di login per le aree riservate;
+  - scenario "personalizza" per altri CMP oltre a OneTrust, Cookiebot e vanilla-cookieconsent;
   - esportazione Excel nativa (i CSV si aprono già in Excel).
 
 Report, HAR e configurazioni dei clienti **non** vanno nel repository (vedi `.gitignore`).

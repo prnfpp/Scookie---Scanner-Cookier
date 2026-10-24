@@ -47,14 +47,38 @@ regole:
   attivazione-dopo-rifiuto:
     norme: [art122, eprivacy53, garante2021, gdpr4_11, gdpr7]
     gravita: alta
+  attivazione-dopo-revoca:
+    norme: [gdpr7, art122, eprivacy53, garante2021]
+    gravita: alta
+  personalizzazione-non-rispettata:
+    norme: [art122, eprivacy53, garante2021, gdpr4_11, gdpr7]
+    gravita: alta
+  esito-revoca:
+    norme: [gdpr7, garante2021]
+    gravita: bassa
   rifiuto-non-al-primo-livello:
     norme: [garante2021, gdpr4_11, gdpr7]
     gravita: media
   scelta-non-verificata:
     norme: [gdpr4_11, gdpr7]
     gravita: media
+  categorie-preattivate:
+    norme: [garante2021, gdpr4_11, gdpr7]
+    gravita: media
+  revoca-non-trovata:
+    norme: [gdpr7, garante2021]
+    gravita: bassa
+  link-informativa-assente:
+    norme: [gdpr13, garante2021]
+    gravita: bassa
+  struttura-banner:
+    norme: [garante2021]
+    gravita: informativa
   banner-assente:
     norme: [garante2021, gdpr13]
+    gravita: informativa
+  accesso-bloccato:
+    norme: []
     gravita: informativa
   banner-intermittente:
     norme: [garante2021, gdpr13]

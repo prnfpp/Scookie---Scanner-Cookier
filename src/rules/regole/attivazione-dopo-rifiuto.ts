@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
+import { choiceHow, describeGoogleConsent, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo "Rifiuta": nuovi cookie non tecnici o richieste a tracker, anche nelle pagine successive. */
@@ -27,19 +27,27 @@ export const attivazioneDopoRifiuto: Rule = {
         if (cs.length) parts.push(`${cs.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${cs.length} cookie`} (${cs.map((c) => c.name).join(', ')})`);
         if (rs.length) parts.push(`${rs.length === 1 ? 'parte' : 'partono'} ${nReq(rs.length)} a ${hostsSummary(rs)}`);
         const pages = [...new Set([...cs.map((c) => c.firstSeenUrl), ...rs.map((r) => r.pageUrl)])];
+        const level = cs.length ? 'identificativo' : requestEvidenceLevel(rs);
+        const sample = rs.find((r) => requestEvidenceLevel([r]) === 'raccolta') ?? rs[0];
+        const consent = sample ? describeGoogleConsent(sample.consentParams) : null;
         out.push({
           site: s.site,
           scenario: s.scenario,
           pageUrl: pages[0] ?? null,
-          description: `Dopo il click su "Rifiuta" (${s.interaction.detail}), per ${key} (${CATEGORY_LABEL[cat!]}) ${parts.join(' e ')}.`,
+          severity: level === 'risorsa' ? 'media' : undefined,
+          evidenceLevel: level,
+          groupKey: `${key}|${cat}`,
+          headline: `Dopo il rifiuto, ${key} continua a ${cs.length ? 'scrivere identificativi nel browser' : level === 'raccolta' ? 'ricevere dati di navigazione' : 'essere caricato dal sito'}`,
+          description: `Dopo il rifiuto (eseguito ${choiceHow(s.interaction)}), per ${key} (${CATEGORY_LABEL[cat!]}) ${parts.join(' e ')}.`,
           details: [
             `Pagine in cui si osserva: ${pages.join(', ')}`,
             `Metodo di interazione: ${s.interaction.method}; verifica stato consenso: ${s.interaction.verification} ${s.interaction.verificationDetail}`,
             ...cs.map((c) => `cookie ${c.name} — ${c.domain}, prima volta su ${c.firstSeenUrl}`),
-            ...(rs[0] ? [`Prima richiesta: ${rs[0].msFromChoice} ms dopo la scelta — ${rs[0].url.slice(0, 200)}`] : []),
+            ...(sample ? [`Richiesta di esempio: ${sample.msFromChoice} ms dopo la scelta — ${sample.url.slice(0, 200)}`] : []),
+            ...(consent ? [`Consenso Google dichiarato nella richiesta: ${consent}`] : []),
           ],
           evidence: sessionEvidence(s, ['2-dopo-scelta', '3-fine']),
-          requestExcerpt: rs[0] ? requestExcerpt(rs[0], s) : undefined,
+          requestExcerpt: sample ? requestExcerpt(sample, s) : undefined,
         });
       }
     }

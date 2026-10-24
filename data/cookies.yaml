@@ -1,0 +1,32 @@
+# Elenco curato di nomi di cookie e chiavi di storage, redatto per questo progetto (stessi diritti del resto del codice).
+# Ha la precedenza su Open Cookie Database: serve per i casi in cui il nome da solo è ambiguo
+# o la fonte pubblica dà una categoria non adatta a un audit.
+#
+# Campi:
+#   nome:      espressione regolare sul nome (sensibile a maiuscole/minuscole)
+#   dominio:   (opzionale) la voce vale solo per cookie/storage di questo dominio e dei suoi sottodomini
+#   fornitore: chi lo imposta
+#   categoria: tecnico | funzionalita | statistica | marketing | registrazione-sessioni | social
+#   nota:      (opzionale) testo mostrato nel report
+
+cookie:
+  # --- Infrastruttura e protezione anti-bot: tecnici, ovunque compaiano ---
+  - { nome: "^(__cf_bm|__cfruid|__cflb|_cfuvid|cf_clearance|__cf_ob|__cfwaitingroom|cf_chl_.*)$", fornitore: Cloudflare, categoria: tecnico, nota: "Protezione anti-bot / bilanciamento Cloudflare" }
+  - { nome: "^(ak_bmsc|bm_sz|_abck|bm_sv|bm_mi|bm_so|bm_lso)$", fornitore: Akamai, categoria: tecnico, nota: "Protezione anti-bot Akamai" }
+  - { nome: "^(visid_incap_\\d+|incap_ses_.+|nlbi_\\d+|reese84|___utmvc)$", fornitore: Imperva, categoria: tecnico, nota: "Protezione anti-bot Imperva/Incapsula" }
+  - { nome: "^(datadome)$", fornitore: DataDome, categoria: tecnico, nota: "Protezione anti-bot DataDome" }
+  - { nome: "^(_px\\d?|_pxvid|_pxhd|_pxff_.+|pxcts)$", fornitore: HUMAN (PerimeterX), categoria: tecnico, nota: "Protezione anti-bot" }
+  - { nome: "^(AWSALB|AWSALBCORS|AWSALBTG|AWSALBTGCORS|AWSELB|AWSELBCORS)$", fornitore: Amazon Web Services, categoria: tecnico, nota: "Bilanciamento del carico" }
+  - { nome: "^(PHPSESSID|JSESSIONID|ASP\\.NET_SessionId|ASPSESSIONID[A-Z]+)$", fornitore: Sito, categoria: tecnico, nota: "Sessione del server" }
+
+  # --- Monitoraggio delle prestazioni (APM): statistica, ma da leggere con la nota ---
+  - { nome: "^(dtCookie|dtPC|dtSa|dtLatC|dtValidationCookie|dtDisabled|rxVisitor|rxvt)(.*)?$", fornitore: Dynatrace, categoria: statistica, nota: "Monitoraggio delle prestazioni e degli errori (APM): la qualificazione come statistica o tecnica va valutata" }
+
+  # --- Pubblicità e affiliazione ---
+  - { nome: "^TNCID$", fornitore: The Newco, categoria: marketing, nota: "Identificativo pubblicitario persistente" }
+  - { nome: "^tduid$", fornitore: Tradedoubler, categoria: marketing, nota: "Tracciamento affiliazione" }
+  - { nome: "^(_aw_m_\\d+|_aw_sn_\\d+|_aw_j_\\d+|AWSESS|aw\\d+)$", fornitore: Awin, categoria: marketing, nota: "Tracciamento affiliazione" }
+
+  # --- Funzionalità di terze parti ---
+  - { nome: "^stonly", fornitore: Stonly, categoria: funzionalita, nota: "Guide interattive / assistenza" }
+  - { nome: "^(tp_|_tp_)", dominio: trustpilot.com, fornitore: Trustpilot, categoria: funzionalita, nota: "Widget recensioni" }

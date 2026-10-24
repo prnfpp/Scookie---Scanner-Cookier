@@ -73,6 +73,12 @@ export const configSchema = z
         servizioUscita: z.string().default('https://www.cloudflare.com/cdn-cgi/trace'),
         /** Proxy opzionale, es. per uscire da un paese specifico. */
         proxy: z.string().optional(),
+        /**
+         * Browser da usare: chromium (incluso), chrome o msedge (installati sul computer).
+         * Con headless: false il browser è visibile: alcuni siti protetti da sistemi anti-bot si comportano
+         * diversamente con i browser "senza finestra". Lo user agent continua a dichiarare l'audit.
+         */
+        canale: z.enum(['chromium', 'chrome', 'msedge']).default('chromium'),
         /** Percorso dell'eseguibile Chromium, se diverso da quello di Playwright. */
         executablePath: z.string().optional(),
         /** Solo per test: regole di risoluzione host di Chromium. */
@@ -81,6 +87,7 @@ export const configSchema = z
       .strict()
       .default({
         headless: true,
+        canale: 'chromium',
         locale: 'it-IT',
         timezone: 'Europe/Rome',
         viewport: { width: 1366, height: 900 },
@@ -122,12 +129,16 @@ export const configSchema = z
         modalita: z.enum(['percorso', 'per-pagina']).default('percorso'),
         /** Pagine da visitare dopo la scelta (minimo 1). */
         pagineDopoScelta: z.number().int().min(1).default(3),
+        /**
+         * Scenari da eseguire. personalizza = accetta solo la categoria statistica (per i CMP che lo consentono in modo
+         * affidabile); revoca = accetta, poi revoca il consenso dal link nella pagina e rifiuta.
+         */
         attivi: z
-          .array(z.enum(['nessuna-azione', 'rifiuta', 'accetta']))
-          .default(['nessuna-azione', 'rifiuta', 'accetta']),
+          .array(z.enum(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca']))
+          .default(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca']),
       })
       .strict()
-      .default({ modalita: 'percorso', pagineDopoScelta: 3, attivi: ['nessuna-azione', 'rifiuta', 'accetta'] }),
+      .default({ modalita: 'percorso', pagineDopoScelta: 3, attivi: ['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca'] }),
     campionamento: z
       .object({
         /** Pagine per tipo nel primo giro di campionamento; se i tipi sono pochi, il campione si completa fino a maxPagine. */

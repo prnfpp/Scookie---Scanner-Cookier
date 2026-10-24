@@ -10,6 +10,7 @@ import { parse, stringify } from 'yaml';
 import { loadConfig } from '../config/load.js';
 import { configSchema } from '../config/schema.js';
 import { discoverSite, type DiscoveryResult } from '../discovery/discover.js';
+import { writeComparison } from '../report/compare.js';
 import { launchOptions, resolveUserAgent, runAudit } from '../run.js';
 import { closeSafely } from '../util/misc.js';
 import { TOOL_VERSION } from '../version.js';
@@ -287,6 +288,15 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
     }
     if (path === '/api/esecuzioni' && method === 'GET') {
       return json(res, 200, listRuns(runsDir));
+    }
+    if (path === '/api/confronta' && method === 'POST') {
+      const body = (await readBody(req)) as { prima?: unknown; dopo?: unknown };
+      const dirOf = (n: unknown) => {
+        if (typeof n !== 'string' || !RUN_RE.test(n) || n === '.' || n === '..' || !existsSync(join(runsDir, n, 'dati.json'))) throw new HttpError(400, 'Esecuzione non valida');
+        return join(runsDir, n);
+      };
+      const { path: out, comparison: c } = writeComparison(dirOf(body.prima), dirOf(body.dopo));
+      return json(res, 200, { file: out.split(sep).pop(), risolte: c.risolte.length, rimaste: c.rimaste.length, nuove: c.nuove.length });
     }
     throw new HttpError(404, 'Risorsa non trovata');
   }

@@ -28,18 +28,53 @@ export async function anyVisible(page: Page, selectors: string[]): Promise<boole
   return false;
 }
 
-/** Clicca il primo elemento visibile tra i selettori; ritorna il selettore usato. */
-export async function clickFirst(page: Page, selectors: string[]): Promise<string | null> {
+/**
+ * Descrizione leggibile di un elemento, da riportare nel report così com'è:
+ * es. pulsante "Rifiuta tutti", link "Continua senza accettare", X di chiusura (etichetta "Chiudi").
+ */
+export async function describeElement(el: Locator): Promise<string> {
+  const info = await el
+    .evaluate((n) => {
+      const e = n as HTMLElement;
+      const text = (e.innerText ?? e.textContent ?? '').replace(/\s+/g, ' ').trim();
+      return {
+        tag: e.tagName.toLowerCase(),
+        role: e.getAttribute('role') ?? '',
+        text: text || (e as HTMLInputElement).value || '',
+        aria: e.getAttribute('aria-label') ?? e.getAttribute('title') ?? '',
+        cls: typeof e.className === 'string' ? e.className : '',
+        id: e.id,
+      };
+    })
+    .catch(() => null);
+  if (!info) return 'elemento non più presente nella pagina';
+  const quoted = (t: string) => `"${t.length > 80 ? `${t.slice(0, 80)}…` : t}"`;
+  const isClose = /^(×|✕|✖|x)?$/i.test(info.text) && (/(close|chiud|dismiss)/i.test(`${info.aria} ${info.cls} ${info.id}`) || /^(×|✕|✖|x)$/i.test(info.text));
+  if (isClose) return `X di chiusura${info.aria ? ` (etichetta ${quoted(info.aria)})` : ' (senza etichetta)'}`;
+  const kind = info.tag === 'a' || info.role === 'link' ? 'link' : 'pulsante';
+  if (info.text) return `${kind} ${quoted(info.text)}`;
+  return info.aria ? `${kind} senza testo, con etichetta ${quoted(info.aria)}` : `${kind} senza testo né etichetta`;
+}
+
+export interface ClickedElement {
+  selector: string;
+  /** Descrizione dell'elemento cliccato (testo visibile, tipo). */
+  label: string;
+}
+
+/** Clicca il primo elemento visibile tra i selettori; ritorna selettore e descrizione dell'elemento. */
+export async function clickFirst(page: Page, selectors: string[]): Promise<ClickedElement | null> {
   for (const s of selectors) {
     const el = await findVisible(page, s);
     if (el) {
+      const label = await describeElement(el);
       try {
         await el.click({ timeout: 5000 });
       } catch {
         // elementi coperti da overlay: il click forzato riproduce comunque l'azione dell'utente sul pulsante
         await el.click({ timeout: 5000, force: true });
       }
-      return s;
+      return { selector: s, label };
     }
   }
   return null;
