@@ -1,5 +1,5 @@
 import { NON_TECHNICAL, type Category } from '../../types.js';
-import { CATEGORY_LABEL, googleConsentShort, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
+import { CATEGORY_LABEL, googleConsentSummary, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo la revoca del consenso: nuovi cookie non tecnici o richieste a tracker. */
@@ -29,7 +29,7 @@ export const attivazioneDopoRevoca: Rule = {
         const sample = rs.length ? strongestRequest(rs) : undefined;
         const viaApi = s.revocation!.via === 'api';
         const sameAsReject = afterReject.get(s.site)?.has(key) ?? false;
-        const consentShort = sample ? googleConsentShort(sample.consentParams) : null;
+        const consentShort = googleConsentSummary(rs).short;
         const parts: string[] = [];
         if (cs.length) parts.push(`${cs.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${cs.length} cookie`} (${cs.map((c) => c.name).join(', ')})`);
         if (rs.length) parts.push(`${rs.length === 1 ? 'parte' : 'partono'} ${nReq(rs.length)} a ${hostsSummary(rs)}`);

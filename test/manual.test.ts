@@ -10,6 +10,7 @@ import { FIXTURES, startFixtureServer } from './fixtures/server.js';
 
 let srv: Awaited<ReturnType<typeof startFixtureServer>>;
 let result: RunResult;
+const logs: string[] = [];
 const url = (host: string, path = '/') => `http://${host}:${srv.port}${path}`;
 
 before(async () => {
@@ -24,6 +25,8 @@ before(async () => {
     report: { pdf: false },
     trackerExtra: join(FIXTURES, 'tracker-test.yaml'),
     siti: [
+      // sito irraggiungibile (porta chiusa): nessuna criticità deve nascere da sessioni senza pagine
+      { url: 'http://spento.test:1/', sitemap: false, seguiLink: false, esplora: 'no' },
       {
         url: url('sito-a.test'),
         soloPagineExtra: true,
@@ -35,7 +38,7 @@ before(async () => {
   writeFileSync(cfgPath, stringify(config));
   // L'operatore simulato: controlla il riquadro, naviga e preme "Ho finito"
   result = await runAudit(loadConfig(cfgPath), {
-    log: () => {},
+    log: (m) => logs.push(m),
     manualDriver: async (page) => {
       await page.locator('#scookie-operatore').waitFor({ state: 'attached', timeout: 10000 });
       await page.goto(url('sito-a.test', '/prodotti/alfa.html'));
@@ -60,4 +63,17 @@ test('navigazione manuale: registrata come una sessione, con le pagine percorse 
   assert.ok(result.findings.some((f) => f.ruleId === 'attivazione-dopo-rifiuto' && f.scenario === 'rifiuta'));
   const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
   assert.match(html, /Navigazione manuale<\/strong> — sessione .*-manuale, scenario "rifiuta", conclusa dall'operatore/);
+});
+
+test('navigazioni manuali eseguite prima delle sessioni automatiche', () => {
+  const iManual = logs.findIndex((l) => /Navigazioni manuali \(1\)/.test(l));
+  const iAuto = logs.findIndex((l) => /sessioni automatiche/.test(l));
+  assert.ok(iManual >= 0 && iAuto > iManual, logs.join('\n'));
+});
+
+test('sito irraggiungibile: sessioni non valide, nessuna criticità, avviso nel report', () => {
+  const ss = result.sessions.filter((x) => x.site.includes('spento.test'));
+  assert.ok(ss.length && ss.every((x) => x.unreachable));
+  assert.ok(!result.findings.some((f) => f.sites.some((x) => x.includes('spento.test'))));
+  assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Attenzione — pagine non caricate/);
 });

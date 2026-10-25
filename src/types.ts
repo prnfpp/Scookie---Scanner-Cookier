@@ -89,6 +89,8 @@ export interface RequestRecord {
   at: string;
   /** Millisecondi rispetto al click sul banner (negativi = prima). Null se nessun click. */
   msFromChoice: number | null;
+  /** Richiesta inviata da un service worker del sito (non dalla pagina): può riferirsi a eventi precedenti. */
+  fromServiceWorker?: boolean;
   /** Scenario "revoca": millisecondi dalla revoca (msFromChoice è misurato dall'accettazione). */
   msFromRevoke?: number | null;
   url: string;
@@ -188,6 +190,8 @@ export interface SessionResult {
   retryOf?: string;
   /** Scenario "revoca": come è stato revocato il consenso e quali cookie non tecnici restavano nel browser. */
   revocation?: { outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null; remaining: string[] };
+  /** Prima pagina non raggiungibile (es. connessione assente, computer in stop): la sessione non descrive il sito. */
+  unreachable?: string;
   /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
   manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number };
   /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */
