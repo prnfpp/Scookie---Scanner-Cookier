@@ -125,7 +125,7 @@ ${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</st
   const allUnreachable = unreachableSites.filter((h) => sessions.filter((s) => host(s.site) === h).every((s) => s.unreachable || s.blocked));
   parts.push(`<h2>Sintesi per il legale</h2>
 ${top.length ? `<p>I fatti principali osservati, in ordine di priorità di verifica. Il dettaglio e le prove sono nelle schede indicate.</p>
-<ol>${top.map((f) => `<li>${esc(f.headline)}${f.sites.length === 1 ? ` <span class="muted">(${esc(host(f.sites[0]))})</span>` : ''}${f.repeats ? ` <span class="muted">· ${f.repeats.seen} su ${f.repeats.of}</span>` : ''} — ${sevBadge(f.severity)} <a href="#${f.id}">${f.id}</a></li>`).join('')}</ol>` : '<p>Non sono emersi fatti con priorità alta o media.</p>'}
+<ol>${top.map((f) => `<li>${esc(f.headline)}${f.sites.length === 1 ? ` <span class="muted">(${esc(host(f.sites[0]))})</span>` : ''}${f.repeats ? ` <span class="muted">· ${f.repeats.manual ? 'navigazione manuale' : `${f.repeats.seen} su ${f.repeats.of}`}</span>` : ''} — ${sevBadge(f.severity)} <a href="#${f.id}">${f.id}</a></li>`).join('')}</ol>` : '<p>Non sono emersi fatti con priorità alta o media.</p>'}
 ${findings.length > top.length ? `<p class="muted">Altre ${findings.length - top.length} schede, di priorità minore o di contesto, sono elencate nella sezione 3.</p>` : ''}
 ${blockedSites.length ? `<p class="warn"><strong>Attenzione.</strong> Su ${esc(blockedSites.join(', '))} la navigazione è stata intercettata da un sistema anti-bot: le sessioni coinvolte non sono valide e non sono state usate per le criticità.</p>` : ''}
 ${unreachable.length ? `<p class="warn"><strong>Attenzione — pagine non caricate.</strong> ${unreachable.length} sessioni non hanno potuto caricare il sito (${esc(unreachableSites.join(', '))}), per esempio per connessione assente o computer in stop: non sono valide e non sono state usate per le criticità.${allUnreachable.length ? ` Per ${esc(allUnreachable.join(', '))} non c'è nessun dato: il report non dice nulla su ${allUnreachable.length === 1 ? 'questo sito' : 'questi siti'} e l'audit va ripetuto.` : ''}</p>` : ''}`);
@@ -176,7 +176,10 @@ ${compactSessions(sessions)
     .map((d) => `<tr><td>${esc(d.site)}</td><td>${esc(d.source ?? 'non disponibile')}</td><td>${d.items.length}</td><td>${esc(d.note ?? '')}</td></tr>`)
     .join('')}</table>`);
 
-  const errors = sessions.flatMap((s) => s.errors.map((e) => `${s.id}: ${e}`));
+  // La stessa anomalia in più sessioni (es. lo stesso reindirizzamento in ogni scenario) si elenca una volta
+  const errBy = new Map<string, string[]>();
+  for (const s of sessions) for (const e of new Set(s.errors)) errBy.set(e, [...(errBy.get(e) ?? []), s.id]);
+  const errors = [...errBy].map(([e, ids]) => (ids.length === 1 ? `${ids[0]}: ${e}` : `${e} — in ${ids.length} sessioni (${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''})`));
   parts.push(`<h3>Limiti</h3><ul>${[...LIMITS, ...config.report.noteLimiti].map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
 ${errors.length ? `<p><strong>Anomalie durante l'esecuzione:</strong></p><ul>${errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}`);
 
@@ -202,7 +205,7 @@ ${findings.some((f) => (f.sites?.length ?? 1) > 1) ? `<p class="muted">Le schede
     parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · ${esc(f.ruleTitle)} ${sevBadge(f.severity)}</h3>
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 ${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}.</p>` : ''}
-${f.repeats ? `<p><strong>Ripetibilità.</strong> Osservato in ${f.repeats.seen} ${f.repeats.of === 1 ? 'esecuzione' : 'esecuzioni'} su ${f.repeats.of} di ciascuno scenario.</p>` : ''}
+${f.repeats ? `<p><strong>Ripetibilità.</strong> ${f.repeats.manual ? 'Osservato nella navigazione manuale, eseguita una volta per scenario: non nelle sessioni automatiche ripetute.' : `Osservato in ${f.repeats.seen} su ${f.repeats.of} esecuzioni di ciascuno scenario.`}</p>` : ''}
 ${reviewOf(f)?.esito ? `<p><strong>Revisione manuale.</strong> ${esc(reviewOf(f)!.esito)}${reviewOf(f)!.nota ? ` — ${esc(reviewOf(f)!.nota)}` : ''}</p>` : ''}
 <p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
 ${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo negli allegati: dati.json e CSV)</li>` : ''}</ul>` : ''}

@@ -92,7 +92,7 @@ export interface RequestRecord {
   /** Richiesta inviata da un service worker del sito (non dalla pagina): può riferirsi a eventi precedenti. */
   fromServiceWorker?: boolean;
   /** Dati personali trovati nell'indirizzo o nel corpo (valori mascherati). */
-  pii?: { kind: string; param: string | null; masked: string }[];
+  pii?: import('./util/pii.js').PiiHit[];
   /** Scenario "revoca": richiesta partita dopo il primo caricamento di pagina successivo alla revoca. */
   afterRevokeNav?: boolean;
   /** Scenario "revoca": millisecondi dalla revoca (msFromChoice è misurato dall'accettazione). */
@@ -279,6 +279,7 @@ export interface Finding {
   /** Chiave stabile tra esecuzioni (regola, oggetto, dominio): serve al confronto tra due esecuzioni. */
   key?: string;
   /** Con ripetizioni: in quante esecuzioni dello scenario il fatto si è osservato, su quante. */
-  repeats?: { seen: number; of: number };
+  /** In quante ripetizioni è stato osservato; `manual`: solo nella navigazione manuale, che si fa una volta. */
+  repeats?: { seen: number; of: number; manual?: boolean };
   norms: NormRef[];
 }

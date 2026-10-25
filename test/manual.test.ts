@@ -86,7 +86,7 @@ test('ripetizioni: ogni scenario due volte, le schede dicono in quante è stato 
   assert.deepEqual(a.map((x) => x.repeat).sort(), [1, 2]);
   const f = result.findings.find((x) => x.ruleId === 'cookie-prima-del-consenso' && x.site.includes('sito-a.test'))!;
   assert.deepEqual(f.repeats, { seen: 2, of: 2 });
-  assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Osservato in 2 esecuzioni su 2/);
+  assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Osservato in 2 su 2 esecuzioni/);
 });
 
 test('riquadro "Ho finito": formattato e cliccabile con CSP restrittiva e finestra modale del sito', async () => {

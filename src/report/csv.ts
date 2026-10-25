@@ -65,7 +65,7 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
       toCsv(
         ['id', 'regola', 'titolo', 'gravita', 'sito', 'scenario', 'pagina', 'osservato', 'descrizione', 'dettagli', 'evidenze', 'norme'],
         findings.map((f) => [
-          f.id, f.ruleId, f.ruleTitle, f.severity, f.site, f.scenario, f.pageUrl, f.repeats ? `${f.repeats.seen} su ${f.repeats.of}` : '', f.description, f.details.join(' | '),
+          f.id, f.ruleId, f.ruleTitle, f.severity, f.site, f.scenario, f.pageUrl, f.repeats ? (f.repeats.manual ? 'navigazione manuale' : `${f.repeats.seen} su ${f.repeats.of}`) : '', f.description, f.details.join(' | '),
           f.evidence.map((e) => e.file), f.norms.map((n) => n.title),
         ]),
       ),

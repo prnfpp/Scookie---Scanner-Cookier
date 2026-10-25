@@ -113,7 +113,7 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
     const repeat = reps > 1 ? r : undefined;
     if (active.has('nessuna-azione')) {
       for (const [k, p] of sample.entries()) {
-        plans.push({ id: rid('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url], analyzeBanner: k === 0 && r === 1, repeat });
+        plans.push({ id: rid('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url], analyzeBanner: k === 0, repeat });
       }
     }
     const choiceScenarios = (['rifiuta', 'accetta', 'personalizza', 'revoca'] as const).filter((s) => active.has(s));
@@ -136,7 +136,9 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
   // Navigazione manuale: una sessione per scenario richiesto, dalla pagina di partenza indicata
   const m = site.navigazioneManuale;
   if (m) {
-    const start = m.partenza ? new URL(m.partenza, discovery.site).toString() : sample[0].url;
+    // "www.esempio.it/preventivo" senza https:// è un indirizzo, non un percorso del sito
+    const partenza = m.partenza && /^[\w-]+(\.[\w-]+)+(\/|$)/.test(m.partenza) ? `https://${m.partenza}` : m.partenza;
+    const start = partenza ? new URL(partenza, discovery.site).toString() : sample[0].url;
     for (const scenario of m.scenari) {
       plans.push({
         id: `${id(scenario)}-manuale`,
@@ -437,7 +439,13 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       const keys = new Set(evaluateRules({ config, sessions: subset, blocked: blockedSessions, declared, comparison: comp, exit, discovery }, norms).map((f) => f.key));
       for (const k of keys) if (k) seen.set(k, (seen.get(k) ?? 0) + 1);
     }
-    for (const f of findings) if (f.key) f.repeats = { seen: Math.max(1, seen.get(f.key) ?? 0), of: reps };
+    const hasManual = validSessions.some((s) => s.manual);
+    for (const f of findings) {
+      if (!f.key) continue;
+      const n = seen.get(f.key) ?? 0;
+      // non vista in nessuna ripetizione automatica: viene dalla navigazione manuale, fatta una volta sola
+      f.repeats = n === 0 && hasManual ? { seen: 1, of: 1, manual: true } : { seen: Math.max(1, n), of: reps };
+    }
   }
   linkEvidenceToFindings(runDir, findings);
 

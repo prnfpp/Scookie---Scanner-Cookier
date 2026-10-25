@@ -83,7 +83,10 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   const collector = new Collector(context, new PartyResolver(domain, config.dominiPropri), env.classifier);
   const page = await context.newPage();
 
+  /** Passo in corso: se la sessione si blocca, l'anomalia dice dove. */
+  let stage = 'apertura del browser';
   const shot = async (label: string) => {
+    stage = `screenshot "${label}" di ${maskPii(collector.currentUrl)}`;
     const rel = `evidenze/${plan.id}_${slug(label)}.png`;
     try {
       await page.screenshot({ path: join(env.runDir, rel), timeout: 15000 });
@@ -95,6 +98,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
 
   let blocked: BotBlock | null = null;
   const visit = async (url: string): Promise<boolean> => {
+    stage = `caricamento di ${maskPii(url)}`;
     collector.currentUrl = url;
     let response: Response | null = null;
     try {
@@ -118,8 +122,9 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
       }
     };
     if (strip(page.url()) !== strip(url)) {
-      collector.currentUrl = page.url();
-      errors.push(`la pagina ${url} ha portato a ${maskPii(page.url())} (reindirizzamento)`);
+      collector.currentUrl = maskPii(page.url());
+      const note = `la pagina ${url} ha portato a ${maskPii(page.url())} (reindirizzamento)`;
+      if (!errors.includes(note)) errors.push(note);
     }
     // Una pagina di verifica anti-bot non è il sito: la sessione non è valida e non si prosegue.
     blocked ??= await detectBotChallenge(page, response);
@@ -131,6 +136,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   };
 
   const settle = async () => {
+    stage = `attesa e scroll su ${maskPii(collector.currentUrl)}`;
     if (p.scroll) {
       // Lo scroll è un'azione dell'utente: ciò che compare da qui in poi non è più "al caricamento".
       collector.markScroll();
@@ -206,6 +212,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         await shot('3-fine');
         if (plan.analyzeBanner && obs.visible) {
           collector.pause();
+          stage = `analisi del banner su ${maskPii(collector.currentUrl)}`;
           bannerAnalysis = await analyzeBanner(page, obs.adapters, shot).catch((e) => {
             errors.push(`analisi del banner non riuscita: ${(e as Error).message.split('\n')[0]}`);
             return undefined;
@@ -264,7 +271,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     // Le sessioni manuali durano quanto serve all'operatore, entro il loro tempo massimo
     await withTimeout(flow(), plan.manual ? Math.max(p.timeoutSessione, plan.manual.maxMs + 120000) : p.timeoutSessione, 'sessione interrotta');
   } catch (e) {
-    errors.push(`errore durante la sessione: ${(e as Error).message.split('\n')[0]}`);
+    const msg = (e as Error).message.split('\n')[0];
+    errors.push(`errore durante la sessione: ${msg}${msg.startsWith('sessione interrotta') ? ` (passo in corso: ${stage})` : ''}`);
   } finally {
     // La chiusura salva il file HAR: se non avviene, la sessione resta senza HAR e lo si annota.
     const err = await closeSafely(context, 90000, 'chiusura contesto (salvataggio HAR)');

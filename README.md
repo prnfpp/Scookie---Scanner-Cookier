@@ -208,7 +208,7 @@ Ogni scheda indica la **forza della prova**: *risorsa scaricata* (es. lo script 
 ### 7. Come usarlo bene
 
 1. **Prima dell'audit** concordare con il cliente il perimetro (domini, sottodomini, pagine importanti come preventivi o checkout) e annotarlo nel file di configurazione.
-2. **Ripetere gli scenari** con `scenari.ripetizioni: 2` o `3` (nell'interfaccia: passo Opzioni). Ogni scheda riporta "Osservato in k esecuzioni su N": un fatto visto 3 volte su 3 è stabile, uno visto 1 volta su 3 va approfondito.
+2. **Ripetere gli scenari** con `scenari.ripetizioni: 2` o `3` (nell'interfaccia: passo Opzioni). Ogni scheda riporta "Osservato in k su N esecuzioni": un fatto visto 3 volte su 3 è stabile, uno visto 1 volta su 3 va approfondito. I fatti visti solo nella navigazione manuale (che si fa una volta) sono indicati come tali. Anche l'analisi del banner si ripete in ogni esecuzione.
 3. **Controllare a campione** le criticità più gravi aprendo il sito in un browser normale in finestra anonima.
 4. **Consegnare** report e cartella al consulente legale o al DPO, che valuta la conformità. Il tool non dà indicazioni su come sistemare.
 5. **Revisionare le schede** prima di consegnare: in ogni esecuzione c'è il file `revisione.csv` (si apre con Excel), con una riga per scheda. Nella colonna `esito` scrivi `confermato`, `falso positivo` o `da verificare`, e nella colonna `nota` il motivo. Poi, nell'interfaccia, **Applica revisione** (oppure `npm run scookie -- revisione runs/<cartella>`): nasce `report-rivisto.html`/`.pdf`, con l'esito accanto a ogni scheda e i falsi positivi spostati in coda. Il report originale, i dati e le prove non cambiano. Nell'esecuzione successiva dello stesso cliente il modulo arriva già compilato per le schede uguali.

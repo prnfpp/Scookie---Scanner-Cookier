@@ -23,6 +23,40 @@ const PARAMS: { kind: PiiKind; re: RegExp; value: RegExp }[] = [
 ];
 const EMAIL = /[A-Z0-9._%+-]{2,}@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,}/gi;
 const CF = /\b[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]\b/gi;
+/** Targa nel percorso dell'indirizzo (es. /quotazione/auto/AB123CD/1990-01-01), con l'eventuale data che la segue. */
+const PATH_PLATE = /\/([A-Z]{2}\d{3}[A-Z]{2})(?:\/(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}))?(?=[/?#&"'\s]|$)/g;
+/** Estensioni di file: "logo@2x.png" non è un indirizzo email. */
+const FILE_EXT = /^(png|jpe?g|gif|svg|webp|avif|ico|bmp|js|mjs|css|json|map|woff2?|ttf|otf|eot|mp4|webm|mp3|pdf|html?|php|xml|txt)$/i;
+
+const isEmail = (v: string) => !FILE_EXT.test(v.split('.').pop() ?? '');
+
+/** Carattere di controllo del codice fiscale: scarta le sequenze casuali che ne hanno solo la forma. */
+function cfValid(cf: string): boolean {
+  const c = cf.toUpperCase();
+  const ODD: Record<string, number> = {};
+  const oddVals = [1, 0, 5, 7, 9, 13, 15, 17, 19, 21, 2, 4, 18, 20, 11, 3, 6, 8, 12, 14, 16, 10, 22, 25, 24, 23];
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach((ch, i) => (ODD[ch] = oddVals[i]));
+  '0123456789'.split('').forEach((ch, i) => (ODD[ch] = oddVals[i]));
+  let sum = 0;
+  for (let i = 0; i < 15; i++) {
+    const ch = c[i];
+    if (i % 2 === 0) sum += ODD[ch];
+    else sum += /\d/.test(ch) ? Number(ch) : ch.charCodeAt(0) - 65;
+  }
+  return String.fromCharCode(65 + (sum % 26)) === c[15];
+}
+
+/** Valori trovati per forma, fuori da coppie nome=valore. */
+function shapeHits(text: string): (PiiHit & { raw: string })[] {
+  const out: (PiiHit & { raw: string })[] = [];
+  for (const m of text.matchAll(EMAIL)) if (isEmail(m[0])) out.push({ kind: 'email', param: null, masked: maskValue(m[0]), raw: m[0] });
+  for (const m of text.matchAll(CF)) if (cfValid(m[0])) out.push({ kind: 'codice fiscale', param: null, masked: maskValue(m[0]), raw: m[0] });
+  for (const m of text.matchAll(PATH_PLATE)) {
+    out.push({ kind: 'targa', param: null, masked: maskValue(m[1]), raw: m[1] });
+    if (m[2]) out.push({ kind: 'data di nascita', param: null, masked: maskValue(m[2]), raw: m[2] });
+  }
+  return out;
+}
 
 export function maskValue(v: string): string {
   if (v.includes('@')) {
@@ -58,10 +92,10 @@ export function detectPii(...texts: (string | null | undefined)[]): PiiHit[] {
     for (const m of text.matchAll(/(?:^|[?&;#,{\s"'])([A-Za-z_][\w-]{1,30})"?\s*[=:]\s*"?([^&;,"'\s}?]{2,60})/g)) {
       const [, name, value] = m;
       const p = PARAMS.find((x) => x.re.test(name));
-      if (p && p.value.test(value.trim())) add({ kind: p.kind, param: name, masked: maskValue(value.trim()) });
+      const v = value.trim();
+      if (p && p.value.test(v) && (p.kind !== 'email' || isEmail(v)) && (p.kind !== 'codice fiscale' || cfValid(v))) add({ kind: p.kind, param: name, masked: maskValue(v) });
     }
-    for (const m of text.matchAll(EMAIL)) add({ kind: 'email', param: null, masked: maskValue(m[0]) });
-    for (const m of text.matchAll(CF)) add({ kind: 'codice fiscale', param: null, masked: maskValue(m[0]) });
+    for (const { raw: _r, ...h } of shapeHits(text)) add(h);
   }
   // la stessa email trovata per nome di parametro e per forma conta una volta
   const hits = [...out.values()];
@@ -78,8 +112,7 @@ export function maskPii(text: string): string {
     const p = PARAMS.find((x) => x.re.test(m[1]));
     if (p && p.value.test(m[2].trim())) values.add(m[2].trim());
   }
-  for (const m of decoded.matchAll(EMAIL)) values.add(m[0]);
-  for (const m of decoded.matchAll(CF)) values.add(m[0]);
+  for (const h of shapeHits(decoded)) values.add(h.raw);
   for (const v of values) {
     // il valore può comparire in chiaro o codificato (una o due volte)
     for (const form of new Set([v, encodeURIComponent(v), encodeURIComponent(encodeURIComponent(v))])) out = out.split(form).join(maskValue(v));
