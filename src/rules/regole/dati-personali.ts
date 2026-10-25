@@ -1,5 +1,23 @@
 import { CATEGORY_LABEL, groupBy, nReq, requestExcerpt, sessionEvidence } from '../helpers.js';
+import type { PiiHit } from '../../util/pii.js';
+import { registrableDomain } from '../../util/domains.js';
 import type { RawFinding, Rule } from '../types.js';
+
+/** Caselle PEC: indirizzi pubblicati dalle aziende, non dati dell'utente. */
+const PEC = /(^|\.)(pec|legalmail|arubapec|postecert|postacert|cert)\.|\.pec\.it$/i;
+
+/**
+ * Indirizzi email pubblicati dal sito stesso (es. assistenza@dominio-del-sito, caselle PEC): alcuni pixel, come
+ * quello di TikTok, leggono le email presenti nella pagina. Non sono dati dell'utente e non si contano.
+ */
+function userPii(pii: PiiHit[], site: string): PiiHit[] {
+  const own = registrableDomain(new URL(site).hostname);
+  return pii.filter((p) => {
+    if (p.kind !== 'email') return true;
+    const dom = (p.masked.split('@')[1] ?? '').toLowerCase();
+    return !(dom === own || dom.endsWith(`.${own}`) || PEC.test(dom));
+  });
+}
 
 /**
  * Dati personali (targa, data di nascita, email, codice fiscale, telefono) inviati a terze parti nell'indirizzo
@@ -12,7 +30,12 @@ export const datiPersonaliATerzi: Rule = {
   defaultSeverity: 'alta',
   defaultNorms: ['gdpr5', 'gdpr6', 'garante2021'],
   evaluate({ sessions }) {
-    const items = sessions.flatMap((s) => s.requests.filter((r) => r.party === 'terza' && r.pii?.length).map((r) => ({ s, r })));
+    const items = sessions.flatMap((s) =>
+      s.requests
+        .filter((r) => r.party === 'terza' && r.pii?.length)
+        .map((r) => ({ s, r: { ...r, pii: userPii(r.pii!, s.site) } }))
+        .filter(({ r }) => r.pii.length),
+    );
     const out: RawFinding[] = [];
     for (const [, group] of groupBy(items, (i) => `${i.s.site}|${i.r.tracker?.company ?? i.r.host}`)) {
       const { s, r } = group[0];

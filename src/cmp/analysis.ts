@@ -70,13 +70,17 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
         500,
       );
       await shot('4-preferenze');
-      // Anche nel pannello: evidenza di "Consenti tutti" rispetto a "Rifiuta tutti"
-      const inner = (await scan(page)).candidates;
-      const prom = {
-        accept: await lookOf(inner.find((c) => TEXTS.accept.test(c.text))),
-        reject: await lookOf(inner.find((c) => TEXTS.preferencesReject.test(c.text) || TEXTS.reject.test(c.text))),
-      };
-      preferences = { opened: true, via: opened, toggles, prominence: prom };
+      // Anche nel pannello: evidenza di "Consenti tutti" rispetto a "Rifiuta tutti". Solo comandi dentro il
+      // pannello di un gestore noto: il banner di primo livello spesso resta visibile sotto e va escluso.
+      const inner: Candidate[] = [];
+      for (const c of (await scan(page)).candidates) if (await inPreferencePanel(c)) inner.push(c);
+      const prom = inner.length
+        ? {
+            accept: await lookOf(inner.find((c) => TEXTS.accept.test(c.text))),
+            reject: await lookOf(inner.find((c) => TEXTS.preferencesReject.test(c.text) || TEXTS.reject.test(c.text))),
+          }
+        : undefined;
+      preferences = { opened: true, via: opened, toggles, ...(prom ? { prominence: prom } : {}) };
     } catch (e) {
       preferences = { opened: false, via: (e as Error).message.split('\n')[0], toggles: [] };
     }
@@ -91,6 +95,20 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
     preferences,
     prominence,
   };
+}
+
+/** Pannelli delle preferenze dei gestori noti (secondo livello), distinti dal banner di primo livello. */
+const PREFERENCE_PANELS = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '.didomi-consent-popup-preferences', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#hs-modal', '.iubenda-cs-preferences'];
+
+async function inPreferencePanel(c: Candidate): Promise<boolean> {
+  return c.frame
+    .locator(`[data-scookie-c="${c.index}"]`)
+    .first()
+    .evaluate((el, sel) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && sel.some((s) => !!el.closest(s));
+    }, PREFERENCE_PANELS)
+    .catch(() => false);
 }
 
 /** Misure oggettive di un comando: dimensioni, testo, sfondo e contrasto (formula WCAG 2.x). */
