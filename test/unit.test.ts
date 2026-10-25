@@ -4,7 +4,7 @@ import { Classifier, normalizeDeclaredCategory } from '../src/classify/classifie
 import { declaredPattern } from '../src/declared/compare.js';
 import { pageType, parseSitemap, robotsDisallows, sample, sectionsOf } from '../src/discovery/discover.js';
 import { TEXTS } from '../src/cmp/heuristic.js';
-import { describeGoogleConsent, googleConsentShort, isConsentModeDeniedPing, requestEvidenceLevel, strongestRequest } from '../src/rules/helpers.js';
+import { describeGoogleConsent, googleConsentShort, googleConsentSummary, isConsentModeDeniedPing, requestEvidenceLevel, strongestRequest } from '../src/rules/helpers.js';
 import { isRevokeUrl } from '../src/cmp/revoke.js';
 import { PartyResolver, registrableDomain } from '../src/util/domains.js';
 import { parseCsv, toCsv } from '../src/util/csv.js';
@@ -294,4 +294,13 @@ test('revisione manuale: modulo, precompilazione dalla revisione precedente, rep
   const pre = writeReviewTemplate(b, findings, 'Cliente');
   assert.equal(pre.prefilled, 2);
   assert.equal(readReview(b)!.get('r1|vimeo|a.test')!.esito, 'falso positivo');
+});
+
+test('segnali di consenso Google riassunti su tutte le richieste', () => {
+  const r = (p: Record<string, string>, sw = false) => ({ method: 'GET', resourceType: 'image', url: 'https://g.test/collect?a=1', host: 'g.test', consentParams: p, fromServiceWorker: sw }) as unknown as RequestRecord;
+  const same = googleConsentSummary([r({ gcs: 'G101' }), r({ gcs: 'G100' })]);
+  assert.match(same.short ?? '', /ad_storage negato/);
+  const mixed = googleConsentSummary([r({ gcs: 'G111', gcd: '13r3vPr2r5l1' }, true), r({ gcd: '13l3l3l2l1l1' }), r({ gcd: '13l3l3l2l1l1' })]);
+  assert.equal(mixed.short, 'con segnali di consenso diversi tra le richieste');
+  assert.match(mixed.detail ?? '', /concesso \(1 richiesta, di cui 1 da service worker\).*non impostato\) \(2 richieste\)/);
 });

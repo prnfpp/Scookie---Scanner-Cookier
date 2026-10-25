@@ -147,6 +147,7 @@ th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
 
         <div class="card hidden" id="job">
           <div class="site-head"><h2 id="job-title">Operazione in corso</h2><span id="job-badge" class="badge"></span></div>
+          <div id="job-action" class="msg err hidden"><strong>Azione richiesta: navigazione manuale.</strong> Si è aperta una finestra del browser: segui le istruzioni nel riquadro in basso a sinistra e premi "Ho finito". Non toccare il banner dei cookie.</div>
           <div id="job-result"></div>
           <details id="job-log-box" open><summary>Dettaglio avanzamento</summary><pre class="log" id="job-log"></pre></details>
         </div>
@@ -183,6 +184,12 @@ th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
       <label>Sezioni da escludere <span class="hint">(una per riga, inizio del percorso, es. /area-riservata)</span></label>
       <textarea class="s-escludi" placeholder="/area-riservata&#10;/en/"></textarea>
     </div>
+    <label>Navigazione manuale <span class="hint">(per percorsi che il tool non sa fare da solo, es. il preventivo: lascia vuoto se non serve)</span></label>
+    <p class="hint">Se scrivi le istruzioni, all'inizio dell'audit si apre una finestra del browser: il tool fa la scelta sul banner, poi navighi tu e premi "Ho finito". Dopo, l'audit prosegue da solo.</p>
+    <div class="row">
+      <div><label>Istruzioni per chi naviga</label><textarea class="s-manuale" rows="2" placeholder="Es. compila il preventivo auto con la targa di prova AB123CD fino alla pagina del prezzo"></textarea></div>
+      <div><label>Pagina di partenza <span class="hint">(facoltativa)</span></label><input type="text" class="s-manuale-partenza" placeholder="/preventivo"></div>
+    </div>
     <details>
       <summary>Opzioni avanzate del sito</summary>
       <div class="row">
@@ -200,12 +207,6 @@ th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
             <option value="sempre">Sempre</option>
             <option value="no">Mai</option>
           </select></div>
-      </div>
-      <h3>Navigazione manuale <span class="muted">(per percorsi che il tool non sa fare da solo, es. un preventivo)</span></h3>
-      <p class="hint">Se compili le istruzioni, durante l'audit il browser si apre in una finestra: il tool esegue la scelta sul banner, poi navighi tu seguendo le istruzioni e premi "Ho finito". Tutto viene registrato.</p>
-      <div class="row">
-        <div><label>Istruzioni per chi naviga</label><textarea class="s-manuale" rows="2" placeholder="Es. compila il preventivo auto con la targa di prova AB123CD fino alla pagina del prezzo"></textarea></div>
-        <div><label>Pagina di partenza <span class="hint">(facoltativa)</span></label><input type="text" class="s-manuale-partenza" placeholder="/preventivo"></div>
       </div>
       <h3>Pulsanti del banner <span class="muted">(solo se il banner non viene riconosciuto da solo)</span></h3>
       <div class="row">
@@ -499,6 +500,12 @@ async function refreshJob(force) {
     const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
     pre.textContent = j.log.join('\n');
     if (atBottom) pre.scrollTop = pre.scrollHeight;
+    // Navigazione manuale in corso: avviso ben visibile, anche nel titolo della scheda del browser
+    const startIdx = j.log.map((l) => /NAVIGAZIONE MANUALE/.test(l)).lastIndexOf(true);
+    const endIdx = j.log.map((l) => /navigazione manuale conclusa/.test(l)).lastIndexOf(true);
+    const waiting = running && startIdx >= 0 && startIdx > endIdx;
+    $('#job-action').classList.toggle('hidden', !waiting);
+    document.title = waiting ? '⚠ Azione richiesta – Scookie' : 'Scookie';
     renderJobResult(j);
   }
   if (running && !state.polling) state.polling = setInterval(refreshJob, 1500);
