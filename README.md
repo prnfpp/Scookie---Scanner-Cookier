@@ -63,7 +63,7 @@ Nell'interfaccia ci sono tre schede in alto: **Clienti**, **Audit** ed **Esecuzi
   4. **Avvio**: durata stimata e pulsante **Avvia audit**.
 - **Salva**: le configurazioni sono gli stessi file YAML della cartella `clienti/` descritti sotto, quindi si possono usare anche dal Terminale.
 - **Audit**: barra di avanzamento con **tempo rimanente stimato** (calcolato sulla durata media delle sessioni già fatte), fase in corso, avanzamento per sito. Se serve una navigazione manuale compare "Azione richiesta"; se la connessione cade, l'audit si mette in pausa e riprende da solo. Alla fine: **Apri il report**, PDF e **Revisiona le schede**.
-- **Esecuzioni**: tutti i report passati, con il conteggio delle schede per gravità e i quattro passi Leggi → Revisiona → Rivisto → Confronta. La revisione delle schede si fa direttamente nell'interfaccia (esito e nota per scheda), senza aprire Excel. Se un sito non ha dati (pagine non caricate), il pulsante **Ripeti solo questi siti** rilancia l'audit solo per quelli. Il paese di uscita è evidenziato in rosso se non è l'Italia.
+- **Esecuzioni**: tutti i report passati, con il conteggio dei rilievi per priorità di verifica e i quattro passi Leggi → Revisiona → Rivisto → Confronta. La revisione delle schede si fa direttamente nell'interfaccia (esito e nota per scheda), senza aprire Excel. Se un sito non ha dati (pagine non caricate), il pulsante **Ripeti solo questi siti** rilancia l'audit solo per quelli. Il paese di uscita è evidenziato in rosso se non è l'Italia.
 
 In fondo alla scheda Clienti, il riquadro **Programma** dice se ci sono aggiornamenti su GitHub: **Aggiorna e riavvia** li installa e riapre l'interfaccia (se Scookie è stato aperto dall'icona), **Chiudi Scookie** lo chiude.
 
@@ -166,9 +166,10 @@ Come funziona: il browser si apre in una finestra, il tool esegue la scelta sul 
 
 ```yaml
 datiDiProva:
-  targa: AA123BB
-  dataNascita: 01/01/1990
-  email: test.audit@esempio.it
+  - { tipo: email, valore: test.verifica@esempio.it }
+  - { tipo: data, valore: 01/01/1990, etichetta: data di nascita }
+  - { tipo: targa, valore: AA123BB }
+  - { tipo: nome, valore: Mario Prova }
 ```
 
 Il tool li riconosce in ogni forma (es. la data come `01/01/1990` o `1990-01-01`, anche dentro un indirizzo codificato) come **prova certa** che quei dati arrivano a un terzo, e li riporta in chiaro (sono fittizi o concordati). I valori che soltanto somigliano a dati personali restano mascherati e hanno certezza più bassa.
@@ -177,7 +178,7 @@ Non toccare il banner dei cookie durante la navigazione manuale. **Usa una targa
 
 #### Se il sito blocca il tool
 
-Alcuni siti mostrano ai browser automatici una pagina di verifica ("Verifica di essere umano", Cloudflare, DataDome…). Il tool la riconosce: la sessione viene **scartata** (non produce criticità sul sito) e il report lo dichiara nella scheda "Accesso bloccato" e nella sintesi. Si può riprovare con il browser visibile:
+Alcuni siti mostrano ai browser automatici una pagina di verifica ("Verifica di essere umano", Cloudflare, DataDome…). Il tool la riconosce: la sessione viene **scartata** (non produce rilievi sul sito) e il report lo dichiara nella scheda "Accesso bloccato" e nella sintesi. Si può riprovare con il browser visibile:
 
 ```yaml
 browser:
@@ -219,12 +220,18 @@ L'audit richiede alcuni minuti per sito (circa 3-5 minuti con le impostazioni de
 
 Ogni esecuzione crea una cartella in `runs/` con data, ora e nome del cliente:
 
-- **`report.html`** (si apre con doppio clic) e **`report.pdf`**: il documento. Inizia con "Come leggere questo report" e una **sintesi per il legale** di una o due pagine (le criticità principali in parole semplici), poi perimetro e metodo, analisi del banner, una scheda per ogni criticità con descrizione, prova e riferimenti normativi, l'inventario di cookie e terze parti, e l'elenco dei file con le impronte;
+- **`report.html`** (si apre con doppio clic) e **`report.pdf`**: il **Rapporto tecnico di verifica sull'uso di cookie e altri strumenti di tracciamento**, con il sottotitolo indicato nella configurazione (es. "Verifica post-intervento su esempio.it e sottodomini"). Dopo una premessa sulla natura del documento (tecnico e descrittivo, senza valutazioni di conformità né indicazioni correttive) contiene:
+  1. **Sintesi**: i fatti principali, raggruppati per causa e ordinati per priorità di verifica;
+  2. **Perimetro e metodo**: domini, pagine e percorsi campionati, scenari di consenso, ripetizioni, data, browser, paese di uscita, dati di prova, versione dello strumento e impronta della configurazione;
+  3. **Rilievi**: uno per fatto (R-001…), con cosa succede, dove, forza della prova, ripetibilità, prove e norme di riferimento;
+  4. **Inventario** di cookie e terze parti, con il confronto con l'elenco dichiarato;
+  5. **Limiti**: del metodo e di questa rilevazione (cosa non è stato osservato e perché), con le anomalie;
+  6. **Allegati**: evidenze con impronte SHA-256, dati grezzi, come ripetere la rilevazione e confrontarla con una precedente;
 - **file `.csv`**: i dati grezzi, si aprono con Excel;
 - **cartella `evidenze/`**: screenshot e registrazioni del traffico (file HAR);
 - **`manifest.json`**: configurazione usata, versioni, impronte di ogni file.
 
-Ogni scheda indica la **forza della prova**: *risorsa scaricata* (es. lo script di un fornitore, che da solo non dimostra una raccolta di dati), *dati inviati* (una richiesta di raccolta, es. un pixel con parametri) o *identificativo memorizzato* (un cookie o uno storage del fornitore). Le stesse criticità osservate su più sottodomini sono riunite in un'unica scheda.
+Ogni rilievo indica la **forza della prova**: *risorsa scaricata* (es. lo script di un fornitore, che da solo non dimostra una raccolta di dati), *dati inviati* (una richiesta di raccolta, es. un pixel con parametri) o *identificativo memorizzato* (un cookie o uno storage del fornitore). Lo stesso fatto osservato su più sottodomini è riunito in un unico rilievo.
 
 **Il computer deve restare acceso, sveglio e collegato a internet** per tutta la durata dell'audit (vedi le domande frequenti). Se la connessione cade o il computer va in stop, le sessioni coinvolte vengono riconosciute come non valide: il tool aspetta il ripristino della connessione e le ripete; se non riesce, le esclude dalle regole e il report lo dichiara in apertura.
 
@@ -234,10 +241,10 @@ Ogni scheda indica la **forza della prova**: *risorsa scaricata* (es. lo script 
 
 1. **Prima dell'audit** concordare con il cliente il perimetro (domini, sottodomini, pagine importanti come preventivi o checkout) e annotarlo nel file di configurazione.
 2. **Ripetere gli scenari** con `scenari.ripetizioni: 2` o `3` (nell'interfaccia: passo Opzioni). Ogni scheda riporta "Osservato in k su N esecuzioni": un fatto visto 3 volte su 3 è stabile, uno visto 1 volta su 3 va approfondito. I fatti visti solo nella navigazione manuale (che si fa una volta) sono indicati come tali. Anche l'analisi del banner si ripete in ogni esecuzione.
-3. **Controllare a campione** le criticità più gravi aprendo il sito in un browser normale in finestra anonima.
+3. **Controllare a campione** i rilievi con priorità più alta aprendo il sito in un browser normale in finestra anonima.
 4. **Consegnare** report e cartella al consulente legale o al DPO, che valuta la conformità. Il tool non dà indicazioni su come sistemare.
 5. **Revisionare le schede** prima di consegnare: in ogni esecuzione c'è il file `revisione.csv` (si apre con Excel), con una riga per scheda. Nella colonna `esito` scrivi `confermato`, `falso positivo` o `da verificare`, e nella colonna `nota` il motivo. Poi, nell'interfaccia, **Applica revisione** (oppure `npm run scookie -- revisione runs/<cartella>`): nasce `report-rivisto.html`/`.pdf`, con l'esito accanto a ogni scheda e i falsi positivi spostati in coda. Il report originale, i dati e le prove non cambiano. Nell'esecuzione successiva dello stesso cliente il modulo arriva già compilato per le schede uguali.
-6. **Dopo le correzioni** del cliente, rilanciare lo stesso file di configurazione e confrontare le due esecuzioni: nell'interfaccia, scheda Esecuzioni, pulsante **Confronta con precedente**; dal Terminale `npm run scookie -- confronta runs/<prima> runs/<dopo>`. Il confronto elenca le criticità non più osservate, quelle nuove e quelle ancora presenti (con l'eventuale cambio di gravità).
+6. **Dopo le correzioni** del cliente, rilanciare lo stesso file di configurazione e confrontare le due esecuzioni: nell'interfaccia, scheda Esecuzioni, pulsante **Confronta con precedente**; dal Terminale `npm run scookie -- confronta runs/<prima> runs/<dopo>`. Il confronto elenca i rilievi non più osservati, quelli nuovi e quelli ancora presenti (con l'eventuale cambio di priorità), e le condizioni delle due rilevazioni.
 
 ### 8. Domande frequenti
 
@@ -325,7 +332,7 @@ Per la validazione su siti reali c'è già [`config/validazione.yaml`](config/va
 
 Opzioni di `run`: `--out <cartella>` per cambiare la cartella di output, `--no-pdf` per saltare il PDF.
 
-Confronto tra due esecuzioni: `npm run scookie -- confronta <cartella-prima> <cartella-dopo> [-o file.html]`. Le criticità sono abbinate per regola, oggetto e dominio (non per numero di scheda); il file va nella cartella della seconda esecuzione.
+Confronto tra due rilevazioni: `npm run scookie -- confronta <cartella-prima> <cartella-dopo> [-o file.html]`. I rilievi sono abbinati per regola, oggetto e dominio (non per numero); il documento riporta anche le condizioni delle due rilevazioni (versione dello strumento, configurazione e sua impronta, scenari, ripetizioni, paese di uscita) e avvisa se differiscono, perché un rilievo "nuovo" o "non più osservato" può dipendere anche da questo. Per una verifica post-intervento a parità di condizioni: stessa configurazione e stessa versione dello strumento. Il file va nella cartella della seconda rilevazione.
 
 Tutto si regola dal file YAML, senza toccare il codice. I campi sono commentati in [`config/esempio.yaml`](config/esempio.yaml) e definiti in [`src/config/schema.ts`](src/config/schema.ts).
 
@@ -335,13 +342,13 @@ Una cartella per esecuzione (`runs/<data>_<cliente>/`):
 
 | File | Contenuto |
 | --- | --- |
-| `report.html`, `report.pdf` | il documento da consegnare: perimetro e metodo, sintesi per il legale (i fatti raggruppati per causa e ordinati per gravità, forza della prova e ripetibilità), schede delle criticità con prove e norme, inventario, allegati |
+| `report.html`, `report.pdf` | il Rapporto tecnico di verifica: sintesi per causa, perimetro e metodo, rilievi con prove e norme, inventario e confronto con l'elenco dichiarato, limiti, allegati |
 | `cookie.csv`, `storage.csv`, `richieste.csv`, `sessioni.csv` | dati grezzi per sessione (separatore `;`, si aprono in Excel) |
 | `confronto-dichiarati.csv` | confronto tra elementi osservati ed elenco dichiarato |
-| `criticita.csv` | elenco delle criticità |
+| `rilievi.csv` | elenco dei rilievi |
 | `revisione.csv` | modulo per la revisione manuale delle schede (esito e nota); con `revisione` produce `report-rivisto.html`/`.pdf` e `revisione-applicata.json` (impronte) |
 | `dati.json` | tutti i dati in formato strutturato |
-| `evidenze/` | screenshot e HAR per sessione, compressi (`.har.gz`: su Mac un doppio clic restituisce il `.har`). I HAR conservano sempre i corpi delle richieste; i corpi delle risposte (per default solo i testuali fino a 512 KB: vedi `report.harContenuti`) restano solo per le sessioni citate nelle schede. Con `report.harCompressi: false` i HAR restano interi e non compressi. In `evidenze/criticita/` le prove con il numero della criticità nel nome (`C-003_…png`) |
+| `evidenze/` | screenshot e HAR per sessione, compressi (`.har.gz`: su Mac un doppio clic restituisce il `.har`). I HAR conservano sempre i corpi delle richieste; i corpi delle risposte (per default solo i testuali fino a 512 KB: vedi `report.harContenuti`) restano solo per le sessioni citate nelle schede. Con `report.harCompressi: false` i HAR restano interi e non compressi. In `evidenze/rilievi/` le prove con il numero della rilievi nel nome (`R-003_…png`) |
 | `manifest.json` (+ `.sha256`) | configurazione usata, versione del tool, browser, user agent, hash di ogni file |
 
 ## Come interagisce con banner che non conosce
@@ -355,7 +362,7 @@ Per ogni scelta prova, nell'ordine:
 
 Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Cookiebot.consent`, stringa TCF…) e lo confronta con la scelta fatta. Il report dice sempre quale metodo ha funzionato, a quale livello del banner (primo, secondo, chiusura X) e cosa non è stato trovato.
 
-## Regole di criticità
+## Regole (rilievi)
 
 | Regola | Cosa rileva |
 | --- | --- |
@@ -386,7 +393,7 @@ Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Coo
 | `elementi-non-classificati` | cookie, storage e domini di terze parti che nessuna fonte sa classificare: vengono elencati invece di restare invisibili |
 | `endpoint-server-side` | endpoint di raccolta su dominio proprio (`/g/collect`…), con il limite che comporta |
 
-Norme collegate e gravità si cambiano in [`config/norme.yaml`](config/norme.yaml). I riferimenti precaricati vanno **validati dal consulente legale**.
+Norme collegate e priorità di verifica (chiave `gravita`) si cambiano in [`config/norme.yaml`](config/norme.yaml). I riferimenti precaricati vanno **validati dal consulente legale**.
 
 ## Elenco dichiarato
 
@@ -427,6 +434,15 @@ I test di integrazione usano siti di prova locali (`test/fixtures/sites/`), uno 
 Il tool è stato inoltre validato su 5 siti reali (e-commerce, agenzia, PA, grande distribuzione) con esecuzioni ripetute dall'Italia e dagli USA: banner gestiti e verificati in tutti i casi in cui erano presenti, risultati coincidenti tra esecuzioni.
 
 Chromium viene indirizzato al server locale con `--host-resolver-rules`, quindi non serve la rete.
+
+## Sicurezza e riservatezza
+
+- **Interfaccia solo locale**: ascolta su `127.0.0.1`, verifica l'intestazione Host (contro il DNS rebinding), accetta le chiamate solo con cookie di sessione `SameSite=Strict` e un'intestazione dedicata. I rapporti e i file delle esecuzioni sono serviti con una Content-Security-Policy che non permette script né risorse esterne: un testo preso da un sito verificato non può eseguire codice nell'interfaccia.
+- **Dati in locale**: configurazioni (`clienti/`), percorsi registrati (`clienti/percorsi/`) e rilevazioni (`runs/`) restano sul computer e sono esclusi da git.
+- **Dati personali**: i valori che somigliano a dati personali (in indirizzi, corpi delle richieste, anteprime di cookie e storage) sono mascherati in rapporto, CSV e `dati.json`; restano interi solo nei file HAR, che sono la registrazione fedele del traffico. I dati di prova dichiarati sono fittizi o concordati e compaiono in chiaro. Le celle dei CSV che Excel leggerebbe come formule sono neutralizzate.
+- **Cosa contengono i HAR**: tutto il traffico del browser di prova, compresi cookie e indirizzo IP di uscita dello strumento. Vanno consegnati solo a chi deve verificare le prove.
+- **Aggiornamento automatico dall'icona**: scarica ed esegue il codice del ramo `main` del repository. Conviene proteggere il ramo su GitHub (modifiche solo tramite pull request) e tenere private le credenziali con cui si accede al repository.
+- **Dichiarazione dello strumento**: per impostazione predefinita lo user agent dichiara l'audit (`ScookieAudit`); l'esecuzione di controllo (`uaNormale`) usa quello di un browser comune, per verificare che il sito non si comporti diversamente.
 
 ## Licenze
 

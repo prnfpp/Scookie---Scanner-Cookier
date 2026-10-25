@@ -123,7 +123,7 @@ export const esitoRevoca: Rule = {
 /** Accettata solo la categoria statistica: partono comunque marketing, social o registrazione sessioni. */
 export const personalizzazioneNonRispettata: Rule = {
   id: 'personalizzazione-non-rispettata',
-  title: 'Scelta per categoria non rispettata',
+  title: 'Attivazioni oltre le categorie scelte',
   defaultSeverity: 'alta',
   defaultNorms: ['art122', 'eprivacy53', 'garante2021', 'gdpr4_11', 'gdpr7'],
   evaluate({ sessions }) {

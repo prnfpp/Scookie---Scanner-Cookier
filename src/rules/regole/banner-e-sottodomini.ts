@@ -39,7 +39,7 @@ export const bannerAssente: Rule = {
 /** Sottodomini dello stesso dominio con CMP diversi, banner presenti solo in parte, policy su altri domini. */
 export const sottodominiDisomogenei: Rule = {
   id: 'sottodomini-disomogenei',
-  title: 'Gestione del consenso disomogenea tra sottodomini',
+  title: 'Gestione del consenso diversa tra sottodomini',
   defaultSeverity: 'bassa',
   defaultNorms: ['garante2021', 'gdpr13'],
   evaluate({ sessions, config, declared }) {
@@ -164,8 +164,8 @@ export const accessoBloccato: Rule = {
         description:
           `${list.length} sessioni su ${total} sono state intercettate da ${providers.join(', ')} con una pagina di verifica anti-bot. ` +
           (all
-            ? 'Il sito non è stato analizzabile: nessuna criticità è stata ricavata da queste sessioni.'
-            : 'Queste sessioni sono escluse dalle regole: le criticità del sito derivano solo dalle sessioni valide.') +
+            ? 'Il sito non è stato analizzabile: nessun rilievo è stato ricavato da queste sessioni.'
+            : 'Queste sessioni sono escluse dalle regole: i rilievi del sito derivano solo dalle sessioni valide.') +
           ' Il tool non tenta di aggirare questi sistemi; si può ripetere l\'audit con il browser visibile o in un altro momento.',
         details: list.map((s) => `${s.id} (${s.scenario}) — ${s.blocked!.signal} su ${s.blocked!.url}`),
         evidence: sessionEvidence(list[0], ['1-banner']),

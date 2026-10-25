@@ -56,7 +56,7 @@ program
 
 program
   .command('confronta')
-  .description('Confronta due esecuzioni: criticità non più osservate, nuove e ancora presenti')
+  .description('Confronta due esecuzioni: rilievi non più osservati, nuovi e ancora presenti')
   .argument('<prima>', 'cartella della prima esecuzione (es. runs/2026-10-01_…)')
   .argument('<dopo>', 'cartella della seconda esecuzione')
   .option('-o, --out <file>', 'file HTML da scrivere (predefinito: nella cartella della seconda esecuzione)')
