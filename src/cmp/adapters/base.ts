@@ -82,6 +82,11 @@ export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
       const close = spec.reject.close && (await clickFirst(page, spec.reject.close));
       // Un pulsante di chiusura con un testo di rifiuto (es. OneTrust "Continua senza accettare") è un rifiuto al primo livello.
       if (close) return clicked(TEXTS.reject.test(/"([^"]+)"/.exec(close.label)?.[1]?.trim() ?? '') ? 'primo-livello' : 'chiusura-x', close);
+      // Pannello delle preferenze già aperto (es. riaperto dal link nel footer per revocare): si rifiuta lì
+      if (spec.reject.preferencesReject) {
+        const direct = await clickFirst(page, spec.reject.preferencesReject);
+        if (direct) return clicked('secondo-livello', direct);
+      }
       if (spec.reject.openPreferences && spec.reject.preferencesReject) {
         const open = await clickFirst(page, spec.reject.openPreferences);
         if (open) {

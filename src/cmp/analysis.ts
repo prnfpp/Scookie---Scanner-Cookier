@@ -2,7 +2,7 @@ import type { Page } from 'playwright';
 import type { BannerAnalysis, CommandLook } from '../types.js';
 import { frames, waitFor } from './dom.js';
 import { TEXTS, clickCandidate, scan, type Candidate } from './heuristic.js';
-import { REVOKE_HREF, REVOKE_SELECTORS, REVOKE_TEXT } from './revoke.js';
+import { findRevokeControl } from './revoke.js';
 import type { CmpAdapter } from './types.js';
 
 const POLICY_TEXT = /cookie|privacy|informativa|policy|trattamento dei dati/i;
@@ -33,37 +33,8 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
   // Modo per riaprire le preferenze nella pagina, fuori dal banner (gli elementi del banner sono marcati dallo scan).
   let revoke: BannerAnalysis['revokeLink'] = null;
   for (const f of frames(page)) {
-    const found = await f
-      .evaluate(
-        ({ selectors, source, hrefSource }) => {
-          const re = new RegExp(source, 'i');
-          const inBanner = (el: Element) => !!el.closest('[data-scookie-c]') || el.hasAttribute('data-scookie-c');
-          for (const sel of selectors) {
-            const el = document.querySelector(sel);
-            if (el && !inBanner(el)) return { text: ((el as HTMLElement).innerText || el.getAttribute('aria-label') || sel).trim().slice(0, 80), how: `elemento ${sel}` };
-          }
-          for (const el of Array.from(document.querySelectorAll('a, button, [role="button"]'))) {
-            const t = ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
-            if (t && t.length < 80 && re.test(t) && !inBanner(el)) return { text: t, how: 'testo del link' };
-          }
-          // Link a una pagina dedicata (es. /preferenze-cookies), anche con un testo generico
-          const hrefRe = new RegExp(hrefSource, 'i');
-          for (const a of Array.from(document.querySelectorAll('a[href]'))) {
-            const href = (a as HTMLAnchorElement).href;
-            if (hrefRe.test(href) && !inBanner(a)) {
-              const t = ((a as HTMLElement).innerText || a.getAttribute('aria-label') || href).replace(/\s+/g, ' ').trim().slice(0, 80);
-              return { text: t, how: `link alla pagina ${href}` };
-            }
-          }
-          return null;
-        },
-        { selectors: REVOKE_SELECTORS, source: REVOKE_TEXT.source, hrefSource: REVOKE_HREF.source },
-      )
-      .catch(() => null);
-    if (found) {
-      revoke = found;
-      break;
-    }
+    revoke = await findRevokeControl(f);
+    if (revoke) break;
   }
 
   // Evidenza visiva dei comandi di accettazione e rifiuto (prima di toccare altro)
@@ -184,7 +155,11 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
     };
     const all: Element[] = [];
     const walk = (root: Document | ShadowRoot) => {
-      for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"]'))) all.push(el);
+      for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"]'))) {
+        // marcature di una lettura precedente: andrebbero a confondersi con quelle nuove
+        el.removeAttribute('data-scookie-t');
+        all.push(el);
+      }
       for (const el of Array.from(root.querySelectorAll('*'))) if (el.shadowRoot) walk(el.shadowRoot);
     };
     walk(document);
