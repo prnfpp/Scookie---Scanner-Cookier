@@ -11,6 +11,8 @@ interface OtGroup {
   nome: string;
   stato: string;
   elementi: number;
+  /** Il gruppo ha un interruttore nel centro preferenze (null se il centro preferenze non è nella pagina). */
+  inPc?: boolean | null;
 }
 
 interface OtRawItem {
@@ -45,9 +47,12 @@ export const onetrust = selectorAdapter({
       const d = window.OneTrust && OneTrust.GetDomainData ? OneTrust.GetDomainData() : null;
       if (d && Array.isArray(d.Groups)) {
         gruppi = [];
+        const pc = document.getElementById('onetrust-pc-sdk');
         const walk = (g) => {
           const n = (g.Cookies || []).length + (g.FirstPartyCookies || []).length + (g.Hosts || []).length;
-          gruppi.push({ id: String(g.OptanonGroupId ?? g.CustomGroupId ?? ''), nome: g.GroupName || '', stato: String(g.Status || '').toLowerCase(), elementi: n });
+          const id = String(g.OptanonGroupId ?? g.CustomGroupId ?? '');
+          const inPc = pc ? !!pc.querySelector('[id="ot-group-id-' + id + '"], [data-optanongroupid="' + id + '"]') : null;
+          gruppi.push({ id, nome: g.GroupName || '', stato: String(g.Status || '').toLowerCase(), elementi: n, inPc });
           (g.SubGroups || []).forEach(walk);
         };
         d.Groups.forEach(walk);
@@ -94,9 +99,17 @@ export const onetrust = selectorAdapter({
     }
     const missing = nonEssential.filter((g) => !active.includes(g));
     if (!nonEssential.length) return { consistent: null, detail: `nessun gruppo non essenziale configurato (${summary})` };
-    return missing.length
-      ? { consistent: false, detail: `dopo l'accettazione non risultano attivi: ${missing.map(label).join(', ')} (${summary})` }
-      : { consistent: true, detail: summary };
+    // Gruppi che l'utente non vede nel centro preferenze: "Accetta" può non riguardarli (es. configurazione per paese).
+    const hidden = missing.filter((id) => groups.find((g) => g.id === id)?.inPc === false);
+    const shown = missing.filter((id) => !hidden.includes(id));
+    if (shown.length) return { consistent: false, detail: `dopo l'accettazione non risultano attivi: ${shown.map(label).join(', ')} (${summary})` };
+    if (hidden.length) {
+      return {
+        consistent: null,
+        detail: `dopo l'accettazione non risultano attivi ${hidden.map(label).join(', ')}, che però non compaiono nel centro preferenze (l'utente non può sceglierli): coerenza non determinabile (${summary})`,
+      };
+    }
+    return { consistent: true, detail: summary };
   },
   async declared(page) {
     const raw = await page

@@ -86,10 +86,14 @@ export const nReq = (n: number) => `${n} ${n === 1 ? 'richiesta' : 'richieste'}`
  */
 export function choiceHow(i: InteractionReport): string {
   if (i.via === 'api') return `tramite l'API del gestore del consenso, senza click su un pulsante (${i.detail})`;
-  const els = i.clicked?.length ? i.clicked : [i.detail];
-  if (i.layer === 'chiusura-x') return `chiudendo il banner con la ${els[0]}`;
+  const els = (i.clicked?.length ? i.clicked : [i.detail]).map(withArticle);
+  if (i.layer === 'chiusura-x') return `chiudendo il banner con ${els[0]}`;
   return `cliccando ${els.join(' e poi ')}`;
 }
+
+/** "pulsante "Rifiuta"" → "il pulsante "Rifiuta""; "X di chiusura" → "la X di chiusura". */
+export const withArticle = (label: string) =>
+  /^(pulsante|link)\b/.test(label) ? `il ${label}` : /^X\b/.test(label) ? `la ${label}` : label;
 
 /** Livelli di forza della prova, dal più debole al più forte. */
 export type EvidenceLevel = 'risorsa' | 'raccolta' | 'identificativo';

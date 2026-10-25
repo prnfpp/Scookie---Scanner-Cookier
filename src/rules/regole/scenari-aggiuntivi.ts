@@ -28,7 +28,8 @@ export const attivazioneDopoRevoca: Rule = {
           pageUrl: sample?.pageUrl ?? cs[0]?.firstSeenUrl ?? null,
           severity: level === 'risorsa' ? 'media' : undefined,
           evidenceLevel: level,
-          groupKey: key,
+          // revoca dal link della pagina o solo via API: casi diversi, schede diverse
+          groupKey: `${key}|${/via API/.test(s.revocation!.how) ? 'api' : 'link'}`,
           headline: `Dopo la revoca del consenso, ${key} continua a ${cs.length ? 'scrivere identificativi' : level === 'raccolta' ? 'ricevere dati' : 'essere caricato'}`,
           description: `Dopo aver accettato e poi revocato il consenso (${s.revocation!.how}), per ${key} ${parts.join(' e ')}.`,
           details: [
@@ -71,7 +72,7 @@ export const esitoRevoca: Rule = {
           scenario: s.scenario,
           pageUrl: s.pages[0],
           severity: 'informativa',
-          groupKey: 'cookie-rimasti',
+          groupKey: `cookie-rimasti|${/via API/.test(r.how) ? 'api' : 'link'}`,
           description: `Dopo la revoca (${r.how}) restano nel browser ${r.remaining.length} cookie non tecnici scritti durante il consenso. La revoca impedisce nuovi trattamenti; la rimozione dei cookie già scritti dipende dal gestore del consenso.`,
           details: r.remaining,
           evidence: sessionEvidence(s, ['4-dopo-revoca']).filter((e) => !e.file.endsWith('.har')),

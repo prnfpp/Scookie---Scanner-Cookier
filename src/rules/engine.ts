@@ -103,7 +103,8 @@ function mergeAcrossSites(list: (Omit<Finding, 'id'> & { groupKey?: string })[])
       sites,
       severity: ORDER[Math.min(...g.map((f) => ORDER.indexOf(f.severity)))],
       description: `${first.description} Lo stesso si osserva anche su: ${hosts.slice(1).join(', ')}.`,
-      details: g.flatMap((f) => [`— ${shortHost(f.site)}:`, ...f.details.map((d) => `   ${d}`)]),
+      // dettagli per sito; i siti senza dettagli non producono intestazioni vuote
+      details: g.flatMap((f) => (f.details.length ? [`— ${shortHost(f.site)}:`, ...f.details.map((d) => `   ${d}`)] : [])),
       evidence: g.slice(0, 3).flatMap((f) => f.evidence),
       headline: first.headline ? `${first.headline} (${hosts.join(', ')})` : undefined,
     });

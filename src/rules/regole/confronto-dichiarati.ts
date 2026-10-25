@@ -7,6 +7,8 @@ const label = (r: ComparisonRow) =>
 /** Etichetta con articolo: "Il cookie …", "La chiave di storage …". */
 const theLabel = (r: ComparisonRow) => `${r.kind === 'storage' ? 'La' : 'Il'} ${label(r)}`;
 
+const rank = (r: ComparisonRow) => (r.observedCategory === 'tecnico' ? 2 : r.observedCategory === 'sconosciuta' || !r.observedCategory ? 1 : 0);
+
 /** Elementi osservati ma assenti dall'elenco dichiarato. */
 export const nonDichiarati: Rule = {
   id: 'elementi-non-dichiarati',
@@ -25,7 +27,8 @@ export const nonDichiarati: Rule = {
         groupKey: 'tutti',
         headline: nonTech.length ? `${nonTech.length} elementi di tracciamento osservati non compaiono nell'elenco dichiarato` : undefined,
         description: `${rows.length === 1 ? '1 elemento osservato non compare' : `${rows.length} elementi osservati non compaiono`} nell'elenco dichiarato (${src}), di cui ${nonTech.length} di categoria non tecnica.`,
-        details: rows.map((r) => `${label(r)} — categoria osservata: ${CATEGORY_LABEL[r.observedCategory ?? 'sconosciuta']}; scenari: ${r.scenarios.join(', ')}`),
+        // prima gli elementi di tracciamento, poi i non classificati, in fondo i tecnici
+        details: [...rows].sort((x, y) => rank(x) - rank(y)).map((r) => `${label(r)} — categoria osservata: ${CATEGORY_LABEL[r.observedCategory ?? 'sconosciuta']}; scenari: ${r.scenarios.join(', ')}`),
         evidence: [],
       });
     }
@@ -85,7 +88,7 @@ export const categoriaIncoerente: Rule = {
           pageUrl: null,
           groupKey: key.split('|').slice(1).join('|'),
           headline: `Elementi di ${observed} dichiarati nella categoria tecnica${r.declaredAlwaysActive ? ' "sempre attiva"' : ''} "${cat}"`,
-          description: `${list.length === 1 ? '1 elemento' : `${list.length} elementi`} riconosciuti come ${observed} ${list.length === 1 ? 'è dichiarato' : 'sono dichiarati'} nella categoria "${cat}", trattata come tecnica${r.declaredAlwaysActive ? ' e "sempre attiva" (non rifiutabile)' : ''}.`,
+          description: `${list.length === 1 ? '1 elemento riconosciuto' : `${list.length} elementi riconosciuti`} come ${observed} ${list.length === 1 ? 'è dichiarato' : 'sono dichiarati'} nella categoria "${cat}", trattata come tecnica${r.declaredAlwaysActive ? ' e "sempre attiva" (non rifiutabile)' : ''}.`,
           details: names,
           evidence: [],
         });

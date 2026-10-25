@@ -22,7 +22,7 @@ export const strutturaBanner: Rule = {
         groupKey: [f.all.join('|'), !!a.policyLink, !!a.revokeLink].join('#'),
         description:
           `Al primo livello il banner${a.cmp.length ? ` (${a.cmp.join(', ')})` : ''} offre: accettazione ${list(f.accept)}; ` +
-          `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura ${list(f.close)}. ` +
+          `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura (X) ${f.close.length ? list(f.close) : 'assente'}. ` +
           `Link all'informativa nel banner: ${a.policyLink ? `"${a.policyLink.text}"` : 'non trovato'}. ` +
           `Modo per rivedere la scelta nella pagina: ${a.revokeLink ? `"${a.revokeLink.text}"` : 'non trovato'}.`,
         details: [

@@ -50,6 +50,25 @@ pre{background:var(--alt);padding:8px;font-size:11.5px;white-space:pre-wrap;word
 ul{margin:4px 0;padding-left:20px}.kv td:first-child{width:28%;font-weight:600;background:var(--alt)}
 @page{size:A4;margin:14mm 12mm}@media print{body{padding:0 2px;max-width:none;width:auto}a{color:inherit}table{table-layout:fixed}}`;
 
+/**
+ * Righe della tabella delle interazioni: le sessioni consecutive "nessuna azione" dello stesso sito con lo stesso esito
+ * (una per pagina del campione) diventano una riga sola; l'elenco completo resta in sessioni.csv.
+ */
+function compactSessions(sessions: SessionResult[]): { s: SessionResult; ids: string[] }[] {
+  const sig = (s: SessionResult) =>
+    s.scenario === 'nessuna-azione'
+      ? [s.site, s.interaction.detectedCmps.join(','), s.interaction.bannerVisibleBefore, s.interaction.method, s.interaction.outcome, s.interaction.verification, s.errors.length].join('|')
+      : null;
+  const out: { s: SessionResult; ids: string[] }[] = [];
+  for (const s of sessions) {
+    const last = out[out.length - 1];
+    const k = sig(s);
+    if (k && last && sig(last.s) === k) last.ids.push(s.id);
+    else out.push({ s, ids: [s.id] });
+  }
+  return out;
+}
+
 export function renderHtml(r: ReportInput): string {
   const { config, sessions, findings } = r;
   const sites = [...new Set(sessions.map((s) => s.site))];
@@ -114,9 +133,9 @@ ${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`)
 
   parts.push(`<h3>Interazione con il banner</h3><p>Per ogni sessione: CMP riconosciuti, metodo che ha eseguito la scelta (selettori manuali, adattatore del CMP, euristica sui testi, API del CMP) e verifica dello stato del consenso registrato dopo la scelta.</p>
 <table><tr><th style="width:17%">Sessione</th><th style="width:9%">Scenario</th><th style="width:12%">CMP / banner</th><th style="width:14%">Metodo</th><th>Esito</th><th style="width:22%">Verifica</th></tr>
-${sessions
+${compactSessions(sessions)
   .map(
-    (s) => `<tr><td>${esc(s.id)}<br><span class="muted">${s.pages.length} pag.</span></td><td>${esc(s.scenario)}</td><td>${esc(s.interaction.detectedCmps.join(', ') || 'nessun CMP')}<br><span class="muted">banner ${s.interaction.bannerVisibleBefore ? 'visibile' : 'non rilevato'}</span></td>
+    ({ s, ids }) => `<tr><td>${ids.length > 1 ? `${esc(ids[0])} … ${esc(ids[ids.length - 1])}<br><span class="muted">${ids.length} sessioni, ${s.pages.length} pag. ciascuna</span>` : `${esc(s.id)}<br><span class="muted">${s.pages.length} pag.</span>`}</td><td>${esc(s.scenario)}</td><td>${esc(s.interaction.detectedCmps.join(', ') || 'nessun CMP')}<br><span class="muted">banner ${s.interaction.bannerVisibleBefore ? 'visibile' : 'non rilevato'}</span></td>
 <td>${esc(s.interaction.method)}${s.interaction.layer ? `<br><span class="muted">${esc(s.interaction.layer)}</span>` : ''}</td><td>${esc(s.interaction.outcome)}<br><span class="muted">${esc(s.interaction.detail)}</span></td><td>${esc(s.interaction.verification)}<br><span class="muted">${esc(s.interaction.verificationDetail)}</span></td></tr>`,
   )
   .join('')}</table>`);
@@ -156,7 +175,7 @@ ${[...bySite].map(([site, fs]) => `<tr><td>${esc(site)}</td>${SEV.map((s) => `<t
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 ${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}.</p>` : ''}
 <p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
-${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (vedi dati.csv)</li>` : ''}</ul>` : ''}
+${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo in dati.json e nei CSV)</li>` : ''}</ul>` : ''}
 ${images.length ? `<p><strong>Prova.</strong></p><div class="shots">${images.map((e) => `<figure><img src="${esc(e.file)}" alt="${esc(e.label)}"><figcaption>${esc(e.label)} — ${esc(e.file)}</figcaption></figure>`).join('')}</div>` : ''}
 ${f.requestExcerpt ? `<p><strong>Estratto della richiesta</strong> (completa nel file HAR):</p><pre>${esc(JSON.stringify(f.requestExcerpt, null, 2))}</pre>` : ''}
 ${others.length ? `<p class="muted">File: ${others.map((e) => esc(e.file)).join(', ')}</p>` : ''}

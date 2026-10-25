@@ -41,6 +41,7 @@ tracker:
   # --- Microsoft ---
   - { dominio: bat.bing.com, azienda: Microsoft, categoria: marketing, nota: Microsoft Advertising UET }
   - { dominio: c.bing.com, azienda: Microsoft, categoria: marketing }
+  - { dominio: bat.bing.net, azienda: Microsoft, categoria: marketing, nota: Microsoft Advertising UET }
   - { dominio: clarity.ms, azienda: Microsoft, categoria: registrazione-sessioni, nota: Microsoft Clarity }
   - { dominio: ads.linkedin.com, azienda: LinkedIn, categoria: marketing, nota: LinkedIn Insight Tag }
   - { dominio: snap.licdn.com, azienda: LinkedIn, categoria: marketing, nota: LinkedIn Insight Tag }
@@ -53,6 +54,7 @@ tracker:
   - { dominio: ads-twitter.com, azienda: X, categoria: marketing }
   - { dominio: analytics.twitter.com, azienda: X, categoria: marketing }
   - { dominio: platform.twitter.com, azienda: X, categoria: social }
+  - { dominio: syndication.twitter.com, azienda: X, categoria: social, nota: Contenuti X incorporati }
   - { dominio: t.co, azienda: X, categoria: marketing }
   - { dominio: ct.pinterest.com, azienda: Pinterest, categoria: marketing, nota: Pinterest Tag }
   - { dominio: tr.snapchat.com, azienda: Snap, categoria: marketing }
@@ -91,6 +93,13 @@ tracker:
   # --- Statistica ---
   - { dominio: hs-analytics.net, azienda: HubSpot, categoria: statistica }
   - { dominio: hs-scripts.com, azienda: HubSpot, categoria: funzionalita, nota: Caricatore script HubSpot }
+  - { dominio: track.hubspot.com, azienda: HubSpot, categoria: statistica, nota: Tracciamento visite HubSpot }
+  - { dominio: app.hubspot.com, azienda: HubSpot, categoria: funzionalita }
+  - { dominio: hs-banner.com, azienda: HubSpot, categoria: tecnico, nota: Banner dei cookie HubSpot }
+  - { dominio: hsforms.net, azienda: HubSpot, categoria: funzionalita, nota: Moduli HubSpot }
+  - { dominio: hsforms.com, azienda: HubSpot, categoria: funzionalita, nota: Moduli HubSpot }
+  - { dominio: hubspotusercontent-na1.net, azienda: HubSpot, categoria: tecnico, nota: File e immagini ospitati da HubSpot }
+  - { dominio: hubspotusercontent-eu1.net, azienda: HubSpot, categoria: tecnico, nota: File e immagini ospitati da HubSpot }
   - { dominio: scorecardresearch.com, azienda: Comscore, categoria: statistica }
   - { dominio: imrworldwide.com, azienda: Nielsen, categoria: statistica }
   - { dominio: shinystat.com, azienda: ShinyStat, categoria: statistica }
@@ -112,6 +121,8 @@ tracker:
   - { dominio: nr-data.net, azienda: New Relic, categoria: statistica, nota: Monitoraggio prestazioni }
   - { dominio: js-agent.newrelic.com, azienda: New Relic, categoria: statistica, nota: Monitoraggio prestazioni }
   - { dominio: vimeo.com, azienda: Vimeo, categoria: statistica, nota: Video Vimeo incorporato }
+  - { dominio: player.vimeo.com, azienda: Vimeo, categoria: funzionalita, nota: "Lettore video Vimeo incorporato: le statistiche di visione passano dal cookie vuid e da fresnel.vimeocdn.com" }
+  - { dominio: fresnel.vimeocdn.com, azienda: Vimeo, categoria: statistica, nota: Statistiche di visione Vimeo }
 
   # --- Registrazione sessioni / heatmap ---
   - { dominio: hotjar.com, azienda: Hotjar, categoria: registrazione-sessioni }
@@ -151,6 +162,13 @@ tracker:
   # Classificate per ridurre il rumore della regola "elementi non classificati". Restano visibili nell'inventario.
   - { dominio: cdnjs.cloudflare.com, azienda: Cloudflare, categoria: tecnico, nota: CDN }
   - { dominio: challenges.cloudflare.com, azienda: Cloudflare, categoria: tecnico, nota: Protezione anti-bot }
+  - { dominio: www.cloudflare.com, azienda: Cloudflare, categoria: tecnico, nota: Servizi di rete Cloudflare }
+  - { dominio: bootstrapcdn.com, azienda: jsDelivr / StackPath, categoria: tecnico, nota: CDN }
+  - { dominio: filestackapi.com, azienda: Filestack, categoria: funzionalita, nota: Caricamento file }
+  - { dominio: cognito-identity.eu-west-1.amazonaws.com, azienda: Amazon Web Services, categoria: tecnico, nota: Autenticazione (Amazon Cognito) }
+  - { dominio: cognito-identity.eu-central-1.amazonaws.com, azienda: Amazon Web Services, categoria: tecnico, nota: Autenticazione (Amazon Cognito) }
+  - { dominio: cognito-idp.eu-west-1.amazonaws.com, azienda: Amazon Web Services, categoria: tecnico, nota: Autenticazione (Amazon Cognito) }
+  - { dominio: tncid.app, azienda: The Newco, categoria: marketing, nota: "Identità pubblicitaria persistente (TNCID)" }
   - { dominio: cdn.jsdelivr.net, azienda: jsDelivr, categoria: tecnico, nota: CDN }
   - { dominio: unpkg.com, azienda: unpkg, categoria: tecnico, nota: CDN }
   - { dominio: code.jquery.com, azienda: jQuery, categoria: tecnico, nota: CDN }

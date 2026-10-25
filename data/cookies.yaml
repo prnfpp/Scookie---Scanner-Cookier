@@ -18,6 +18,12 @@ cookie:
   - { nome: "^(_px\\d?|_pxvid|_pxhd|_pxff_.+|pxcts)$", fornitore: HUMAN (PerimeterX), categoria: tecnico, nota: "Protezione anti-bot" }
   - { nome: "^(AWSALB|AWSALBCORS|AWSALBTG|AWSALBTGCORS|AWSELB|AWSELBCORS)$", fornitore: Amazon Web Services, categoria: tecnico, nota: "Bilanciamento del carico" }
   - { nome: "^(PHPSESSID|JSESSIONID|ASP\\.NET_SessionId|ASPSESSIONID[A-Z]+)$", fornitore: Sito, categoria: tecnico, nota: "Sessione del server" }
+  - { nome: "^[A-Z0-9_]*SESSID$", fornitore: Sito, categoria: tecnico, nota: "Sessione del server (dedotto dal nome)" }
+  - { nome: "^rc::[a-f]", dominio: google.com, fornitore: Google, categoria: tecnico, nota: "reCAPTCHA (protezione anti-spam)" }
+
+  # --- Google Analytics tramite server di tagging proprio (server-side GTM) ---
+  - { nome: "^FPID\\d*$", fornitore: Google, categoria: statistica, nota: "Identificativo first-party di Google Analytics impostato da un server di tagging" }
+  - { nome: "^FPGSID$", fornitore: Google, categoria: statistica, nota: "Sessione di Google Analytics impostata da un server di tagging" }
 
   # --- Monitoraggio delle prestazioni (APM): statistica, ma da leggere con la nota ---
   - { nome: "^(dtCookie|dtPC|dtSa|dtLatC|dtValidationCookie|dtDisabled|rxVisitor|rxvt)(.*)?$", fornitore: Dynatrace, categoria: statistica, nota: "Monitoraggio delle prestazioni e degli errori (APM): la qualificazione come statistica o tecnica va valutata" }

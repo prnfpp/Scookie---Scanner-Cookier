@@ -42,6 +42,14 @@ test('classificazione cookie e host', () => {
   assert.equal(c.classifyHost('www.google.com', '/recaptcha/api.js')?.categoria, 'tecnico');
   assert.equal(c.classifyHost('region1.google-analytics.com', '/g/collect')?.categoria, 'statistica');
   assert.equal(c.classifyHost('www.esempio.it', '/'), undefined);
+  // casi emersi dal report ConTe
+  assert.equal(c.classifyName('FPID2', '.conte.it').category, 'statistica');
+  assert.equal(c.classifyName('rc::a', 'www.google.com').category, 'tecnico');
+  assert.equal(c.classifyName('HBR_SITE_SESSID', 'apply-careers.conte.it').category, 'tecnico');
+  assert.equal(c.classifyHost('player.vimeo.com', '/video/1')?.categoria, 'funzionalita');
+  assert.equal(c.classifyHost('js.tncid.app', '/t.js')?.categoria, 'marketing');
+  assert.equal(c.classifyHost('bat.bing.net', '/')?.categoria, 'marketing');
+  assert.equal(c.classifyHost('js.hs-banner.com', '/x.js')?.categoria, 'tecnico');
 });
 
 test('categorie dichiarate normalizzate', () => {
@@ -183,6 +191,16 @@ test('OneTrust: gruppi con ID propri letti dalla configurazione', () => {
   assert.equal(onetrust.checkConsent({ activeGroups: ',0,', gruppi }, 'accetta').consistent, false);
   // senza configurazione e con ID non standard: non determinabile, mai "incoerente"
   assert.equal(onetrust.checkConsent({ activeGroups: ',0,4,', gruppi: null }, 'accetta').consistent, null);
+  // gruppi non attivi dopo "Accetta" ma assenti dal centro preferenze: non determinabile
+  const conInPc = [
+    { id: '0', nome: 'Tecnici e analitici', stato: 'always active', elementi: 118, inPc: false },
+    { id: '2', nome: 'Analitici 2', stato: 'inactive', elementi: 2, inPc: false },
+    { id: '4', nome: 'Profilazione', stato: 'inactive', elementi: 150, inPc: true },
+  ];
+  const r = onetrust.checkConsent({ activeGroups: ',0,4,', gruppi: conInPc }, 'accetta');
+  assert.equal(r.consistent, null);
+  assert.match(r.detail, /non compaiono nel centro preferenze/);
+  assert.equal(onetrust.checkConsent({ activeGroups: ',0,', gruppi: conInPc }, 'accetta').consistent, false);
 });
 
 test('parametri Google Consent Mode tradotti', () => {
