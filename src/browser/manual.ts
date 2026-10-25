@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { maskPii } from '../util/pii.js';
 import type { Collector } from './collector.js';
 
 export interface ManualPlan {
@@ -51,7 +52,7 @@ export async function manualJourney(page: Page, collector: Collector, plan: Manu
 
   const onNav = (frame: import('playwright').Frame) => {
     if (frame !== page.mainFrame()) return;
-    const url = frame.url();
+    const url = maskPii(frame.url());
     collector.currentUrl = url;
     if (pages[pages.length - 1] !== url) pages.push(url);
   };

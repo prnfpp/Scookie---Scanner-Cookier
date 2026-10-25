@@ -5,217 +5,389 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Scookie</title>
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--fg:#1d1d1f;--muted:#5f6368;--line:#dadce0;--accent:#1a5fb4;--accent-fg:#fff;--ok:#1e7e34;--warn:#b26a00;--err:#b3261e;--code:#f1f3f4}
-@media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1c1f24;--fg:#e8eaed;--muted:#9aa0a6;--line:#3c4043;--accent:#8ab4f8;--accent-fg:#0b1a33;--ok:#81c995;--warn:#fdd663;--err:#f28b82;--code:#24282e}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-header{display:flex;align-items:center;gap:16px;padding:14px 24px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:wrap}
-header h1{font-size:20px;margin:0}
-header .sub{color:var(--muted);font-size:13px}
-nav{margin-left:auto;display:flex;gap:4px}
-nav button{background:none;border:1px solid transparent;color:var(--fg);padding:6px 14px;border-radius:6px;cursor:pointer;font:inherit}
-nav button.on{border-color:var(--line);background:var(--bg);font-weight:600}
-main{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
-.grid{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start}
-@media (max-width:860px){.grid{grid-template-columns:1fr}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
-.card h2{font-size:16px;margin:0 0 10px}
-.card h3{font-size:14px;margin:14px 0 6px}
-.muted{color:var(--muted);font-size:13px}
-.list button.client{display:block;width:100%;text-align:left;background:none;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;cursor:pointer;color:var(--fg);font:inherit}
-.list button.client.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.list .name{font-weight:600}
-.list .sites{font-size:12px;color:var(--muted);word-break:break-all}
-label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
-label .hint{font-weight:400;color:var(--muted)}
-input[type=text],input[type=number],input[type=url],select,textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
-textarea{min-height:70px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
-textarea.yaml{min-height:420px}
-.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-.check{display:flex;align-items:center;gap:8px;font-weight:400;margin:6px 0}
-.check input{width:auto}
-.site{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:10px 0;background:var(--bg)}
-.site-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
-details summary{cursor:pointer;color:var(--accent);font-size:13px;margin-top:10px}
-.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:8px 14px;border-radius:7px;cursor:pointer;font:inherit;text-decoration:none}
-.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
-.btn.small{padding:4px 10px;font-size:13px}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-.actions.sticky{position:sticky;bottom:0;background:var(--card);padding:10px 0;border-top:1px solid var(--line);z-index:2}
-.msg{padding:8px 12px;border-radius:6px;margin:10px 0;font-size:14px;white-space:pre-wrap}
-.msg.ok{border:1px solid var(--ok);color:var(--ok)}
-.msg.err{border:1px solid var(--err);color:var(--err)}
-.msg.warn{border:1px solid var(--warn);color:var(--warn)}
-pre.log{background:var(--code);border-radius:6px;padding:10px;max-height:340px;overflow:auto;font-size:12.5px;white-space:pre-wrap;word-break:break-word;margin:8px 0}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-word}
-th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
-.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;border:1px solid var(--line)}
-.badge.run{border-color:var(--warn);color:var(--warn)}
-.badge.ok{border-color:var(--ok);color:var(--ok)}
-.badge.err{border-color:var(--err);color:var(--err)}
-.hidden{display:none!important}
-.empty{color:var(--muted);text-align:center;padding:30px 10px}
+/* Barra marrone in alto, area di lavoro chiara larga al massimo 1120px; card bianche solo dove c'è un'azione.
+   Palette: bianco ottico, marrone per testo e struttura, azzurro per le azioni. Nessuna risorsa esterna (lo strumento è locale). */
+:root {
+  --bg: #F8F9FA; --card: #FFFFFF; --warm: #F3EEE9; --ink: #4A3B32; --ink-2: #6E5D53; --line: #E4DCD5;
+  --primary: #2563EB; --primary-ink: #FFFFFF; --accent: #3B82F6; --accent-soft: #E6EFFE;
+  --header: #4A3B32; --header-ink: #F8F4F0;
+  --ok: #2F7D5B; --ok-soft: #E3F1EA; --warn: #A86A12; --warn-soft: #FBF0DC; --bad: #A8452F; --bad-soft: #F8E6E1; --info: #6E5D53; --info-soft: #EFE9E4;
+  --shadow: 0 1px 2px rgba(74,59,50,.06), 0 6px 18px rgba(74,59,50,.06);
+  --f-display: "Avenir Next", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --f-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #1B1714; --card: #251F1B; --warm: #2E2621; --ink: #F1EAE3; --ink-2: #C3B4A8; --line: #3D332C;
+  --accent: #60A5FA; --accent-soft: #1E2B44; --header: #120F0D; --header-ink: #F1EAE3;
+  --ok: #6CC49A; --ok-soft: #1D3229; --warn: #E2A84B; --warn-soft: #3A2D16; --bad: #E58A73; --bad-soft: #3D231C; --info: #C3B4A8; --info-soft: #322A24;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25); color-scheme: dark;
+} }
+* { box-sizing: border-box; }
+.hidden, [hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--f-body); }
+h1, h2, h3 { font-family: var(--f-display); line-height: 1.2; margin: 0; text-wrap: balance; }
+h1 { font-size: 1.55rem; font-weight: 750; letter-spacing: -.01em; }
+h2 { font-size: 1.12rem; font-weight: 700; }
+h3 { font-size: .98rem; font-weight: 700; }
+p { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+code, .mono { font-family: var(--f-mono); font-size: .86em; }
+.muted { color: var(--ink-2); }
+.small { font-size: .86rem; }
+.eyebrow { font-size: .72rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+
+header.top { position: sticky; top: 0; z-index: 5; background: var(--header); color: var(--header-ink); }
+.top-in { max-width: 1120px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font: 800 1.15rem var(--f-display); }
+.brand small { font: 500 .78rem var(--f-body); opacity: .7; }
+nav.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+nav.tabs button { background: transparent; border: 0; color: var(--header-ink); opacity: .78; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+nav.tabs button:hover { opacity: 1; background: rgba(255,255,255,.08); }
+nav.tabs button.on { opacity: 1; background: rgba(255,255,255,.15); }
+.status { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: .86rem; background: rgba(255,255,255,.1); padding: 6px 12px 6px 9px; border-radius: 999px; border: 0; color: inherit; cursor: pointer; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #8FD4B0; flex: none; }
+.status.run .dot { background: #93C5FD; animation: pulse 1.4s infinite; }
+.status.wait .dot { background: #F2C46B; animation: pulse 1s infinite; }
+.status.err .dot { background: #F19A86; }
+@keyframes pulse { 50% { opacity: .35; } }
+.mini { width: 60px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.22); overflow: hidden; }
+.mini i { display: block; height: 100%; background: #93C5FD; width: 0; transition: width .4s; }
+
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 80px; display: grid; gap: 20px; }
+section { display: grid; gap: 18px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 22px; min-width: 0; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.spread { justify-content: space-between; }
+.stack { display: grid; gap: 14px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 9px; padding: 9px 16px; font-weight: 600; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-decoration: none; }
+.btn:hover { border-color: var(--ink-2); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--primary); padding-inline: 6px; }
+.btn.sm { padding: 6px 11px; font-size: .86rem; }
+.btn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 10px; font-size: .78rem; font-weight: 600; background: var(--info-soft); color: var(--info); white-space: nowrap; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); } .chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); } .chip.blue { background: var(--accent-soft); color: var(--primary); }
+.msg { padding: 10px 14px; border-radius: 10px; font-size: .92rem; white-space: pre-wrap; }
+.msg.ok { background: var(--ok-soft); color: var(--ok); } .msg.err { background: var(--bad-soft); color: var(--bad); } .msg.warn { background: var(--warn-soft); color: var(--ink); }
+.empty { color: var(--ink-2); text-align: center; padding: 30px 10px; }
+
+/* Clienti */
+.clients { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
+.client { text-align: left; cursor: pointer; display: grid; gap: 12px; align-content: start; }
+.client:hover { border-color: var(--ink-2); }
+.client .sites { display: flex; flex-wrap: wrap; gap: 6px; }
+.client .last { border-top: 1px solid var(--line); padding-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .86rem; color: var(--ink-2); }
+.client.new { place-content: center; justify-items: center; text-align: center; border-style: dashed; box-shadow: none; color: var(--ink-2); min-height: 150px; }
+
+/* Configurazione a passi */
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.step { border: 0; background: transparent; text-align: left; cursor: pointer; padding: 10px 12px 12px; border-radius: 10px; border-top: 3px solid var(--line); display: grid; gap: 2px; }
+.step b { font-family: var(--f-display); font-size: .95rem; }
+.step span { font-size: .8rem; color: var(--ink-2); }
+.step.on { border-top-color: var(--primary); background: var(--accent-soft); }
+.step.attn { border-top-color: var(--warn); }
+@media (max-width: 640px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+label.f { display: grid; gap: 6px; font-weight: 600; font-size: .9rem; }
+.hint { font-weight: 400; color: var(--ink-2); font-size: .82rem; }
+input[type=text], input[type=url], input[type=number], textarea, select { width: 100%; border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 9px 11px; }
+textarea { min-height: 64px; resize: vertical; }
+textarea.yaml { min-height: 460px; font-family: var(--f-mono); font-size: .84rem; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.site { border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 14px; background: var(--card); }
+.site-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.site-h .site-title { font: 650 1rem var(--f-display); margin-right: auto; word-break: break-all; }
+.hint-box { display: flex; gap: 12px; align-items: flex-start; background: var(--warn-soft); border-radius: 10px; padding: 12px 14px; font-size: .9rem; }
+.hint-box b { display: block; }
+.manual { border-left: 3px solid var(--accent); padding-left: 14px; display: grid; gap: 10px; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.check { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; font-weight: 400; }
+.check input { margin-top: 3px; accent-color: var(--primary); width: 16px; height: 16px; flex: none; }
+.check b { display: block; font-size: .92rem; }
+.check span { font-size: .82rem; color: var(--ink-2); }
+details.adv > summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
+details.adv[open] > summary { margin-bottom: 12px; }
+.savebar { position: sticky; bottom: 0; z-index: 3; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.savebar #save-msg { flex: 1 1 260px; min-width: 0; }
+.foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 16px; }
+
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+th { font-size: .72rem; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.tbl { overflow-x: auto; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.checklist { display: grid; gap: 8px; }
+.ci { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--bg); }
+.ci .ic { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem; font-weight: 700; }
+.ci.ok .ic { background: var(--ok-soft); color: var(--ok); } .ci.warn .ic { background: var(--warn-soft); color: var(--warn); } .ci.bad .ic { background: var(--bad-soft); color: var(--bad); }
+.ci b { display: block; font-size: .92rem; }
+.ci span { font-size: .84rem; color: var(--ink-2); }
+
+/* Audit in corso */
+.phases { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.ph { display: grid; gap: 6px; font-size: .8rem; color: var(--ink-2); }
+.ph i { height: 4px; border-radius: 4px; background: var(--line); display: block; }
+.ph b { font-size: .84rem; color: var(--ink); font-weight: 600; }
+.ph.done i { background: var(--ok); } .ph.now i { background: var(--accent); } .ph.now b { color: var(--primary); } .ph.wait i { background: var(--warn); }
+@media (max-width: 640px) { .phases { grid-template-columns: 1fr; } }
+.pct { font: 800 2.6rem/1 var(--f-display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.eta { text-align: right; } .eta b { font: 700 1.25rem var(--f-display); display: block; }
+.bar { height: 12px; border-radius: 12px; background: var(--warm); overflow: hidden; position: relative; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 12px; transition: width .5s ease; }
+.bar.indet i { width: 30% !important; animation: indet 1.3s ease-in-out infinite; }
+.bar.wait i { background: var(--warn); }
+@keyframes indet { 0% { left: -30%; } 100% { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .bar.indet i { animation: none; left: 0; width: 100% !important; opacity: .4; } .dot { animation: none !important; } }
+.action { border: 2px solid var(--warn); background: var(--warn-soft); border-radius: 14px; padding: 18px; display: grid; gap: 10px; }
+.sp { display: grid; grid-template-columns: minmax(150px, 1.3fr) 3fr auto; gap: 12px; align-items: center; font-size: .9rem; }
+.sp .bar { height: 7px; }
+@media (max-width: 560px) { .sp { grid-template-columns: 1fr auto; } .sp .bar { grid-column: 1 / -1; grid-row: 2; } }
+pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; max-height: 300px; overflow: auto; font: .8rem/1.6 var(--f-mono); margin: 12px 0 0; white-space: pre-wrap; word-break: break-word; color: var(--ink-2); }
+
+/* Esecuzioni */
+.run { display: grid; gap: 14px; }
+.run-h { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.sev { display: flex; gap: 8px; flex-wrap: wrap; }
+.sev .s { display: grid; gap: 2px; min-width: 76px; padding: 8px 12px; border-radius: 10px; background: var(--bg); }
+.sev .s b { font: 800 1.25rem var(--f-display); font-variant-numeric: tabular-nums; }
+.sev .s span { font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
+.sev .alta b { color: var(--bad); } .sev .media b { color: var(--warn); } .sev .bassa b { color: var(--primary); } .sev .informativa b { color: var(--info); }
+.flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.fs { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; align-content: start; }
+.fs .k { font-size: .72rem; color: var(--ink-2); font-weight: 650; letter-spacing: .05em; text-transform: uppercase; }
+.fs.done { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.fs.next { border-color: var(--primary); background: var(--accent-soft); }
+@media (max-width: 760px) { .flow { grid-template-columns: 1fr 1fr; } }
+.cmp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cmp .c { border-radius: 10px; padding: 12px; background: var(--bg); display: grid; gap: 4px; }
+.cmp .c b { font: 800 1.6rem var(--f-display); }
+@media (max-width: 560px) { .cmp { grid-template-columns: 1fr; } }
+.rev td select { min-width: 140px; }
+.rev td input { min-width: 160px; }
+.toast { position: fixed; right: 16px; bottom: 16px; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: .9rem; box-shadow: var(--shadow); z-index: 20; max-width: 420px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Scookie</h1>
-  <span class="sub">Audit tecnico di cookie e consenso · <span id="version"></span></span>
-  <nav>
-    <button id="tab-clienti" class="on">Clienti</button>
-    <button id="tab-esecuzioni">Esecuzioni</button>
-  </nav>
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11" fill="#C9A98A"/><circle cx="9" cy="10" r="1.8" fill="#4A3B32"/><circle cx="15.5" cy="8.5" r="1.4" fill="#4A3B32"/><circle cx="16" cy="15" r="2" fill="#4A3B32"/><circle cx="10" cy="16.5" r="1.3" fill="#4A3B32"/><path d="M13 2a11 11 0 0 0 11 11" stroke="#3B82F6" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>
+      <span>Scookie <small id="version"></small></span>
+    </div>
+    <nav class="tabs" aria-label="Sezioni">
+      <button id="tab-clienti" class="on">Clienti</button>
+      <button id="tab-audit">Audit in corso</button>
+      <button id="tab-esecuzioni">Esecuzioni</button>
+    </nav>
+    <button class="status" id="status" title="Stato dello strumento"><span class="dot"></span><span id="status-t">Pronto</span><span class="mini hidden" id="mini"><i></i></span></button>
+  </div>
 </header>
 
 <main>
   <!-- CLIENTI -->
-  <section id="view-clienti" class="grid">
-    <div>
-      <div class="card list">
-        <h2>Clienti</h2>
-        <div id="clients"></div>
-        <button class="btn primary" id="new-client">+ Nuovo cliente</button>
-        <p class="muted" id="clients-dir"></p>
-      </div>
+  <section id="view-clienti">
+    <div class="row spread">
+      <div class="stack" style="gap:4px"><h1>Clienti</h1><p class="muted">Scegli un cliente per controllarne la configurazione e avviare l'audit.</p></div>
+      <button class="btn" id="new-client">+ Nuovo cliente</button>
     </div>
+    <div class="clients" id="clients"></div>
+    <p class="muted small" id="clients-dir"></p>
+  </section>
 
-    <div>
-      <div id="editor-empty" class="card empty">Seleziona un cliente o creane uno nuovo.</div>
+  <!-- CONFIGURAZIONE -->
+  <section id="view-config" class="hidden">
+    <div class="row spread">
+      <div class="stack" style="gap:4px"><span class="eyebrow">Configurazione</span><h1 id="editor-title">Cliente</h1></div>
+      <div class="row"><button class="btn sm" id="toggle-yaml">Modifica come testo (YAML)</button><button class="btn ghost" id="back-clients">← Tutti i clienti</button></div>
+    </div>
+    <div id="form" class="stack">
+      <div class="steps" role="tablist" aria-label="Passi della configurazione">
+        <button class="step" data-step="1"><b>1 · Siti</b><span id="st1">indirizzi e pagine</span></button>
+        <button class="step" data-step="2"><b>2 · Opzioni</b><span id="st2">scenari e browser</span></button>
+        <button class="step" data-step="3"><b>3 · Controllo</b><span id="st3">anteprima e verifiche</span></button>
+        <button class="step" data-step="4"><b>4 · Avvio</b><span id="st4">durata stimata</span></button>
+      </div>
 
-      <div id="editor" class="hidden">
-        <div class="card">
-          <div class="site-head">
-            <h2 id="editor-title">Cliente</h2>
-            <button class="btn small" id="toggle-yaml">Modifica come testo (YAML)</button>
+      <div class="card stack" data-s="1">
+        <div class="grid2">
+          <label class="f">Nome del cliente <input type="text" id="f-cliente" placeholder="Es. Rossi Srl"></label>
+          <label class="f" id="file-box">Nome del file <span class="hint">solo lettere, numeri, - e _</span><input type="text" id="f-file" placeholder="rossi"></label>
+        </div>
+        <div class="row spread"><div><h2>Siti da controllare</h2><p class="muted small">Ogni sito o sottodominio (www, app, shop…) è una voce a sé.</p></div><button class="btn sm" id="add-site">+ Aggiungi sito</button></div>
+        <div id="sites" class="stack"></div>
+        <div class="foot"><span></span><button class="btn primary" data-go-step="2">Avanti: opzioni</button></div>
+      </div>
+
+      <div class="card stack hidden" data-s="2">
+        <h2>Opzioni dell'audit</h2>
+        <div class="stack" style="gap:8px"><b>Scenari</b>
+          <div class="opts">
+            <label class="check"><input type="checkbox" id="f-sc-nessuna" checked><div><b>Nessuna azione</b><span>Cosa succede senza toccare il banner</span></div></label>
+            <label class="check"><input type="checkbox" id="f-sc-rifiuta" checked><div><b>Rifiuta</b><span>Il rifiuto viene rispettato?</span></div></label>
+            <label class="check"><input type="checkbox" id="f-sc-accetta" checked><div><b>Accetta</b><span>Cosa si attiva con il consenso</span></div></label>
+            <label class="check"><input type="checkbox" id="f-sc-personalizza" checked><div><b>Personalizza</b><span>Solo statistiche: parte altro?</span></div></label>
+            <label class="check"><input type="checkbox" id="f-sc-revoca" checked><div><b>Accetta poi revoca</b><span>La revoca ferma i tracciamenti?</span></div></label>
           </div>
-          <div id="form">
-            <div class="row">
-              <div><label>Nome del cliente</label><input type="text" id="f-cliente" placeholder="Es. Rossi Srl"></div>
-              <div id="file-box"><label>Nome del file <span class="hint">(solo lettere, numeri, - e _)</span></label><input type="text" id="f-file" placeholder="rossi"></div>
+        </div>
+        <div class="grid2">
+          <label class="f">Ripetizioni di ogni scenario <span class="hint">Più ripetizioni: prove più solide, audit più lungo.</span>
+            <select id="f-ripetizioni"><option value="1">1 volta</option><option value="2">2 volte</option><option value="3">3 volte</option></select></label>
+          <label class="f">Paese di uscita atteso <span class="hint">Verificato all'avvio.</span><input type="text" id="f-paese" maxlength="2" placeholder="IT"></label>
+          <label class="f">Se il paese non corrisponde <span class="hint">&nbsp;</span>
+            <select id="f-verifica"><option value="blocca">Fermati (consigliato)</option><option value="avvisa">Avvisa nel report</option><option value="no">Non verificare</option></select></label>
+          <label class="f">Browser <span class="hint">Quello incluso va bene quasi sempre.</span>
+            <select id="f-canale"><option value="chromium">Browser incluso nel tool</option><option value="chrome">Google Chrome installato</option><option value="msedge">Microsoft Edge installato</option></select></label>
+        </div>
+        <details class="adv" id="adv-general"><summary>Opzioni avanzate</summary>
+          <div class="stack">
+            <div class="grid2">
+              <label class="f">Pagine per tipo <span class="hint">primo giro del campione</span><input type="number" min="1" id="f-perTipo" placeholder="2"></label>
+              <label class="f">Massimo pagine per sito <span class="hint">&nbsp;</span><input type="number" min="1" id="f-maxPagine" placeholder="15"></label>
+              <label class="f">Pagine visitate dopo la scelta <span class="hint">&nbsp;</span><input type="number" min="1" id="f-pagineDopoScelta" placeholder="3"></label>
+              <label class="f">Contenuti nei file HAR <span class="hint">&nbsp;</span>
+                <select id="f-har"><option value="testo">Solo risposte testuali (consigliato)</option><option value="tutti">Tutto (file molto grandi)</option><option value="nessuno">Nessuna risposta</option></select></label>
             </div>
-
-            <h3>Siti da controllare</h3>
-            <p class="muted">Ogni sito o sottodominio (www, shop, blog…) è una voce a sé.</p>
-            <div id="sites"></div>
-            <button class="btn small" id="add-site">+ Aggiungi sito o sottodominio</button>
-
-            <details>
-              <summary>Impostazioni generali (campione, scenari, paese, report)</summary>
-              <div class="row">
-                <div><label>Pagine per tipo <span class="hint">(primo giro)</span></label><input type="number" min="1" id="f-perTipo" placeholder="2"></div>
-                <div><label>Massimo pagine per sito</label><input type="number" min="1" id="f-maxPagine" placeholder="15"></div>
-                <div><label>Pagine visitate dopo la scelta</label><input type="number" min="1" id="f-pagineDopoScelta" placeholder="3"></div>
-              </div>
-              <label>Scenari</label>
-              <label class="check"><input type="checkbox" id="f-sc-nessuna" checked> Nessuna azione sul banner</label>
-              <label class="check"><input type="checkbox" id="f-sc-rifiuta" checked> Rifiuta</label>
-              <label class="check"><input type="checkbox" id="f-sc-accetta" checked> Accetta</label>
-              <label class="check"><input type="checkbox" id="f-sc-personalizza" checked> Personalizza (accetta solo la statistica: OneTrust, Cookiebot, vanilla-cookieconsent)</label>
-              <label class="check"><input type="checkbox" id="f-sc-revoca" checked> Accetta e poi revoca il consenso</label>
-              <div class="row">
-                <div><label>Paese di uscita atteso</label><input type="text" id="f-paese" maxlength="2" placeholder="IT"></div>
-                <div><label>Se il paese non corrisponde</label>
-                  <select id="f-verifica"><option value="blocca">Fermati (consigliato)</option><option value="avvisa">Avvisa nel report</option><option value="no">Non verificare</option></select></div>
-                <div><label>Contenuti nei file HAR</label>
-                  <select id="f-har"><option value="testo">Solo risposte testuali (consigliato)</option><option value="tutti">Tutto (file molto grandi)</option><option value="nessuno">Nessuna risposta</option></select></div>
-              </div>
-              <label class="check"><input type="checkbox" id="f-pdf" checked> Genera anche il PDF del report</label>
-              <div class="row">
-                <div><label>Browser</label>
-                  <select id="f-canale"><option value="chromium">Chromium incluso (predefinito)</option><option value="chrome">Google Chrome installato</option><option value="msedge">Microsoft Edge installato</option></select></div>
-              </div>
-              <label class="check"><input type="checkbox" id="f-visibile"> Mostra il browser durante l'audit (utile con siti protetti da sistemi anti-bot)</label>
-              <label class="check"><input type="checkbox" id="f-controllo"> Esecuzione di controllo: user agent di un browser normale, senza dichiarazione dell'audit (per escludere effetti dei sistemi anti-bot)</label>
-            </details>
+            <div class="opts">
+              <label class="check"><input type="checkbox" id="f-pdf" checked><div><b>Genera il PDF</b><span>Oltre al report HTML</span></div></label>
+              <label class="check"><input type="checkbox" id="f-visibile"><div><b>Mostra il browser</b><span>Utile con siti protetti da anti-bot</span></div></label>
+              <label class="check"><input type="checkbox" id="f-controllo"><div><b>Esecuzione di controllo</b><span>User agent di un browser normale, senza dichiarazione dell'audit</span></div></label>
+            </div>
           </div>
+        </details>
+        <div class="foot"><button class="btn" data-go-step="1">Indietro</button><button class="btn primary" data-go-step="3">Avanti: controllo</button></div>
+      </div>
 
-          <div id="yaml-box" class="hidden">
-            <p class="muted">Modifica avanzata: tutte le opzioni sono descritte in <code>config/esempio.yaml</code>. Rispettare i rientri (spazi, non tabulazioni).</p>
-            <textarea id="f-yaml" class="yaml" spellcheck="false"></textarea>
-          </div>
+      <div class="card stack hidden" data-s="3">
+        <div class="row spread"><h2>Controllo prima dell'avvio</h2><button class="btn" id="preview">Anteprima pagine</button></div>
+        <p class="muted small">L'anteprima mostra quali pagine verranno visitate (1-2 minuti, nessuna sessione di audit). Se mancano pagine importanti, aggiungile al passo 1.</p>
+        <div class="checklist" id="checklist"></div>
+        <div id="preview-result"></div>
+        <div class="foot"><button class="btn" data-go-step="2">Indietro</button><button class="btn primary" data-go-step="4">Avanti: avvio</button></div>
+      </div>
 
-          <div id="save-msg"></div>
-          <div class="actions sticky">
-            <button class="btn primary" id="save">Salva</button>
-            <button class="btn" id="preview">Anteprima pagine</button>
-            <button class="btn primary" id="run">Avvia audit</button>
-          </div>
-          <p class="muted">"Anteprima pagine" mostra quali pagine verrebbero visitate (1-2 minuti). "Avvia audit" esegue il controllo completo: alcuni minuti per sito. Le modifiche vengono salvate prima di partire.</p>
+      <div class="card stack hidden" data-s="4">
+        <h2>Pronto per l'avvio</h2>
+        <div class="grid2">
+          <div class="stack" style="gap:6px"><span class="eyebrow">Durata stimata</span><b id="est-time" style="font:800 2rem var(--f-display)">—</b><span class="muted small" id="est-detail"></span></div>
+          <div class="stack" style="gap:6px"><span class="eyebrow">Cosa succede</span><ol class="small" style="margin:0;padding-left:18px" id="est-steps"></ol></div>
         </div>
-
-        <div class="card hidden" id="job">
-          <div class="site-head"><h2 id="job-title">Operazione in corso</h2><span id="job-badge" class="badge"></span></div>
-          <div id="job-action" class="msg err hidden"><strong>Azione richiesta: navigazione manuale.</strong> Si è aperta una finestra del browser: segui le istruzioni nel riquadro in basso a sinistra e premi "Ho finito". Non toccare il banner dei cookie.</div>
-          <div id="job-result"></div>
-          <details id="job-log-box" open><summary>Dettaglio avanzamento</summary><pre class="log" id="job-log"></pre></details>
-        </div>
+        <div class="foot"><button class="btn" data-go-step="3">Indietro</button><button class="btn primary" id="run">Avvia audit</button></div>
       </div>
     </div>
+
+    <div id="yaml-box" class="card stack hidden">
+      <p class="muted small">Modifica avanzata: tutte le opzioni sono descritte in <code>config/esempio.yaml</code>. Rispettare i rientri (spazi, non tabulazioni).</p>
+      <textarea id="f-yaml" class="yaml" spellcheck="false"></textarea>
+    </div>
+
+    <div class="savebar"><div id="save-msg"><span class="muted small">Le modifiche si salvano con "Salva" e prima di ogni avvio.</span></div><button class="btn primary" id="save">Salva</button></div>
+  </section>
+
+  <!-- AUDIT IN CORSO -->
+  <section id="view-audit" class="hidden">
+    <div class="row spread">
+      <div class="stack" style="gap:4px"><span class="eyebrow" id="job-kind">Audit</span><h1 id="job-title">Nessun audit in corso</h1></div>
+      <span id="job-badge" class="chip">—</span>
+    </div>
+    <div class="card stack" id="job-progress">
+      <div class="phases" id="phases">
+        <div class="ph" data-p="uscita"><i></i><b>Verifica uscita</b><span>paese e IP</span></div>
+        <div class="ph" data-p="scoperta"><i></i><b>Scoperta pagine</b><span id="ph-scoperta">siti</span></div>
+        <div class="ph" data-p="manuale"><i></i><b>Navigazione manuale</b><span id="ph-manuale">se prevista</span></div>
+        <div class="ph" data-p="automatiche"><i></i><b>Sessioni automatiche</b><span id="ph-auto">—</span></div>
+        <div class="ph" data-p="report"><i></i><b>Report</b><span>HTML, PDF, CSV</span></div>
+      </div>
+      <div class="row spread" style="align-items:flex-end"><div class="pct" id="pct">—</div><div class="eta"><span class="muted small" id="eta-l">Tempo rimanente</span><b id="eta">—</b></div></div>
+      <div class="bar" id="bar"><i style="width:0"></i></div>
+      <div class="row" id="now"></div>
+    </div>
+    <div class="action hidden" id="job-action">
+      <div class="row spread"><h2>Tocca a te: navigazione manuale</h2><span class="chip warn">In attesa</span></div>
+      <p>Si è aperta una finestra del browser: il tool ha già fatto la scelta sul banner. Segui le istruzioni nel riquadro in basso a sinistra della finestra e premi <b>"Ho finito"</b>.</p>
+      <p class="small muted">Non toccare il banner dei cookie. Usa solo dati palesemente fittizi o concordati con il cliente: i moduli inviati arrivano davvero al sito e ai suoi fornitori.</p>
+    </div>
+    <div class="msg warn hidden" id="job-offline"><b>Connessione assente.</b> Il tool riprova da solo ogni 10 secondi: controlla il Wi-Fi o che il computer non sia in stop.</div>
+    <div id="job-result"></div>
+    <div class="card stack" id="sites-box"><h2>Avanzamento per sito</h2><div class="stack" id="sites-prog" style="gap:10px"></div></div>
+    <details class="card" id="job-log-box"><summary style="cursor:pointer;font-weight:600">Dettaglio tecnico (registro)</summary><pre class="log" id="job-log"></pre></details>
   </section>
 
   <!-- ESECUZIONI -->
   <section id="view-esecuzioni" class="hidden">
-    <div class="card">
-      <div class="site-head"><h2>Esecuzioni</h2><button class="btn small" id="refresh-runs">Aggiorna</button></div>
-      <p class="muted" id="runs-dir"></p>
-      <div id="runs"></div>
+    <div class="row spread">
+      <div class="stack" style="gap:4px"><h1>Esecuzioni</h1><p class="muted">Per ogni audit: leggi il report, revisiona le schede, genera il report rivisto, confronta con il precedente.</p></div>
+      <button class="btn sm" id="refresh-runs">Aggiorna</button>
+    </div>
+    <div id="runs" class="stack"></div>
+    <p class="muted small" id="runs-dir"></p>
+  </section>
+
+  <!-- REVISIONE -->
+  <section id="view-revisione" class="hidden">
+    <div class="row spread">
+      <div class="stack" style="gap:4px"><span class="eyebrow">Revisione manuale</span><h1 id="rev-title">Esecuzione</h1></div>
+      <button class="btn ghost" id="rev-back">← Esecuzioni</button>
+    </div>
+    <div class="card stack">
+      <p class="muted small">Per ogni scheda indica se l'hai verificata (<b>confermato</b>), se è un <b>falso positivo</b> o se resta <b>da verificare</b>, con una nota. Il report originale e le prove non cambiano: il report rivisto riporta l'esito accanto a ogni scheda e sposta i falsi positivi in coda.</p>
+      <div class="tbl"><table class="rev"><thead><tr><th>Scheda</th><th>Gravità</th><th>Criticità</th><th>Esito</th><th>Nota</th></tr></thead><tbody id="rev-rows"></tbody></table></div>
+      <div class="foot"><span class="muted small" id="rev-count"></span><div class="row"><button class="btn" id="rev-save">Salva</button><button class="btn primary" id="rev-apply">Salva e genera il report rivisto</button></div></div>
     </div>
   </section>
 </main>
+<div class="toast hidden" id="toast" role="status"></div>
 
 <template id="site-tpl">
   <div class="site">
-    <div class="site-head"><strong class="site-title">Sito</strong><button class="btn small remove">Rimuovi</button></div>
-    <label>Indirizzo <span class="hint">(es. https://www.rossi.it/)</span></label>
-    <input type="url" class="s-url" placeholder="https://">
-    <label>Quali pagine controllare</label>
-    <select class="s-mode">
-      <option value="auto">Scelte in automatico (sitemap e link della home)</option>
-      <option value="mix">In automatico + pagine che indico io</option>
-      <option value="solo">Solo la home e le pagine che indico io</option>
-    </select>
-    <div class="s-extra-box">
-      <label>Pagine da includere sempre <span class="hint">(una per riga, es. /preventivo/step-1 oppure indirizzo completo)</span></label>
-      <textarea class="s-extra" placeholder="/contatti&#10;/preventivo/step-1"></textarea>
+    <div class="site-h"><span class="site-title">Nuovo sito</span><span class="s-chips row"></span><button class="btn sm remove">Rimuovi</button></div>
+    <div class="s-warn"></div>
+    <label class="f">Indirizzo <span class="hint">es. https://www.rossi.it/</span><input type="url" class="s-url" placeholder="https://"></label>
+    <div class="grid2">
+      <label class="f">Quali pagine controllare
+        <select class="s-mode">
+          <option value="auto">Scelte in automatico (sitemap e link)</option>
+          <option value="mix">In automatico + pagine che indico io</option>
+          <option value="solo">Solo la home e le pagine che indico io</option>
+        </select></label>
+      <label class="f s-auto-box">Sezioni da escludere <span class="hint">una per riga, es. /area-riservata</span><textarea class="s-escludi" placeholder="/area-riservata&#10;/en/"></textarea></label>
     </div>
-    <div class="s-auto-box">
-      <label>Sezioni da escludere <span class="hint">(una per riga, inizio del percorso, es. /area-riservata)</span></label>
-      <textarea class="s-escludi" placeholder="/area-riservata&#10;/en/"></textarea>
+    <label class="f s-extra-box">Pagine da includere sempre <span class="hint">una per riga, percorso o indirizzo completo</span><textarea class="s-extra" placeholder="/contatti&#10;/preventivo/step-1"></textarea></label>
+    <div class="manual">
+      <div class="row spread"><h3>Navigazione manuale</h3><span class="chip s-manual-chip">Non attiva</span></div>
+      <p class="small muted">Per percorsi che il tool non sa fare da solo, come un preventivo. Se scrivi le istruzioni, all'inizio dell'audit si apre una finestra del browser: il tool fa la scelta sul banner, poi navighi tu e premi "Ho finito". Usa dati palesemente fittizi o concordati con il cliente.</p>
+      <div class="grid2">
+        <label class="f">Istruzioni per chi naviga <textarea class="s-manuale" rows="2" placeholder="Es. compila il preventivo auto con dati di prova concordati fino alla pagina del prezzo"></textarea></label>
+        <label class="f">Pagina di partenza <span class="hint">facoltativa</span><input type="text" class="s-manuale-partenza" placeholder="/preventivo"></label>
+      </div>
     </div>
-    <label>Navigazione manuale <span class="hint">(per percorsi che il tool non sa fare da solo, es. il preventivo: lascia vuoto se non serve)</span></label>
-    <p class="hint">Se scrivi le istruzioni, all'inizio dell'audit si apre una finestra del browser: il tool fa la scelta sul banner, poi navighi tu e premi "Ho finito". Dopo, l'audit prosegue da solo.</p>
-    <div class="row">
-      <div><label>Istruzioni per chi naviga</label><textarea class="s-manuale" rows="2" placeholder="Es. compila il preventivo auto con la targa di prova AB123CD fino alla pagina del prezzo"></textarea></div>
-      <div><label>Pagina di partenza <span class="hint">(facoltativa)</span></label><input type="text" class="s-manuale-partenza" placeholder="/preventivo"></div>
-    </div>
-    <details>
+    <details class="adv">
       <summary>Opzioni avanzate del sito</summary>
-      <div class="row">
-        <div><label>Nome nel report <span class="hint">(facoltativo)</span></label><input type="text" class="s-nome"></div>
-        <div><label>Indirizzo della cookie policy</label><input type="url" class="s-policy" placeholder="https://"></div>
-        <div><label>File cookie dichiarati <span class="hint">(CSV, percorso)</span></label><input type="text" class="s-dichiarati" placeholder="./dichiarati-rossi.csv"></div>
-      </div>
-      <label class="check"><input type="checkbox" class="s-sitemap" checked> Leggi la sitemap</label>
-      <label class="check"><input type="checkbox" class="s-link" checked> Segui i link della home</label>
-      <label class="check"><input type="checkbox" class="s-robots" checked> Rispetta le esclusioni di robots.txt</label>
-      <div class="row">
-        <div><label>Esplorazione con clic <span class="hint">(per applicazioni web senza sitemap né link)</span></label>
-          <select class="s-esplora">
-            <option value="auto">Automatica: solo se si trovano poche pagine</option>
-            <option value="sempre">Sempre</option>
-            <option value="no">Mai</option>
-          </select></div>
-      </div>
-      <h3>Pulsanti del banner <span class="muted">(solo se il banner non viene riconosciuto da solo)</span></h3>
-      <div class="row">
-        <div><label>Selettore "Rifiuta"</label><input type="text" class="s-b-rifiuta" placeholder="#cookie-bar .rifiuta"></div>
-        <div><label>Selettore "Accetta"</label><input type="text" class="s-b-accetta" placeholder="#cookie-bar .accetta"></div>
-        <div><label>Selettore "Preferenze"</label><input type="text" class="s-b-pref"></div>
-        <div><label>Selettore "Rifiuta" nelle preferenze</label><input type="text" class="s-b-prefrif"></div>
-        <div><label>Iframe del banner</label><input type="text" class="s-b-frame"></div>
-        <div><label>Attesa del banner (ms)</label><input type="number" min="0" class="s-b-attesa" placeholder="6000"></div>
+      <div class="stack">
+        <div class="grid2">
+          <label class="f">Nome nel report <span class="hint">facoltativo</span><input type="text" class="s-nome"></label>
+          <label class="f">Indirizzo della cookie policy <span class="hint">facoltativo</span><input type="url" class="s-policy" placeholder="https://"></label>
+          <label class="f">File cookie dichiarati <span class="hint">CSV, percorso</span><input type="text" class="s-dichiarati" placeholder="./dichiarati-rossi.csv"></label>
+          <label class="f">Esplorazione con clic <span class="hint">per applicazioni web</span>
+            <select class="s-esplora"><option value="auto">Automatica: se si trovano poche pagine</option><option value="sempre">Sempre</option><option value="no">Mai</option></select></label>
+        </div>
+        <div class="opts">
+          <label class="check"><input type="checkbox" class="s-sitemap" checked><div><b>Leggi la sitemap</b></div></label>
+          <label class="check"><input type="checkbox" class="s-link" checked><div><b>Segui i link della home</b></div></label>
+          <label class="check"><input type="checkbox" class="s-robots" checked><div><b>Rispetta robots.txt</b></div></label>
+        </div>
+        <h3>Pulsanti del banner <span class="hint">solo se il banner non viene riconosciuto da solo</span></h3>
+        <div class="grid2">
+          <label class="f">Selettore "Rifiuta"<input type="text" class="s-b-rifiuta" placeholder="#cookie-bar .rifiuta"></label>
+          <label class="f">Selettore "Accetta"<input type="text" class="s-b-accetta" placeholder="#cookie-bar .accetta"></label>
+          <label class="f">Selettore "Preferenze"<input type="text" class="s-b-pref"></label>
+          <label class="f">"Rifiuta" nelle preferenze<input type="text" class="s-b-prefrif"></label>
+          <label class="f">Iframe del banner<input type="text" class="s-b-frame"></label>
+          <label class="f">Attesa del banner (ms)<input type="number" min="0" class="s-b-attesa" placeholder="6000"></label>
+        </div>
       </div>
     </details>
   </div>
@@ -224,8 +396,11 @@ th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
 <script>
 'use strict';
 const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const fmt = (iso) => (iso ? new Date(iso).toLocaleString('it-IT') : '—');
+const fmt = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+const host = (u) => { try { return new URL(u).hostname; } catch { return u; } };
+const mins = (sec) => { const m = Math.max(1, Math.round(sec / 60)); return m === 1 ? 'circa 1 minuto' : `circa ${m} minuti`; };
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -242,57 +417,78 @@ async function api(path, opts = {}) {
   }
   return data;
 }
-
-const state = { file: null, isNew: false, data: null, yamlMode: false, polling: null, lastJobId: null };
-
-/* ---------- Schede ---------- */
-function showTab(name) {
-  for (const t of ['clienti', 'esecuzioni']) {
-    $('#tab-' + t).classList.toggle('on', t === name);
-    $('#view-' + t).classList.toggle('hidden', t !== name);
-  }
-  if (name === 'esecuzioni') loadRuns();
+function toast(text) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.remove('hidden');
+  clearTimeout(toast.h);
+  toast.h = setTimeout(() => t.classList.add('hidden'), 4000);
 }
-$('#tab-clienti').onclick = () => showTab('clienti');
-$('#tab-esecuzioni').onclick = () => showTab('esecuzioni');
+
+const state = { file: null, isNew: false, data: null, yamlMode: false, step: 1, polling: null, job: null, discovery: null, clients: [], runs: [], review: null };
+
+/* ---------- Viste ---------- */
+const VIEWS = ['clienti', 'config', 'audit', 'esecuzioni', 'revisione'];
+function show(view) {
+  for (const v of VIEWS) $('#view-' + v).classList.toggle('hidden', v !== view);
+  const tab = view === 'config' ? 'clienti' : view === 'revisione' ? 'esecuzioni' : view;
+  for (const t of ['clienti', 'audit', 'esecuzioni']) $('#tab-' + t).classList.toggle('on', t === tab);
+  if (view === 'esecuzioni') loadRuns();
+  if (view === 'clienti') loadClients();
+  window.scrollTo({ top: 0 });
+}
+$('#tab-clienti').onclick = () => show('clienti');
+$('#tab-audit').onclick = () => show('audit');
+$('#tab-esecuzioni').onclick = () => show('esecuzioni');
+$('#status').onclick = () => show(state.job && state.job.status === 'in-corso' ? 'audit' : 'esecuzioni');
+$('#back-clients').onclick = () => show('clienti');
 
 /* ---------- Clienti ---------- */
 async function loadClients() {
-  const list = await api('/api/clienti');
+  const [list, runs] = await Promise.all([api('/api/clienti'), api('/api/esecuzioni').catch(() => [])]);
+  state.clients = list;
+  state.runs = runs;
   const box = $('#clients');
-  box.innerHTML = list.length ? '' : '<p class="muted">Nessun cliente: creane uno.</p>';
+  box.innerHTML = '';
   for (const c of list) {
+    const last = runs.find((r) => r.configurazione === c.file || r.cliente === c.cliente);
     const b = document.createElement('button');
-    b.className = 'client' + (c.file === state.file ? ' on' : '');
-    b.innerHTML = `<div class="name">${esc(c.cliente)}${c.valido ? '' : ' <span class="badge err">da correggere</span>'}</div><div class="sites">${esc(c.siti.join(' · ') || c.file)}</div>`;
+    b.className = 'card client';
+    const alta = last?.gravita?.alta;
+    b.innerHTML = `<div class="row spread"><h2>${esc(c.cliente)}</h2>${c.valido ? '<span class="chip ok">Pronto</span>' : '<span class="chip bad">Da correggere</span>'}</div>
+      <div class="sites">${c.siti.map((s) => `<span class="chip">${esc(host(s))}</span>`).join('') || `<span class="muted small">${esc(c.file)}</span>`}</div>
+      <div class="last">${last ? `Ultimo audit ${esc(fmt(last.inizio))} · ${esc(last.criticita ?? '—')} schede${alta ? ` <span class="chip bad">${alta} alta</span>` : ''}` : 'Nessun audit ancora'}</div>`;
     b.onclick = () => openClient(c.file);
     box.appendChild(b);
   }
+  const n = document.createElement('button');
+  n.className = 'card client new';
+  n.innerHTML = '<span style="font-size:1.6rem">+</span><b>Nuovo cliente</b><span class="small">Parti da un modulo vuoto</span>';
+  n.onclick = newClient;
+  box.appendChild(n);
 }
 
 async function openClient(file) {
   const c = await api('/api/clienti/' + encodeURIComponent(file));
+  if (state.file !== file) state.discovery = null;
   state.file = file;
   state.isNew = false;
   state.data = c.data && typeof c.data === 'object' ? c.data : { cliente: '', siti: [] };
-  $('#editor-empty').classList.add('hidden');
-  $('#editor').classList.remove('hidden');
   $('#editor-title').textContent = c.data?.cliente || file;
   $('#file-box').classList.add('hidden');
   $('#f-yaml').value = c.yaml;
   setMsg(c.valid ? '' : 'La configurazione contiene errori:\n' + c.errors.join('\n'), 'err');
   setYamlMode(!c.valid || !c.data);
   fillForm(state.data);
-  loadClients();
-  refreshJob();
+  show('config');
+  step(state.step || 1);
 }
 
-$('#new-client').onclick = () => {
+function newClient() {
   state.file = null;
   state.isNew = true;
+  state.discovery = null;
   state.data = { cliente: '', output: '../runs', browser: { paeseUscita: 'IT', verificaUscita: 'blocca' }, siti: [{ url: '' }] };
-  $('#editor-empty').classList.add('hidden');
-  $('#editor').classList.remove('hidden');
   $('#editor-title').textContent = 'Nuovo cliente';
   $('#file-box').classList.remove('hidden');
   $('#f-file').value = '';
@@ -300,12 +496,23 @@ $('#new-client').onclick = () => {
   setMsg('');
   setYamlMode(false);
   fillForm(state.data);
-  loadClients();
-};
-
+  show('config');
+  step(1);
+}
+$('#new-client').onclick = newClient;
 $('#f-cliente').addEventListener('input', () => {
   if (state.isNew) $('#f-file').value = $('#f-cliente').value.toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 });
+
+/* ---------- Passi ---------- */
+function step(n) {
+  state.step = n;
+  $$('[data-s]').forEach((c) => c.classList.toggle('hidden', c.dataset.s !== String(n)));
+  $$('.step').forEach((s) => s.classList.toggle('on', s.dataset.step === String(n)));
+  refreshSummary();
+}
+$$('.step').forEach((s) => (s.onclick = () => step(Number(s.dataset.step))));
+$$('[data-go-step]').forEach((b) => (b.onclick = () => step(Number(b.dataset.goStep))));
 
 /* ---------- Modulo <-> dati ---------- */
 const SCENARI = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta'], ['personalizza', '#f-sc-personalizza'], ['revoca', '#f-sc-revoca']];
@@ -317,15 +524,13 @@ function setOrDelete(obj, key, value) {
 }
 // Le esclusioni sono regex sul percorso: dal modulo si scrive "/area", nel file "^/area".
 const toRegex = (p) => '^' + p.replace(/[.+?^${}()|[\]\\*]/g, '\\$&');
-// Le espressioni semplici ("^/area-riservata") si mostrano come percorso; quelle complesse restano com'erano.
 const fromRegex = (r) => (/^\^\/[\w\-\/]*$/.test(r) ? r.slice(1) : r);
 
 function addSiteCard(site = {}) {
   const node = $('#site-tpl').content.firstElementChild.cloneNode(true);
   const q = (s) => node.querySelector(s);
   q('.s-url').value = site.url || '';
-  const mode = site.soloPagineExtra ? 'solo' : (site.pagineExtra || []).length ? 'mix' : 'auto';
-  q('.s-mode').value = mode;
+  q('.s-mode').value = site.soloPagineExtra ? 'solo' : (site.pagineExtra || []).length ? 'mix' : 'auto';
   q('.s-extra').value = (site.pagineExtra || []).join('\n');
   q('.s-escludi').value = (site.escludi || []).map(fromRegex).join('\n');
   q('.s-nome').value = site.nome || '';
@@ -349,15 +554,33 @@ function addSiteCard(site = {}) {
     const m = q('.s-mode').value;
     q('.s-extra-box').classList.toggle('hidden', m === 'auto');
     q('.s-auto-box').classList.toggle('hidden', m === 'solo');
-    q('.site-title').textContent = q('.s-url').value || 'Nuovo sito';
+    q('.site-title').textContent = q('.s-url').value ? host(q('.s-url').value) : 'Nuovo sito';
+    const on = q('.s-manuale').value.trim().length > 0;
+    q('.s-manual-chip').textContent = on ? 'Attiva' : 'Non attiva';
+    q('.s-manual-chip').className = 'chip s-manual-chip' + (on ? ' blue' : '');
+    siteHints(node);
   };
   q('.s-mode').onchange = sync;
   q('.s-url').oninput = sync;
-  q('.remove').onclick = () => node.remove();
+  q('.s-manuale').oninput = sync;
+  q('.remove').onclick = () => { node.remove(); refreshSummary(); };
   sync();
   $('#sites').appendChild(node);
 }
 $('#add-site').onclick = () => addSiteCard({});
+
+/** Dopo un'anteprima: pagine trovate per sito e avvisi (es. poche pagine senza navigazione manuale). */
+function siteHints(node) {
+  const q = (s) => node.querySelector(s);
+  const h = host(q('.s-url').value);
+  const d = (state.discovery || []).find((x) => host(x.site) === h);
+  const manual = q('.s-manuale').value.trim().length > 0;
+  q('.s-chips').innerHTML = d ? `<span class="chip ${d.found < 5 ? 'warn' : 'ok'}">${d.found} pagine trovate</span><span class="chip">Campione: ${d.sample.length}</span>` : '';
+  const redirects = d ? d.notes.filter((n) => /pagine? (non raggiungibil|.*error)/i.test(n)) : [];
+  q('.s-warn').innerHTML = d && d.found < 5 && !manual
+    ? `<div class="hint-box"><div><b>Poche pagine raggiungibili in automatico.</b><span class="small">Se il sito ha percorsi con moduli (es. preventivo), le pagine aperte direttamente spesso portano a una pagina di errore: per controllarli serve la navigazione manuale qui sotto.${redirects.length ? ' ' + esc(redirects[0]) : ''}</span></div></div>`
+    : '';
+}
 
 function fillForm(d) {
   $('#f-cliente').value = d.cliente || '';
@@ -367,6 +590,7 @@ function fillForm(d) {
   $('#f-perTipo').value = c.perTipo ?? '';
   $('#f-maxPagine').value = c.maxPagine ?? '';
   $('#f-pagineDopoScelta').value = sc.pagineDopoScelta ?? '';
+  $('#f-ripetizioni').value = String(sc.ripetizioni || 1);
   const attivi = sc.attivi || SCENARI.map(([n]) => n);
   for (const [n, id] of SCENARI) $(id).checked = attivi.includes(n);
   $('#f-canale').value = br.canale || 'chromium';
@@ -376,6 +600,7 @@ function fillForm(d) {
   $('#f-verifica').value = br.verificaUscita || 'avvisa';
   $('#f-har').value = rp.harContenuti || 'testo';
   $('#f-pdf').checked = rp.pdf !== false;
+  refreshSummary();
 }
 
 /** Applica il modulo ai dati originali: le opzioni non presenti nel modulo restano intatte. */
@@ -383,7 +608,7 @@ function readForm() {
   const d = structuredClone(state.data || {});
   d.cliente = $('#f-cliente').value.trim();
   if (!d.output) d.output = '../runs';
-  d.siti = [...document.querySelectorAll('#sites .site')].map((node) => {
+  d.siti = $$('#sites .site').map((node) => {
     const q = (s) => node.querySelector(s);
     const s = structuredClone(node._original || {});
     const mode = q('.s-mode').value;
@@ -415,6 +640,7 @@ function readForm() {
   setOrDelete(group('campionamento'), 'perTipo', num($('#f-perTipo').value));
   setOrDelete(group('campionamento'), 'maxPagine', num($('#f-maxPagine').value));
   setOrDelete(group('scenari'), 'pagineDopoScelta', num($('#f-pagineDopoScelta').value));
+  setOrDelete(group('scenari'), 'ripetizioni', $('#f-ripetizioni').value === '1' ? undefined : Number($('#f-ripetizioni').value));
   const attivi = SCENARI.filter(([, id]) => $(id).checked).map(([n]) => n);
   setOrDelete(group('scenari'), 'attivi', attivi.length === SCENARI.length ? undefined : attivi);
   setOrDelete(group('browser'), 'canale', $('#f-canale').value === 'chromium' ? undefined : $('#f-canale').value);
@@ -428,6 +654,55 @@ function readForm() {
   return d;
 }
 
+/** Stima della durata e verifiche prima dell'avvio, dal modulo e dall'ultima anteprima. */
+function plan() {
+  const d = readForm();
+  const attivi = SCENARI.filter(([, id]) => $(id).checked).map(([n]) => n);
+  const reps = Number($('#f-ripetizioni').value) || 1;
+  const maxP = num($('#f-maxPagine').value) || 15;
+  const rows = d.siti.filter((s) => s.url).map((s) => {
+    const disc = (state.discovery || []).find((x) => host(x.site) === host(s.url));
+    const pages = disc ? disc.sample.length : s.soloPagineExtra ? 1 + (s.pagineExtra || []).length : maxP;
+    const choice = attivi.filter((a) => a !== 'nessuna-azione').length;
+    const sessions = ((attivi.includes('nessuna-azione') ? pages : 0) + choice) * reps;
+    const manual = s.navigazioneManuale ? (s.navigazioneManuale.scenari || ['rifiuta', 'accetta']).length : 0;
+    return { site: s.url, pages, sessions, manual, found: disc?.found, estimated: !disc };
+  });
+  const sessions = rows.reduce((a, r) => a + r.sessions, 0);
+  const manual = rows.reduce((a, r) => a + r.manual, 0);
+  const sec = 120 + rows.length * 60 + sessions * 30 + 60;
+  return { d, rows, sessions, manual, sec, attivi, reps };
+}
+
+function refreshSummary() {
+  if (state.yamlMode || $('#view-config').classList.contains('hidden')) return;
+  const p = plan();
+  $('#st1').textContent = `${p.rows.length} ${p.rows.length === 1 ? 'sito' : 'siti'}${p.manual ? ', navigazione manuale' : ''}`;
+  $('#st2').textContent = `${p.attivi.length} scenari${p.reps > 1 ? ` × ${p.reps}` : ''}`;
+  $('#st3').textContent = state.discovery ? 'anteprima fatta' : 'anteprima da fare';
+  $('#st4').textContent = mins(p.sec);
+  $('.step[data-step="3"]').classList.toggle('attn', !state.discovery);
+  const few = p.rows.filter((r) => r.found !== undefined && r.found < 5 && !r.manual);
+  const items = [
+    p.rows.length ? ['ok', 'Siti indicati', p.rows.map((r) => host(r.site)).join(', ')] : ['bad', 'Nessun sito', 'Aggiungi almeno un indirizzo al passo 1.'],
+    p.attivi.length ? ['ok', 'Scenari', `${p.attivi.join(', ')}${p.reps > 1 ? ` · ripetuti ${p.reps} volte` : ''}`] : ['bad', 'Nessuno scenario', 'Scegli almeno uno scenario al passo 2.'],
+    [($('#f-verifica').value === 'no') ? 'warn' : 'ok', `Paese di uscita: ${$('#f-paese').value || 'IT'}`, $('#f-verifica').value === 'blocca' ? "Verificato all'avvio: se non corrisponde l'audit si ferma." : $('#f-verifica').value === 'avvisa' ? 'Verificato all\'avvio: se non corrisponde lo segnala il report.' : 'Non verificato.'],
+    state.discovery ? (few.length ? ['warn', 'Poche pagine su ' + few.map((r) => host(r.site)).join(', '), 'Per percorsi con moduli usa la navigazione manuale (passo 1).'] : ['ok', 'Pagine trovate su tutti i siti', `Campione di ${p.rows.reduce((a, r) => a + r.pages, 0)} pagine in tutto.`]) : ['warn', 'Anteprima non ancora fatta', 'Premi "Anteprima pagine" per vedere quali pagine verranno visitate.'],
+    ...(p.manual ? [['warn', 'Serve la tua presenza all\'inizio', `${p.manual} ${p.manual === 1 ? 'navigazione manuale' : 'navigazioni manuali'} nei primi minuti, poi puoi lasciare il computer.`]] : []),
+    ['warn', 'Computer acceso e collegato alla corrente', 'Se va in stop l\'audit si interrompe. Su Mac avvia l\'interfaccia con: caffeinate -i npm run interfaccia'],
+  ];
+  $('#checklist').innerHTML = items.map(([k, b, t]) => `<div class="ci ${k}"><span class="ic">${k === 'ok' ? '✓' : '!'}</span><div><b>${esc(b)}</b><span>${esc(t)}</span></div></div>`).join('');
+  $('#est-time').textContent = mins(p.sec);
+  $('#est-detail').textContent = `${p.sessions} sessioni automatiche${p.manual ? ` e ${p.manual} manuali` : ''}${p.rows.some((r) => r.estimated) ? ' (stima: fai l\'anteprima per un numero preciso)' : ''}. La stima si aggiorna durante l'audit.`;
+  $('#est-steps').innerHTML = [
+    'Verifica dell\'uscita e scoperta delle pagine',
+    ...(p.manual ? ['<b>Navigazione manuale: tocca a te</b>'] : []),
+    `Sessioni automatiche${p.manual ? ': puoi lasciare il computer' : ''}`,
+    'Report, PDF e modulo di revisione',
+  ].map((x) => `<li>${x}</li>`).join('');
+}
+$('#form').addEventListener('change', refreshSummary);
+
 function setYamlMode(on) {
   state.yamlMode = on;
   $('#form').classList.toggle('hidden', on);
@@ -435,26 +710,27 @@ function setYamlMode(on) {
   $('#toggle-yaml').textContent = on ? 'Torna al modulo' : 'Modifica come testo (YAML)';
 }
 $('#toggle-yaml').onclick = async () => {
-  if (!state.yamlMode) {
-    // Dal modulo al testo: si mostra il file salvato (le modifiche al modulo vanno salvate prima).
-    setYamlMode(true);
-    return;
-  }
+  if (!state.yamlMode) return setYamlMode(true);
   if (!state.file) return setYamlMode(false);
   await openClient(state.file);
   setYamlMode(false);
 };
 
 function setMsg(text, kind = 'ok') {
-  $('#save-msg').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : '';
+  $('#save-msg').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : '<span class="muted small">Le modifiche si salvano con "Salva" e prima di ogni avvio.</span>';
 }
-
+const humanError = (e) =>
+  e.replace(/^siti\.(\d+)\.url: .*/, (m, i) => `Sito ${Number(i) + 1}: indirizzo mancante o non valido (deve iniziare con https://)`)
+   .replace(/^cliente: .*/, 'Nome del cliente mancante')
+   .replace(/^siti: .*/, 'Aggiungere almeno un sito');
 async function save() {
   const file = state.isNew ? ($('#f-file').value.trim() || '').replace(/\.ya?ml$/i, '') + '.yaml' : state.file;
   const body = state.yamlMode ? { file, yaml: $('#f-yaml').value } : { file, data: readForm(), nuovo: state.isNew };
   try {
     await api('/api/clienti', { method: 'POST', body });
+    const keepStep = state.step;
     await openClient(file);
+    step(keepStep);
     setMsg('Configurazione salvata.', 'ok');
     return true;
   } catch (e) {
@@ -462,123 +738,180 @@ async function save() {
     return false;
   }
 }
-const humanError = (e) =>
-  e.replace(/^siti\.(\d+)\.url: .*/, (m, i) => `Sito ${Number(i) + 1}: indirizzo mancante o non valido (deve iniziare con https://)`)
-   .replace(/^cliente: .*/, 'Nome del cliente mancante')
-   .replace(/^siti: .*/, 'Aggiungere almeno un sito');
 $('#save').onclick = save;
 
-/* ---------- Operazioni: anteprima e audit ---------- */
-async function startJob(kind) {
-  if (!(await save())) return;
+/* ---------- Anteprima e audit ---------- */
+async function startJob(kind, extra = {}) {
+  if (kind !== 'avvia-siti' && !(await save())) return;
   try {
-    const body = { file: state.file };
-    if (kind === 'avvia') body.pdf = $('#f-pdf').checked;
-    await api('/api/' + kind, { method: 'POST', body });
-    refreshJob(true);
+    const body = { file: extra.file || state.file, ...extra };
+    if (kind !== 'scopri' && !extra.file) body.pdf = $('#f-pdf').checked;
+    await api('/api/' + (kind === 'scopri' ? 'scopri' : 'avvia'), { method: 'POST', body });
+    if (kind === 'scopri') {
+      $('#preview-result').innerHTML = '<div class="msg warn">Anteprima in corso: 1-2 minuti per sito…</div>';
+    } else {
+      show('audit');
+    }
+    refreshJob();
   } catch (e) {
-    setMsg(e.message, 'err');
+    if (kind === 'avvia-siti') toast(e.message);
+    else setMsg(e.message, 'err');
   }
 }
 $('#preview').onclick = () => startJob('scopri');
 $('#run').onclick = () => startJob('avvia');
 
-async function refreshJob(force) {
+const PHASES = ['uscita', 'scoperta', 'manuale', 'automatiche', 'report', 'fine'];
+async function refreshJob() {
   const j = await api('/api/lavoro').catch(() => null);
-  const box = $('#job');
-  const running = j && j.status === 'in-corso';
-  for (const id of ['#save', '#preview', '#run']) $(id).disabled = !!running;
-  if (!j || (j.file !== state.file && !running)) {
-    box.classList.add('hidden');
-  } else {
-    box.classList.remove('hidden');
-    $('#job-title').textContent = (j.kind === 'audit' ? 'Audit' : 'Anteprima pagine') + (j.file !== state.file ? ` di ${j.file}` : '');
-    const badge = $('#job-badge');
-    badge.className = 'badge ' + (running ? 'run' : j.status === 'completato' ? 'ok' : 'err');
-    badge.textContent = running ? 'in corso…' : j.status === 'completato' ? 'completato' : 'errore';
-    const pre = $('#job-log');
-    const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
-    pre.textContent = j.log.join('\n');
-    if (atBottom) pre.scrollTop = pre.scrollHeight;
-    // Navigazione manuale in corso: avviso ben visibile, anche nel titolo della scheda del browser
-    const startIdx = j.log.map((l) => /NAVIGAZIONE MANUALE/.test(l)).lastIndexOf(true);
-    const endIdx = j.log.map((l) => /navigazione manuale conclusa/.test(l)).lastIndexOf(true);
-    const waiting = running && startIdx >= 0 && startIdx > endIdx;
-    $('#job-action').classList.toggle('hidden', !waiting);
-    document.title = waiting ? '⚠ Azione richiesta – Scookie' : 'Scookie';
-    renderJobResult(j);
-  }
+  state.job = j;
+  const running = !!j && j.status === 'in-corso';
+  for (const id of ['#save', '#preview', '#run']) $(id).disabled = running;
+  renderStatus(j);
+  if (j && j.kind === 'scopri') renderPreview(j);
+  if (j && j.kind === 'audit') renderAudit(j);
   if (running && !state.polling) state.polling = setInterval(refreshJob, 1500);
   if (!running && state.polling) {
     clearInterval(state.polling);
     state.polling = null;
+    if (j && j.kind === 'audit' && j.status === 'completato') toast('Audit completato: il report è pronto.');
   }
 }
 
-function renderJobResult(j) {
+function renderStatus(j) {
+  const st = $('#status');
+  const pr = j && j.progress;
+  const running = j && j.status === 'in-corso';
+  const waiting = running && pr && pr.waiting;
+  const pct = running && pr && pr.total ? Math.round(progressPct(pr)) : null;
+  st.className = 'status ' + (waiting ? 'wait' : running ? 'run' : j && j.status === 'errore' ? 'err' : '');
+  $('#status-t').textContent = waiting === 'manuale' ? 'Azione richiesta' : waiting === 'connessione' ? 'In pausa: connessione' : running ? (j.kind === 'audit' ? 'Audit in corso' : 'Anteprima in corso') : j && j.status === 'errore' ? 'Ultima operazione: errore' : 'Pronto';
+  $('#mini').classList.toggle('hidden', pct == null);
+  if (pct != null) $('#mini i').style.width = pct + '%';
+  document.title = waiting === 'manuale' ? '⚠ Azione richiesta – Scookie' : pct != null ? `${pct}% – Scookie` : 'Scookie';
+}
+function progressPct(pr) {
+  if (pr.phase === 'fine') return 100;
+  if (!pr.total) return 0;
+  const base = pr.phase === 'report' ? 96 : 3 + (pr.done / pr.total) * 92;
+  return Math.min(99, base);
+}
+
+function renderPreview(j) {
+  const r = $('#preview-result');
+  if (j.status === 'in-corso') {
+    r.innerHTML = `<div class="msg warn">Anteprima in corso…</div><pre class="log">${esc(j.log.slice(-6).join('\n'))}</pre>`;
+    return;
+  }
+  if (j.status === 'errore') {
+    r.innerHTML = `<div class="msg err">${esc(j.error)}</div>`;
+    return;
+  }
+  if (!j.discovery || j.file !== state.file) return;
+  if (state.discovery !== j.discovery) {
+    state.discovery = j.discovery;
+    $$('#sites .site').forEach(siteHints);
+    refreshSummary();
+  }
+  r.innerHTML = '<div class="tbl"><table><thead><tr><th>Sito</th><th class="num">Trovate</th><th class="num">Campione</th><th>Note</th></tr></thead><tbody>' +
+    j.discovery.map((d) => `<tr><td>${esc(host(d.site))}</td><td class="num">${d.found}</td><td class="num">${d.sample.length}</td><td class="small muted">${d.notes.map(esc).join(' · ')}</td></tr>`).join('') +
+    '</tbody></table></div>' +
+    j.discovery.map((d) => `<details class="adv"><summary>${esc(host(d.site))}: pagine del campione</summary><div class="tbl"><table><tr><th>#</th><th>Tipo</th><th>Origine</th><th>Pagina</th></tr>${d.sample.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.type)}</td><td>${esc(p.source)}</td><td>${esc(p.url)}</td></tr>`).join('')}</table></div></details>`).join('');
+}
+
+function renderAudit(j) {
+  const pr = j.progress;
+  const running = j.status === 'in-corso';
+  $('#job-title').textContent = state.clients.find((c) => c.file === j.file)?.cliente || j.file;
+  $('#job-kind').textContent = running ? 'Audit in corso' : 'Ultimo audit';
+  const badge = $('#job-badge');
+  badge.className = 'chip ' + (running ? 'blue' : j.status === 'completato' ? 'ok' : 'bad');
+  badge.textContent = running ? 'In corso' : j.status === 'completato' ? 'Completato' : 'Errore';
+  const pre = $('#job-log');
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+  pre.textContent = j.log.join('\n');
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+  const phase = pr ? pr.phase : running ? 'uscita' : 'fine';
+  const k = PHASES.indexOf(phase);
+  $$('#phases .ph').forEach((el) => {
+    const i = PHASES.indexOf(el.dataset.p);
+    el.className = 'ph' + (i < k || phase === 'fine' ? ' done' : i === k ? (pr && pr.waiting ? ' wait' : ' now') : '');
+  });
+  const manualTotal = pr ? pr.sites.reduce((a, s) => a, 0) : 0;
+  $('#ph-scoperta').textContent = pr && pr.sites.length ? `${pr.sites.length} siti` : 'siti';
+  $('#ph-auto').textContent = pr && pr.total ? `${pr.total} sessioni` : '—';
+  const indet = running && (!pr || phase === 'uscita' || phase === 'scoperta');
+  const pct = pr ? Math.round(progressPct(pr)) : running ? 0 : 100;
+  const bar = $('#bar');
+  bar.className = 'bar' + (indet ? ' indet' : '') + (pr && pr.waiting ? ' wait' : '');
+  $('i', bar).style.width = (indet ? 0 : pct) + '%';
+  $('#pct').textContent = indet ? '—' : pct + '%';
+  $('#eta-l').textContent = pr && pr.waiting === 'manuale' ? 'Ferma finché non premi "Ho finito"' : pr && pr.waiting === 'connessione' ? 'Ferma finché torna la connessione' : 'Tempo rimanente';
+  $('#eta').textContent = !running ? (j.status === 'completato' ? 'completato' : '—') : pr && pr.waiting ? 'in pausa' : pr && pr.etaSec != null ? mins(pr.etaSec) : 'in calcolo…';
+  $('#now').innerHTML = running && pr ? `<span class="chip blue">${pr.total ? `Sessione ${Math.min(pr.done + 1, pr.total)} di ${pr.total}` : 'In corso'}</span><span>${esc(pr.current || '')}</span>` : '';
+  $('#job-action').classList.toggle('hidden', !(running && pr && pr.waiting === 'manuale'));
+  $('#job-offline').classList.toggle('hidden', !(running && pr && pr.waiting === 'connessione'));
+  $('#sites-prog').innerHTML = pr && pr.sites.length
+    ? pr.sites.map((s) => `<div class="sp"><span>${esc(host(s.site))}</span><div class="bar"><i style="width:${s.total ? (s.done / s.total) * 100 : 0}%"></i></div><span class="muted small" style="font-variant-numeric:tabular-nums">${s.done}/${s.total}</span></div>`).join('')
+    : '<p class="muted small">Disponibile dopo la scoperta delle pagine.</p>';
   const r = $('#job-result');
   if (j.status === 'errore') {
     r.innerHTML = `<div class="msg err">${esc(j.error)}</div>`;
-  } else if (j.status === 'in-corso') {
-    r.innerHTML = `<p class="muted">Iniziato alle ${esc(fmt(j.startedAt))}. Si può lasciare la pagina aperta: l'avanzamento si aggiorna da solo.</p>`;
-  } else if (j.kind === 'audit' && j.runName) {
+  } else if (j.status === 'completato' && j.runName) {
     const base = '/esecuzioni/' + encodeURIComponent(j.runName) + '/';
-    r.innerHTML = `<div class="msg ok">Audit completato.</div>
-      <div class="actions"><a class="btn primary" href="${base}report.html" target="_blank" rel="noopener">Apri il report</a>
+    r.innerHTML = `<div class="card stack"><div class="row spread"><h2>Audit completato</h2><span class="chip ok">Report pronto</span></div>
+      <div class="row"><a class="btn primary" href="${base}report.html" target="_blank" rel="noopener">Apri il report</a>
       <a class="btn" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>
-      <button class="btn" onclick="showTab('esecuzioni')">Tutte le esecuzioni</button></div>
-      <p class="muted">Cartella: ${esc(j.runName)}</p>`;
-  } else if (j.kind === 'scopri' && j.discovery) {
-    r.innerHTML = j.discovery.map((d) => `<h3>${esc(d.site)} — ${d.sample.length} pagine su ${d.found} trovate</h3>
-      <table><tr><th>#</th><th>Tipo</th><th>Origine</th><th>Pagina</th></tr>${d.sample.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.type)}</td><td>${esc(p.source)}</td><td>${esc(p.url)}</td></tr>`).join('')}</table>
-      ${d.notes.length ? `<p class="muted">${d.notes.map(esc).join(' · ')}</p>` : ''}`).join('') +
-      '<p class="muted">Se mancano pagine importanti, aggiungile in "Pagine da includere sempre" e ripeti l\'anteprima.</p>';
+      <button class="btn" data-open-run="${esc(j.runName)}">Revisiona le schede</button>
+      <button class="btn" id="all-runs">Tutte le esecuzioni</button></div>
+      <p class="muted small">Cartella: ${esc(j.runName)}</p></div>`;
+    $('#all-runs').onclick = () => show('esecuzioni');
+    $('[data-open-run]', r).onclick = (e) => openReview(e.target.dataset.openRun);
   } else r.innerHTML = '';
 }
 
 /* ---------- Esecuzioni ---------- */
 async function loadRuns() {
   const runs = await api('/api/esecuzioni');
+  state.runs = runs;
   const box = $('#runs');
   if (!runs.length) {
-    box.innerHTML = '<p class="empty">Nessuna esecuzione ancora. Avvia un audit dalla scheda Clienti.</p>';
+    box.innerHTML = '<div class="card empty">Nessuna esecuzione ancora. Avvia un audit dalla sezione Clienti.</div>';
     return;
   }
-  box.innerHTML = `<table><tr><th>Data</th><th>Cliente</th><th>Sessioni</th><th>Criticità</th><th>Paese</th><th>File</th></tr>${runs
-    .map((r, i) => {
-      const base = '/esecuzioni/' + encodeURIComponent(r.name) + '/';
-      // esecuzione precedente dello stesso cliente (l'elenco è dal più recente)
-      const prev = runs.slice(i + 1).find((x) => x.cliente === r.cliente);
-      return `<tr><td>${esc(fmt(r.inizio))}</td><td>${esc(r.cliente)}<div class="muted">${esc(r.name)}</div></td><td>${esc(r.sessioni)}</td><td>${esc(r.criticita)}</td>
-        <td>${!r.paese ? '<span class="badge err">non verificato</span>' : r.paese === 'IT' ? esc(r.paese) : `<span class="badge err" title="Uscita da un paese diverso dall'Italia: risultati non rappresentativi di un visitatore italiano">${esc(r.paese)}</span>`}</td>
-        <td><a class="btn small primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>
-        ${r.pdf ? `<a class="btn small" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}
-        <a class="btn small" href="${base}criticita.csv">Criticità CSV</a>
-        <a class="btn small" href="${base}cookie.csv">Cookie CSV</a>
-        ${r.revisione ? `<a class="btn small" href="${base}revisione.csv" title="Modulo di revisione: per ogni scheda esito (confermato / falso positivo / da verificare) e nota. Compilalo, salvalo nella cartella dell'esecuzione e premi Applica revisione">Modulo revisione</a>
-        <button class="btn small" data-revisione="${esc(r.name)}">Applica revisione</button>` : ''}
-        ${r.rivisto ? `<a class="btn small primary" href="${base}report-rivisto.html" target="_blank" rel="noopener">Report rivisto</a>` : ''}
-        ${prev ? `<button class="btn small" data-prima="${esc(prev.name)}" data-dopo="${esc(r.name)}" title="Confronta con l'esecuzione del ${esc(fmt(prev.inizio))}">Confronta con precedente</button>` : ''}</td></tr>`;
-    })
-    .join('')}</table>`;
+  box.innerHTML = runs.map((r, i) => {
+    const base = '/esecuzioni/' + encodeURIComponent(r.name) + '/';
+    const prev = runs.slice(i + 1).find((x) => x.cliente === r.cliente);
+    const g = r.gravita;
+    const reviewed = r.revisionate ?? 0;
+    const total = r.criticita ?? 0;
+    const revDone = total > 0 && reviewed >= total;
+    const country = !r.paese ? '<span class="chip bad">uscita non verificata</span>' : r.paese === 'IT' ? '<span class="muted">uscita IT</span>' : `<span class="chip bad">uscita ${esc(r.paese)}</span>`;
+    const configOk = r.configurazione && state.clients.some((c) => c.file === r.configurazione);
+    return `<article class="card run">
+      <div class="run-h"><h2>${esc(r.cliente)}</h2><span class="muted">${esc(fmt(r.inizio))}${r.durataSec ? ` · ${Math.round(r.durataSec / 60)} minuti` : ''}</span>${country}
+        ${r.rivisto ? '<span class="chip ok">Revisionato</span>' : r.revisione ? '<span class="chip warn">Da revisionare</span>' : ''}</div>
+      <div class="sev">${g ? ['alta', 'media', 'bassa', 'informativa'].map((k) => `<div class="s ${k}"><b>${g[k] ?? 0}</b><span>${k}</span></div>`).join('') : `<div class="s"><b>${esc(total)}</b><span>schede</span></div>`}</div>
+      ${r.sitiSenzaDati && r.sitiSenzaDati.length ? `<div class="hint-box"><div><b>Nessun dato per ${esc(r.sitiSenzaDati.map(host).join(', '))}</b><span class="small">Le pagine non si sono caricate (connessione assente o computer in stop): per questi siti l'audit va ripetuto.</span>
+        ${configOk ? `<div style="margin-top:8px"><button class="btn sm" data-rerun="${esc(r.configurazione)}" data-siti="${esc(JSON.stringify(r.sitiSenzaDati))}">Ripeti solo questi siti</button></div>` : ''}</div></div>` : ''}
+      <div class="flow">
+        <div class="fs done"><span class="k">1 · Leggi</span><span class="small">Report e allegati</span><div class="row"><a class="btn sm primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>${r.pdf ? `<a class="btn sm" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}<a class="btn sm" href="${base}criticita.csv">CSV</a></div></div>
+        <div class="fs ${r.revisione ? (revDone ? 'done' : 'next') : ''}"><span class="k">2 · Revisiona</span><span class="small">${r.revisione ? `${reviewed} schede su ${total}` : 'Modulo non disponibile'}</span>${r.revisione ? `<div class="row"><button class="btn sm ${revDone ? '' : 'primary'}" data-open-run="${esc(r.name)}">${reviewed ? 'Continua' : 'Inizia'} la revisione</button></div>` : ''}</div>
+        <div class="fs ${r.rivisto ? 'done' : ''}"><span class="k">3 · Report rivisto</span><span class="small">${r.rivisto ? 'Generato' : 'Dopo la revisione'}</span><div class="row">${r.rivisto ? `<a class="btn sm" href="${base}report-rivisto.html" target="_blank" rel="noopener">Apri</a>` : ''}${r.revisione ? `<button class="btn sm" data-revisione="${esc(r.name)}" ${reviewed ? '' : 'disabled'}>${r.rivisto ? 'Rigenera' : 'Genera'}</button>` : ''}</div></div>
+        <div class="fs"><span class="k">4 · Confronta</span><span class="small">${prev ? `Con il ${esc(fmt(prev.inizio))}` : 'Nessuna esecuzione precedente'}</span>${prev ? `<div class="row"><button class="btn sm" data-prima="${esc(prev.name)}" data-dopo="${esc(r.name)}">Confronta con precedente</button></div>` : ''}</div>
+      </div>
+      <div class="cmp hidden" data-cmp="${esc(r.name)}"></div>
+    </article>`;
+  }).join('');
 }
 $('#refresh-runs').onclick = loadRuns;
 $('#runs').addEventListener('click', async (ev) => {
+  const open = ev.target.closest('[data-open-run]');
+  if (open) return openReview(open.dataset.openRun);
+  const rerun = ev.target.closest('[data-rerun]');
+  if (rerun) return startJob('avvia-siti', { file: rerun.dataset.rerun, siti: JSON.parse(rerun.dataset.siti) });
   const rv = ev.target.closest('button[data-revisione]');
-  if (rv) {
-    rv.disabled = true;
-    rv.textContent = 'Applicazione…';
-    try {
-      const r = await api('/api/revisione', { method: 'POST', body: { esecuzione: rv.dataset.revisione } });
-      alert(`Revisione applicata: ${r.confermate} confermate, ${r.falsiPositivi} falsi positivi, ${r.nonRevisionate} non revisionate.`);
-      await loadRuns();
-    } catch (e) {
-      rv.disabled = false;
-      rv.textContent = 'Applica revisione';
-      alert(e.message);
-    }
-    return;
-  }
+  if (rv) return applyReview(rv.dataset.revisione, rv);
   const b = ev.target.closest('button[data-prima]');
   if (!b) return;
   b.disabled = true;
@@ -586,23 +919,86 @@ $('#runs').addEventListener('click', async (ev) => {
   try {
     const c = await api('/api/confronta', { method: 'POST', body: { prima: b.dataset.prima, dopo: b.dataset.dopo } });
     const href = '/esecuzioni/' + encodeURIComponent(b.dataset.dopo) + '/' + encodeURIComponent(c.file);
-    b.outerHTML = `<a class="btn small primary" href="${href}" target="_blank" rel="noopener" title="${c.risolte} non più osservate, ${c.rimaste} ancora presenti, ${c.nuove} nuove">Confronto: −${c.risolte} / =${c.rimaste} / +${c.nuove}</a>`;
+    const box = $(`[data-cmp="${CSS.escape(b.dataset.dopo)}"]`);
+    box.innerHTML = `<div class="c"><span class="muted small">Non più osservate</span><b style="color:var(--ok)">${c.risolte}</b></div>
+      <div class="c"><span class="muted small">Ancora presenti</span><b>${c.rimaste}</b></div>
+      <div class="c"><span class="muted small">Nuove</span><b style="color:var(--bad)">${c.nuove}</b></div>`;
+    box.classList.remove('hidden');
+    b.outerHTML = `<a class="btn sm primary" href="${href}" target="_blank" rel="noopener">Confronto: −${c.risolte} / =${c.rimaste} / +${c.nuove}</a>`;
   } catch (e) {
     b.disabled = false;
     b.textContent = 'Confronta con precedente';
-    alert(e.message);
+    toast(e.message);
   }
 });
+
+async function applyReview(run, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Generazione…'; }
+  try {
+    const r = await api('/api/revisione', { method: 'POST', body: { esecuzione: run } });
+    toast(`Report rivisto generato: ${r.confermate} confermate, ${r.falsiPositivi} falsi positivi, ${r.nonRevisionate} non revisionate.`);
+    await loadRuns();
+    return true;
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Genera'; }
+    toast(e.message);
+    return false;
+  }
+}
+
+/* ---------- Revisione dall'interfaccia ---------- */
+const OUTCOMES = [['', '— da scegliere —'], ['confermato', 'Confermato'], ['falso positivo', 'Falso positivo'], ['da verificare', 'Da verificare']];
+const SEV_CHIP = { alta: 'bad', media: 'warn', bassa: 'blue', informativa: '' };
+async function openReview(run) {
+  try {
+    const rows = await api('/api/revisione/' + encodeURIComponent(run));
+    state.review = { run, rows };
+    const r = state.runs.find((x) => x.name === run);
+    $('#rev-title').textContent = r ? `${r.cliente} · ${fmt(r.inizio)}` : run;
+    $('#rev-rows').innerHTML = rows.map((x, i) => `<tr>
+      <td><a href="/esecuzioni/${encodeURIComponent(run)}/report.html#${esc(x.scheda)}" target="_blank" rel="noopener">${esc(x.scheda)}</a></td>
+      <td><span class="chip ${SEV_CHIP[x.gravita] ?? ''}">${esc(x.gravita)}</span></td>
+      <td><b>${esc(x.titolo)}</b><div class="muted small">${esc(x.regola)} · ${esc(host(x.sito))}</div></td>
+      <td><select data-i="${i}" class="rev-esito">${OUTCOMES.map(([v, l]) => `<option value="${v}" ${x.esito === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td><input type="text" data-i="${i}" class="rev-nota" value="${esc(x.nota)}" placeholder="Motivo o verifica fatta"></td></tr>`).join('');
+    reviewCount();
+    show('revisione');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+function reviewRows() {
+  return state.review.rows.map((x, i) => ({ chiave: x.chiave, esito: $(`.rev-esito[data-i="${i}"]`).value, nota: $(`.rev-nota[data-i="${i}"]`).value }));
+}
+function reviewCount() {
+  const rows = reviewRows();
+  $('#rev-count').textContent = `${rows.filter((r) => r.esito).length} schede revisionate su ${rows.length} · ${rows.filter((r) => r.esito === 'falso positivo').length} falsi positivi`;
+}
+$('#rev-rows').addEventListener('change', reviewCount);
+async function saveReview() {
+  await api('/api/revisione/' + encodeURIComponent(state.review.run), { method: 'POST', body: { righe: reviewRows() } });
+}
+$('#rev-save').onclick = async () => {
+  try { await saveReview(); toast('Revisione salvata.'); } catch (e) { toast(e.message); }
+};
+$('#rev-apply').onclick = async () => {
+  try {
+    await saveReview();
+    if (await applyReview(state.review.run)) show('esecuzioni');
+  } catch (e) { toast(e.message); }
+};
+$('#rev-back').onclick = () => show('esecuzioni');
 
 /* ---------- Avvio ---------- */
 (async () => {
   try {
     const info = await api('/api/info');
-    $('#version').textContent = 'versione ' + info.versione;
+    $('#version').textContent = 'v' + info.versione;
     $('#clients-dir').textContent = 'Configurazioni in: ' + info.clienti;
     $('#runs-dir').textContent = 'Risultati in: ' + info.esecuzioni;
     await loadClients();
     await refreshJob();
+    if (state.job && state.job.status === 'in-corso' && state.job.kind === 'audit') show('audit');
   } catch (e) {
     document.body.insertAdjacentHTML('afterbegin', `<div class="msg err">${esc(e.message)}</div>`);
   }

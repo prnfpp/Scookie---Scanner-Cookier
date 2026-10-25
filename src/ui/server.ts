@@ -11,7 +11,8 @@ import { loadConfig } from '../config/load.js';
 import { configSchema } from '../config/schema.js';
 import { discoverSite, type DiscoveryResult } from '../discovery/discover.js';
 import { writeComparison } from '../report/compare.js';
-import { applyReview, REVIEW_FILE } from '../report/review.js';
+import { applyReview, readReview, readReviewRows, REVIEW_FILE, writeReviewRows } from '../report/review.js';
+import type { Progress } from '../progress.js';
 import { launchOptions, resolveUserAgent, runAudit } from '../run.js';
 import { closeSafely } from '../util/misc.js';
 import { TOOL_VERSION } from '../version.js';
@@ -51,6 +52,8 @@ interface Job {
   error: string | null;
   runName: string | null;
   discovery: DiscoveryResult[] | null;
+  /** Avanzamento dell'audit (fase, sessioni, tempo stimato). */
+  progress: Progress | null;
 }
 
 class HttpError extends Error {
@@ -81,6 +84,24 @@ function readClient(dir: string, file: string) {
   };
 }
 
+/** Riepilogo dell'esecuzione (riepilogo.json) e avanzamento della revisione (revisione.csv). */
+function summaryOf(dir: string) {
+  let r: { configurazione?: string; gravita?: Record<string, number>; sitiSenzaDati?: string[]; durataSec?: number } = {};
+  try {
+    r = JSON.parse(readFileSync(join(dir, 'riepilogo.json'), 'utf8'));
+  } catch {
+    // esecuzione precedente all'introduzione del riepilogo
+  }
+  let revisionate: number | null = null;
+  try {
+    const rev = readReview(dir);
+    if (rev) revisionate = [...rev.values()].filter((e) => e.esito).length;
+  } catch {
+    revisionate = null;
+  }
+  return { configurazione: r.configurazione ?? null, gravita: r.gravita ?? null, sitiSenzaDati: r.sitiSenzaDati ?? [], durataSec: r.durataSec ?? null, revisionate };
+}
+
 function listRuns(runsDir: string) {
   if (!existsSync(runsDir)) return [];
   return readdirSync(runsDir)
@@ -106,6 +127,7 @@ function listRuns(runsDir: string) {
           pdf: existsSync(join(runsDir, name, 'report.pdf')),
           revisione: existsSync(join(runsDir, name, REVIEW_FILE)),
           rivisto: existsSync(join(runsDir, name, 'report-rivisto.html')),
+          ...summaryOf(join(runsDir, name)),
         };
       } catch {
         return null;
@@ -181,6 +203,7 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
       error: null,
       runName: null,
       discovery: null,
+      progress: null,
     };
     job = j;
     work(j)
@@ -250,7 +273,8 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
       return json(res, 200, { file: body.file });
     }
     if ((path === '/api/scopri' || path === '/api/avvia') && method === 'POST') {
-      const body = (await readBody(req)) as { file?: string; pdf?: boolean };
+      const body = (await readBody(req)) as { file?: string; pdf?: boolean; siti?: unknown };
+      const onlySites = Array.isArray(body.siti) ? body.siti.filter((x): x is string => typeof x === 'string' && /^https?:\/\//.test(x)) : undefined;
       const p = clientPath(body.file);
       if (!existsSync(p)) throw new HttpError(404, 'Configurazione non trovata');
       const loaded = loadConfig(p); // lancia un errore leggibile se la configurazione non è valida
@@ -277,6 +301,10 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
         const result = await runAudit(loaded, {
           outDir: runsDir,
           pdf: body.pdf === false ? false : undefined,
+          onlySites,
+          onProgress: (pr) => {
+            jj.progress = pr;
+          },
           log: (m) => {
             for (const line of m.split('\n')) if (line.trim()) jj.log.push(line);
             if (jj.log.length > 2000) jj.log.splice(0, jj.log.length - 2000);
@@ -291,6 +319,20 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
     }
     if (path === '/api/esecuzioni' && method === 'GET') {
       return json(res, 200, listRuns(runsDir));
+    }
+    const rev = /^\/api\/revisione\/([^/]+)$/.exec(path);
+    if (rev) {
+      const n = decodeURIComponent(rev[1]);
+      if (!RUN_RE.test(n) || n === '.' || n === '..' || !existsSync(join(runsDir, n, REVIEW_FILE))) throw new HttpError(404, 'Esecuzione non valida o senza modulo di revisione');
+      if (method === 'GET') return json(res, 200, readReviewRows(join(runsDir, n)));
+      if (method === 'POST') {
+        const body = (await readBody(req)) as { righe?: { chiave: string; esito: string; nota: string }[] };
+        try {
+          return json(res, 200, writeReviewRows(join(runsDir, n), Array.isArray(body.righe) ? body.righe : []));
+        } catch (e) {
+          throw new HttpError(422, (e as Error).message);
+        }
+      }
     }
     if (path === '/api/revisione' && method === 'POST') {
       const body = (await readBody(req)) as { esecuzione?: unknown };

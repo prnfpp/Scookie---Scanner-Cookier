@@ -21,7 +21,7 @@ before(async () => {
     output: join(dir, 'runs'),
     browser: { hostResolverRules: 'MAP * 127.0.0.1', verificaUscita: 'no' },
     protocollo: { attesaDopoCaricamento: 300, attesaDopoScroll: 200, attesaDopoScelta: 800, pausaTraSessioni: 0, timeoutNavigazione: 15000 },
-    scenari: { attivi: ['nessuna-azione'] },
+    scenari: { attivi: ['nessuna-azione'], ripetizioni: 2 },
     report: { pdf: false },
     trackerExtra: join(FIXTURES, 'tracker-test.yaml'),
     siti: [
@@ -76,4 +76,12 @@ test('sito irraggiungibile: sessioni non valide, nessuna criticità, avviso nel 
   assert.ok(ss.length && ss.every((x) => x.unreachable));
   assert.ok(!result.findings.some((f) => f.sites.some((x) => x.includes('spento.test'))));
   assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Attenzione — pagine non caricate/);
+});
+
+test('ripetizioni: ogni scenario due volte, le schede dicono in quante è stato osservato', () => {
+  const a = result.sessions.filter((x) => x.site.includes('sito-a.test') && x.scenario === 'nessuna-azione');
+  assert.deepEqual(a.map((x) => x.repeat).sort(), [1, 2]);
+  const f = result.findings.find((x) => x.ruleId === 'cookie-prima-del-consenso' && x.site.includes('sito-a.test'))!;
+  assert.deepEqual(f.repeats, { seen: 2, of: 2 });
+  assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Osservato in 2 esecuzioni su 2/);
 });

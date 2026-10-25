@@ -150,6 +150,16 @@ test('sito-f: tracciamento attivato dallo scroll distinto dal caricamento', () =
   assert.match(a.description, /già al caricamento/);
 });
 
+test('sito-a: dati personali verso terzi, mascherati nel report e nei dati', () => {
+  const f = result.findings.find((x) => x.ruleId === 'dati-personali-a-terzi' && x.site.includes('sito-a.test'))!;
+  assert.equal(f.severity, 'alta');
+  assert.ok(f.details.some((d) => /targa: ZZ•••ZZ/.test(d)), f.details.join(' | '));
+  for (const file of ['report.html', 'dati.json', 'richieste.csv']) {
+    const text = readFileSync(join(result.runDir, file), 'utf8');
+    assert.ok(!text.includes('ZZ999ZZ') && !decodeURIComponent(text.replace(/%(?![0-9A-F]{2})/gi, '%25')).includes('ZZ999ZZ'), `${file} non deve contenere la targa in chiaro`);
+  }
+});
+
 test('sito-a: elementi non classificati segnalati invece di restare invisibili', () => {
   const f = result.findings.find((x) => x.site.includes('sito-a.test') && x.ruleId === 'elementi-non-classificati');
   assert.ok(f);
@@ -205,8 +215,10 @@ test('analisi del banner: comandi, categorie pre-attivate, informativa, revoca',
   assert.equal(pa.accept?.background, '#2e7d32');
   assert.equal(pa.reject?.kind, 'link');
   assert.ok((pa.accept!.width * pa.accept!.height) > 3 * (pa.reject!.width * pa.reject!.height));
-  const sa = result.findings.find((f) => f.ruleId === 'struttura-banner' && f.site.includes('sito-a.test'))!;
-  assert.match(sa.description, /"Accetta tutti" è un pulsante con sfondo #2e7d32, "Rifiuta" è un link senza sfondo/);
+  const sa = result.findings.find((f) => f.ruleId === 'evidenza-asimmetrica' && f.site.includes('sito-a.test'))!;
+  assert.equal(sa.severity, 'media');
+  assert.match(sa.description, /"Accetta tutti" è un pulsante con sfondo pieno #2e7d32 .*del banner; "Rifiuta" è un link senza sfondo/);
+  assert.ok(!/contrasto/.test(sa.description), 'il contrasto resta solo nei dettagli');
 });
 
 test('sito-e: elenco dichiarato ricavato dalle tabelle della cookie policy', () => {

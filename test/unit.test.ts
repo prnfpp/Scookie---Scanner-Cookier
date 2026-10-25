@@ -6,6 +6,7 @@ import { pageType, parseSitemap, robotsDisallows, sample, sectionsOf } from '../
 import { TEXTS } from '../src/cmp/heuristic.js';
 import { describeGoogleConsent, googleConsentShort, googleConsentSummary, isConsentModeDeniedPing, requestEvidenceLevel, strongestRequest } from '../src/rules/helpers.js';
 import { isRevokeUrl } from '../src/cmp/revoke.js';
+import { detectPii, maskPii } from '../src/util/pii.js';
 import { PartyResolver, registrableDomain } from '../src/util/domains.js';
 import { parseCsv, toCsv } from '../src/util/csv.js';
 import type { RequestRecord } from '../src/types.js';
@@ -303,4 +304,18 @@ test('segnali di consenso Google riassunti su tutte le richieste', () => {
   const mixed = googleConsentSummary([r({ gcs: 'G111', gcd: '13r3vPr2r5l1' }, true), r({ gcd: '13l3l3l2l1l1' }), r({ gcd: '13l3l3l2l1l1' })]);
   assert.equal(mixed.short, 'con segnali di consenso diversi tra le richieste');
   assert.match(mixed.detail ?? '', /concesso \(1 richiesta, di cui 1 da service worker\).*non impostato\) \(2 richieste\)/);
+});
+
+test('dati personali negli indirizzi inviati a terzi: trovati e mascherati', () => {
+  // indirizzo della pagina (con targa e data di nascita) inviato a Google Ads come parametro codificato
+  const ads = 'https://googleads.g.doubleclick.net/pagead/viewthroughconversion/1/?url=' + encodeURIComponent('https://app.esempio.it/controllo-in-corso?dataNascita=09/11/1997&targa=AB123CD');
+  const hits = detectPii(ads);
+  assert.deepEqual(hits.map((h) => h.kind).sort(), ['data di nascita', 'targa']);
+  assert.ok(hits.some((h) => h.masked === 'AB•••CD'));
+  const masked = maskPii(ads);
+  assert.ok(!masked.includes('AB123CD') && !decodeURIComponent(masked).includes('AB123CD'), masked);
+  assert.ok(detectPii('{"email":"mario.rossi@esempio.it"}').some((h) => h.kind === 'email' && h.masked === 'm•••@esempio.it'));
+  assert.ok(detectPii('cf=RSSMRA80A01H501U').some((h) => h.kind === 'codice fiscale'));
+  // niente falsi positivi su identificativi comuni
+  assert.deepEqual(detectPii('https://region1.google-analytics.com/g/collect?v=2&tid=G-ABC123&cid=123.456&tel=0'), []);
 });
