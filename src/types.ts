@@ -129,7 +129,7 @@ export interface InteractionReport {
   /** Descrizione leggibile, es. "click su #onetrust-reject-all-handler". */
   detail: string;
   /** Esito della verifica dello stato di consenso dopo la scelta. */
-  verification: 'verificato' | 'incoerente' | 'non-verificabile' | 'non-applicabile';
+  verification: 'verificato' | 'diverso' | 'non-verificabile' | 'non-applicabile';
   verificationDetail: string;
   consentStateBefore?: unknown;
   consentStateAfter?: unknown;

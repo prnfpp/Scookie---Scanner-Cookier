@@ -175,7 +175,7 @@ export class Collector {
         stage: this.stage,
         firstSeenUrl: maskPii(this.currentUrl),
         firstSeenAt: now,
-        valuePreview: preview(c.value),
+        valuePreview: preview(maskPii(c.value)),
         classification: this.classifier.classifyName(c.name, c.domain),
       });
     }
@@ -208,7 +208,7 @@ export class Collector {
             origin: data.origin,
             kind,
             key: k,
-            valuePreview: preview(v),
+            valuePreview: preview(maskPii(v)),
             party: this.party.party(host),
             phase: this.phase,
             stage: this.stage,

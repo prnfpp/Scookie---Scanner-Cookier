@@ -42,7 +42,7 @@ export async function checkUpdates(): Promise<UpdateInfo> {
  * aspetta che l'interfaccia si chiuda, aggiorna, ricompila e la riapre.
  */
 export function restartWithUpdate() {
-  const child = spawn('/bin/bash', ['-c', `sleep 2; exec /bin/bash "${join(TOOL_DIR, 'scripts', 'avvia-mac.sh')}" >> "$HOME/Library/Logs/Scookie.log" 2>&1`], {
+  const child = spawn('/bin/bash', ['-c', 'sleep 2; exec /bin/bash "$0" >> "$HOME/Library/Logs/Scookie.log" 2>&1', join(TOOL_DIR, 'scripts', 'avvia-mac.sh')], {
     cwd: TOOL_DIR,
     detached: true,
     stdio: 'ignore',

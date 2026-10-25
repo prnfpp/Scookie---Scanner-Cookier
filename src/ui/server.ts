@@ -431,7 +431,13 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
     if (!abs.startsWith(runsDir + sep) || !existsSync(abs) || !statSync(abs).isFile()) throw new HttpError(404, 'File non trovato');
     const ext = extname(abs).toLowerCase();
     const download = ['.har', '.gz', '.csv', '.json', '.sha256'].includes(ext);
-    send(res, 200, readFileSync(abs), TYPES[ext] ?? 'application/octet-stream', download ? { 'content-disposition': `attachment; filename="${parts[parts.length - 1]}"` } : {});
+    // I report contengono testi presi dai siti verificati: nella stessa origine dell'interfaccia non devono
+    // poter eseguire script né caricare risorse esterne, anche se un testo sfuggisse all'escape.
+    const headers: Record<string, string> = {
+      'content-security-policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'",
+    };
+    if (download) headers['content-disposition'] = `attachment; filename="${parts[parts.length - 1].replace(/[^\w.-]/g, '_')}"`;
+    send(res, 200, readFileSync(abs), TYPES[ext] ?? 'application/octet-stream', headers);
   }
 
   const server = createServer(async (req, res) => {
