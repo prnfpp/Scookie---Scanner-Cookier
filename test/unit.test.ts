@@ -4,7 +4,8 @@ import { Classifier, normalizeDeclaredCategory } from '../src/classify/classifie
 import { declaredPattern } from '../src/declared/compare.js';
 import { pageType, parseSitemap, robotsDisallows, sample, sectionsOf } from '../src/discovery/discover.js';
 import { TEXTS } from '../src/cmp/heuristic.js';
-import { describeGoogleConsent, isConsentModeDeniedPing, requestEvidenceLevel } from '../src/rules/helpers.js';
+import { describeGoogleConsent, googleConsentShort, isConsentModeDeniedPing, requestEvidenceLevel, strongestRequest } from '../src/rules/helpers.js';
+import { isRevokeUrl } from '../src/cmp/revoke.js';
 import { PartyResolver, registrableDomain } from '../src/util/domains.js';
 import { parseCsv, toCsv } from '../src/util/csv.js';
 import type { RequestRecord } from '../src/types.js';
@@ -12,9 +13,10 @@ import { parseTrace } from '../src/browser/exit.js';
 import { onetrust } from '../src/cmp/adapters/onetrust.js';
 import { trimHar } from '../src/browser/har.js';
 import { writeComparison } from '../src/report/compare.js';
+import { applyReview, readReview, writeReviewTemplate } from '../src/report/review.js';
 import type { Finding } from '../src/types.js';
 import { mkdirSync } from 'node:fs';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -177,6 +179,9 @@ test('classificazione per nome e dominio: niente attribuzioni per solo nome', ()
   // nome sconosciuto su dominio noto: dedotto dal dominio e dichiarato
   const v = c.classifyName('zz_ignoto', 'player.vimeo.com');
   assert.equal(v.source, 'dominio-del-fornitore');
+  assert.equal(v.category, 'sconosciuta', 'il dominio è un indizio, non una classificazione');
+  assert.equal(c.classifyHost('careers.conte.it', '/cdn-cgi/challenge-platform/h/b/jsd')?.categoria, 'tecnico');
+  assert.equal(c.classifyHost('player.vimeo.com', '/cdn-cgi/challenge-platform/scripts/jsd/main.js')?.azienda, 'Cloudflare');
 });
 
 test('OneTrust: gruppi con ID propri letti dalla configurazione', () => {
@@ -198,7 +203,7 @@ test('OneTrust: gruppi con ID propri letti dalla configurazione', () => {
     { id: '4', nome: 'Profilazione', stato: 'inactive', elementi: 150, inPc: true },
   ];
   const r = onetrust.checkConsent({ activeGroups: ',0,4,', gruppi: conInPc }, 'accetta');
-  assert.equal(r.consistent, null);
+  assert.equal(r.consistent, true);
   assert.match(r.detail, /non compaiono nel centro preferenze/);
   assert.equal(onetrust.checkConsent({ activeGroups: ',0,', gruppi: conInPc }, 'accetta').consistent, false);
 });
@@ -238,4 +243,54 @@ test('confronto tra due esecuzioni', () => {
   const html = readFileSync(path, 'utf8');
   assert.match(html, /Non più osservate \(1\)/);
   assert.match(html, /C-002 → C-001/);
+});
+
+test('consenso Google in breve, richiesta più forte, pagine di gestione cookie', () => {
+  assert.match(googleConsentShort({ gcs: 'G101' }) ?? '', /ad_storage negato/);
+  assert.match(googleConsentShort({ gcd: '13l3l3l2l1l1' }) ?? '', /Consent Mode non impostato/);
+  assert.equal(googleConsentShort({ gcd: '13p3t3p2p5l1' }), null);
+  const r = (o: Partial<RequestRecord>) => ({ method: 'GET', resourceType: 'script', url: 'https://static.hotjar.com/c/hotjar-1.js', host: 'static.hotjar.com', ...o }) as RequestRecord;
+  const best = strongestRequest([r({}), r({ host: 'metrics.hotjar.io', method: 'POST', resourceType: 'fetch', url: 'https://metrics.hotjar.io/x' }), r({ host: 'content.hotjar.io', method: 'POST', resourceType: 'fetch', url: 'https://content.hotjar.io/?a=1' })]);
+  assert.equal(best.host, 'content.hotjar.io');
+  assert.ok(isRevokeUrl('https://canegatto.conte.it/preferenze-cookies'));
+  assert.ok(isRevokeUrl('https://www.esempio.it/cookie-settings/'));
+  assert.ok(!isRevokeUrl('https://www.esempio.it/cookie-policy'));
+});
+
+test('revisione manuale: modulo, precompilazione dalla revisione precedente, report rivisto', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'scookie-rev-'));
+  const f = (id: string, key: string): Finding =>
+    ({ id, key, ruleId: key.split('|')[0], ruleTitle: 'Regola ' + id, severity: 'alta', site: 'https://www.a.test', sites: ['https://www.a.test'], scenario: null, pageUrl: null, description: 'descrizione ' + id, details: [], evidence: [], norms: [], headline: 'titolo ' + id }) as Finding;
+  const findings = [f('C-001', 'r1|vimeo|a.test'), f('C-002', 'r2|_ga|a.test')];
+  const run = (name: string) => {
+    const d = join(root, name);
+    mkdirSync(d);
+    writeFileSync(join(d, 'dati.json'), JSON.stringify({ discovery: [], sessions: [], declared: [], comparison: [], findings }));
+    writeFileSync(
+      join(d, 'manifest.json'),
+      JSON.stringify({
+        cliente: 'Cliente', strumento: { versione: '0.1.0' }, inizio: '2026-10-24T10:00:00Z', fine: '2026-10-24T10:30:00Z',
+        ambiente: { browser: 'Chromium', userAgent: 'UA', uscita: { verified: true, ip: '1.2.3.4', country: 'IT', declared: 'IT', source: 'x', matches: true, inEu: true, note: '' } },
+        configurazione: { contenuto: 'cliente: Cliente\nsiti:\n  - url: https://www.a.test/\n' }, norme: { file: 'norme.yaml' }, file: [],
+      }),
+    );
+    return d;
+  };
+  const a = run('2026-10-24_0900_cliente');
+  writeReviewTemplate(a, findings, 'Cliente');
+  // l'utente compila il modulo: C-001 falso positivo, C-002 confermata
+  const csv = readFileSync(join(a, 'revisione.csv'), 'utf8').replace(/(C-001;[^\r]*?;alta;titolo C-001;);/, '$1falso positivo;challenge Cloudflare, non Vimeo').replace(/(C-002;[^\r]*?;alta;titolo C-002;);/, '$1confermato;');
+  writeFileSync(join(a, 'revisione.csv'), csv);
+  assert.equal(readReview(a)!.get('r1|vimeo|a.test')!.esito, 'falso positivo');
+  const r = await applyReview(a, { pdf: false });
+  const html = readFileSync(r.html, 'utf8');
+  assert.match(html, /Report rivisto\.<\/strong>.*1 confermate, 1 escluse come falso positivo/);
+  assert.match(html, /Schede escluse dopo la revisione manuale/);
+  assert.match(html, /challenge Cloudflare, non Vimeo/);
+  assert.ok(existsSync(join(a, 'revisione-applicata.json')));
+  // esecuzione successiva dello stesso cliente: i giudizi si riportano sulle schede con la stessa chiave
+  const b = run('2026-10-25_0900_cliente');
+  const pre = writeReviewTemplate(b, findings, 'Cliente');
+  assert.equal(pre.prefilled, 2);
+  assert.equal(readReview(b)!.get('r1|vimeo|a.test')!.esito, 'falso positivo');
 });

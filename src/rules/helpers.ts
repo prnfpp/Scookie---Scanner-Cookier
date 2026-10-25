@@ -35,6 +35,7 @@ export function requestExcerpt(r: RequestRecord, s: SessionResult): Record<strin
     seq: r.seq,
     momento: r.at,
     msDallaScelta: r.msFromChoice,
+    ...(r.msFromRevoke != null ? { msDallaRevoca: r.msFromRevoke } : {}),
     metodo: r.method,
     url: r.url.length > 500 ? `${r.url.slice(0, 500)}…` : r.url,
     tipo: r.resourceType,
@@ -115,6 +116,32 @@ export function requestEvidenceLevel(reqs: RequestRecord[]): EvidenceLevel {
     return ['image', 'ping', 'xhr', 'fetch', 'beacon', 'eventsource', 'websocket', 'other'].includes(r.resourceType) && hasQuery;
   };
   return reqs.some(isCollect) ? 'raccolta' : 'risorsa';
+}
+
+/**
+ * La richiesta che meglio sostiene il livello di prova: una raccolta di dati (meglio se POST e con parametri di consenso)
+ * prima di uno script; la telemetria dello script stesso (host metrics.*) per ultima.
+ */
+export function strongestRequest(reqs: RequestRecord[]): RequestRecord {
+  const score = (r: RequestRecord) =>
+    (requestEvidenceLevel([r]) === 'raccolta' ? 10 : 0) + (r.method === 'POST' ? 3 : 0) + (r.consentParams ? 1 : 0) - (/^metrics\./.test(r.host) ? 6 : 0);
+  return reqs.reduce((best, r) => (score(r) > score(best) ? r : best), reqs[0]);
+}
+
+/**
+ * Stato del consenso Google in poche parole, per i titoli della sintesi:
+ * "con ad_storage negato (senza cookie pubblicitari)" oppure "senza alcun segnale di consenso (Consent Mode assente)".
+ */
+export function googleConsentShort(params: Record<string, string> | undefined): string | null {
+  if (!params) return null;
+  const gcs = params.gcs;
+  if (gcs && /^G1[01-][01-]$/.test(gcs)) {
+    if (gcs[2] === '0') return 'con ad_storage negato, cioè senza cookie pubblicitari';
+    if (gcs[2] === '1') return 'con consenso pubblicitario dichiarato come concesso';
+  }
+  const letters = (params.gcd ?? '').slice(2).match(/[a-z]/g) ?? [];
+  if (letters.length >= 4 && letters.slice(0, 4).every((l) => l === 'l')) return 'senza alcun segnale di consenso (Consent Mode non impostato)';
+  return null;
 }
 
 const GCS: Record<string, string> = { '1': 'concesso', '0': 'negato', '-': 'non impostato' };

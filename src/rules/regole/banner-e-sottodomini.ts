@@ -42,8 +42,31 @@ export const sottodominiDisomogenei: Rule = {
   title: 'Gestione del consenso disomogenea tra sottodomini',
   defaultSeverity: 'bassa',
   defaultNorms: ['garante2021', 'gdpr13'],
-  evaluate({ sessions, config }) {
+  evaluate({ sessions, config, declared }) {
     const out: RawFinding[] = [];
+    // Lo stesso sito descritto in due elenchi dichiarati diversi (es. il CMP di www elenca cookie di un sottodominio
+    // che ha un proprio banner e una propria informativa).
+    for (const target of declared) {
+      const host = new URL(target.site).hostname;
+      for (const other of declared) {
+        if (other === target || !other.source || other.source === target.source) continue;
+        const about = other.items.filter((i) => i.domain && (i.domain.replace(/^\./, '') === host || i.domain.endsWith(`.${host}`)));
+        if (!about.length) continue;
+        out.push({
+          site: target.site,
+          scenario: null,
+          pageUrl: null,
+          severity: 'bassa',
+          groupKey: `doppia-dichiarazione|${other.site}`,
+          headline: `Per ${host} esistono due elenchi dichiarati diversi`,
+          description:
+            `L'elenco dichiarato di ${other.site} (${other.source}) contiene ${about.length === 1 ? '1 voce' : `${about.length} voci`} relative a ${host}, ` +
+            `che però usa un proprio elenco (${target.source ?? 'nessun elenco leggibile'}). Per lo stesso sito esistono quindi due dichiarazioni diverse.`,
+          details: about.slice(0, 15).map((i) => `${i.name} (${i.domain}) — categoria dichiarata in ${other.site}: ${i.declaredCategory ?? '—'}`),
+          evidence: [],
+        });
+      }
+    }
     for (const [domain, list] of groupBy(sessions, (s) => s.registrableDomain)) {
       const bySite = groupBy(list, (s) => s.site);
       if (bySite.size < 2) continue;

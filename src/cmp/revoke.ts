@@ -32,3 +32,16 @@ export const REVOKE_SELECTORS = [
 
 export const REVOKE_TEXT =
   /((preferenze|impostazioni|gestisci|gestione|modifica|personalizza)\s.{0,25}cookie|cookie\s.{0,20}(preferenze|impostazioni|settings|preferences)|(revoca|gestisci|modifica|aggiorna).{0,30}consenso|preferenze (sulla |della )?privacy|privacy (settings|choices|preferences)|your privacy choices|cookie settings|manage cookies|le tue scelte)/i;
+
+/** Indirizzi di pagine dedicate alla gestione dei cookie (es. /preferenze-cookies), nel footer o nella sitemap. */
+export const REVOKE_HREF =
+  /(preferenze|gestione|impostazioni|gestisci|modifica)[-_]?(dei[-_])?cookies?|cookies?[-_]?(preferenc|settings|impostazioni|preferenze|consent)|(privacy|consent)[-_](preferences|settings|center)/i;
+
+export const isRevokeUrl = (url: string) => {
+  try {
+    const u = new URL(url);
+    return REVOKE_HREF.test(u.pathname + u.hash);
+  } catch {
+    return false;
+  }
+};

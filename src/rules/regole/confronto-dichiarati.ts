@@ -20,13 +20,22 @@ export const nonDichiarati: Rule = {
     for (const [site, rows] of groupBy(comparison.filter((r) => r.status === 'non-dichiarato'), (r) => r.site)) {
       const src = declared.find((d) => d.site === site)?.source ?? 'elenco dichiarato';
       const nonTech = rows.filter((r) => r.observedCategory && !['tecnico', 'funzionalita', 'sconosciuta'].includes(r.observedCategory));
+      // Elenco ricavato in automatico dalla cookie policy: se mancano molti elementi la lettura può essere incompleta.
+      const set = declared.find((d) => d.site === site);
+      const fromPolicy = /^cookie policy/.test(set?.source ?? '');
+      const doubtful = fromPolicy && nonTech.length >= 3;
       out.push({
         site,
         scenario: null,
         pageUrl: null,
         groupKey: 'tutti',
-        headline: nonTech.length ? `${nonTech.length} elementi di tracciamento osservati non compaiono nell'elenco dichiarato` : undefined,
-        description: `${rows.length === 1 ? '1 elemento osservato non compare' : `${rows.length} elementi osservati non compaiono`} nell'elenco dichiarato (${src}), di cui ${nonTech.length} di categoria non tecnica.`,
+        severity: doubtful ? 'bassa' : undefined,
+        headline: nonTech.length && !doubtful ? `${nonTech.length} elementi di tracciamento osservati non compaiono nell'elenco dichiarato` : undefined,
+        description:
+          (doubtful
+            ? `Attenzione: l'elenco dichiarato è stato ricavato in automatico dalle tabelle della cookie policy (${set!.items.length} voci) e può essere incompleto; verificare a vista la cookie policy prima di considerare questi elementi non dichiarati. `
+            : '') +
+          `${rows.length === 1 ? '1 elemento osservato non compare' : `${rows.length} elementi osservati non compaiono`} nell'elenco dichiarato (${src}), di cui ${nonTech.length} di categoria non tecnica.`,
         // prima gli elementi di tracciamento, poi i non classificati, in fondo i tecnici
         details: [...rows].sort((x, y) => rank(x) - rank(y)).map((r) => `${label(r)} — categoria osservata: ${CATEGORY_LABEL[r.observedCategory ?? 'sconosciuta']}; scenari: ${r.scenarios.join(', ')}`),
         evidence: [],
@@ -104,6 +113,49 @@ export const categoriaIncoerente: Rule = {
           evidence: [],
         });
       }
+    }
+    return out;
+  },
+};
+
+/**
+ * Elementi dichiarati come tecnici "sempre attivi" che però compaiono solo dopo l'accettazione
+ * (mai prima della scelta né dopo il rifiuto): il sito li tratta di fatto come dipendenti dal consenso.
+ */
+export const tecnicoDopoConsenso: Rule = {
+  id: 'tecnico-solo-dopo-consenso',
+  title: 'Elementi dichiarati tecnici che compaiono solo dopo il consenso',
+  defaultSeverity: 'media',
+  defaultNorms: ['gdpr13', 'garante2021'],
+  evaluate({ comparison, sessions }) {
+    const out: RawFinding[] = [];
+    const rows = comparison.filter(
+      (r) =>
+        r.status === 'dichiarato' &&
+        r.declaredAlwaysActive &&
+        r.scenarios.includes('accetta') &&
+        !r.scenarios.includes('rifiuta') &&
+        !r.scenarios.includes('nessuna-azione'),
+    );
+    const platformOf = (r: ComparisonRow) =>
+      sessions.flatMap((s) => s.cookies).find((c) => c.name === r.name && c.classification.platform)?.classification.platform ?? 'fornitore non identificato';
+    for (const [k, list] of groupBy(rows, (r) => `${r.site}|${platformOf(r)}`)) {
+      const [site, platform] = k.split('|');
+      const afterRevoke = list.some((r) => r.scenarios.includes('revoca'));
+      out.push({
+        site,
+        scenario: 'accetta',
+        pageUrl: null,
+        groupKey: platform,
+        headline: `${platform}: elementi dichiarati tecnici e "sempre attivi" compaiono solo dopo l'accettazione${afterRevoke ? ' e restano dopo la revoca' : ''}`,
+        description:
+          `${list.length === 1 ? '1 elemento dichiarato' : `${list.length} elementi dichiarati`} nella categoria tecnica "sempre attiva" (${platform}) ` +
+          `${list.length === 1 ? 'compare' : 'compaiono'} solo nelle sessioni in cui il consenso è stato accettato: non prima della scelta né dopo il rifiuto. ` +
+          'Il sito li attiva di fatto in dipendenza del consenso, mentre li dichiara non soggetti a consenso.' +
+          (afterRevoke ? ' Sono presenti anche nella sessione con revoca del consenso.' : ''),
+        details: list.map((r) => `${label(r)} — categoria dichiarata: ${r.declaredCategories.join(', ')}; scenari in cui compare: ${r.scenarios.join(', ')}`),
+        evidence: [],
+      });
     }
     return out;
   },

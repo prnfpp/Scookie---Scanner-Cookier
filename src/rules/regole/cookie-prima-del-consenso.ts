@@ -36,8 +36,9 @@ export const cookiePrimaDelConsenso: Rule = {
         })),
     ]);
     // Come il sito lo dichiara (es. "Cookie tecnici e analitici", sempre attivo): contesto utile per la valutazione.
+    const declRow = (site: string, name: string) => comparison.find((c) => c.site === site && c.name === name && c.status === 'dichiarato');
     const declaredAs = (site: string, name: string) => {
-      const r = comparison.find((c) => c.site === site && c.name === name && c.status === 'dichiarato');
+      const r = declRow(site, name);
       return r?.declaredCategories.length ? `dichiarato dal sito come "${r.declaredCategories.join('", "')}"${r.declaredAlwaysActive ? ' (sempre attivo)' : ''}` : null;
     };
     const out: RawFinding[] = [];
@@ -47,8 +48,16 @@ export const cookiePrimaDelConsenso: Rule = {
       const pages = [...new Set(group.map((g) => g.url))];
       const scen = [...new Set(group.map((g) => g.s.scenario))];
       const { when, onlyAfterScroll } = stageWhen(group.map((g) => g.stage));
-      // Categoria dedotta solo dal dominio del fornitore (nome sconosciuto): prova più debole, gravità al massimo media.
-      const deduced = group.every((g) => g.cls.source === 'dominio-del-fornitore');
+      // Per la sintesi: cookie nascosti o classificati dal sito come tecnici sono due valutazioni diverse
+      const rows = [...new Set(group.map((g) => g.name))].map((n) => declRow(first.s.site, n));
+      const hasDeclared = comparison.some((c) => c.site === first.s.site);
+      const declNote = !hasDeclared
+        ? ''
+        : rows.every((r) => r?.declaredAlwaysActive)
+          ? ` (dichiarat${names.length === 1 ? 'o' : 'i'} dal sito come "${[...new Set(rows.flatMap((r) => r!.declaredCategories))].join('", "')}", sempre attiv${names.length === 1 ? 'o' : 'i'})`
+          : rows.every((r) => !r)
+            ? ' (non dichiarati dal sito)'
+            : '';
       out.push({
         site: first.s.site,
         scenario: first.s.scenario,
@@ -66,9 +75,8 @@ export const cookiePrimaDelConsenso: Rule = {
           `Osservato negli scenari: ${scen.join(', ')} (fase precedente alla scelta)`,
         ],
         evidenceLevel: 'identificativo',
-        severity: deduced ? 'media' : undefined,
         groupKey: `${first.cls.platform ?? first.where}|${first.cls.category}`,
-        headline: `${first.cls.platform ?? `Un fornitore (${first.where})`} scrive ${deduced ? (names.length === 1 ? 'un elemento non riconosciuto' : 'elementi non riconosciuti') : names.length === 1 ? 'un identificativo' : 'identificativi'} nel browser ${onlyAfterScroll ? 'dopo lo scroll, ' : ''}prima di qualsiasi scelta sul banner`,
+        headline: `${first.cls.platform ?? `Un fornitore (${first.where})`} scrive ${names.length === 1 ? 'un identificativo' : 'identificativi'} nel browser ${onlyAfterScroll ? 'dopo lo scroll, ' : ''}prima di qualsiasi scelta sul banner${declNote}`,
         evidence: sessionEvidence(first.s, onlyAfterScroll ? ['1-banner', '3-fine'] : ['1-banner']),
       });
     }

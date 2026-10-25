@@ -1,6 +1,8 @@
 import type { Locator, Page } from 'playwright';
 import { normalizeDeclaredCategory } from '../classify/classifier.js';
-import { clickFirst, describeElement, findVisible, waitFor, type ClickedElement } from './dom.js';
+import { readToggles } from './analysis.js';
+import { clickFirst, describeElement, findVisible, frames, waitFor, type ClickedElement } from './dom.js';
+import { TEXTS, clickCandidate, scan } from './heuristic.js';
 import type { ChoiceResult, ConsentCheck } from './types.js';
 
 /**
@@ -200,4 +202,53 @@ export const PERSONALIZERS: Record<string, Personalizer> = {
   onetrust,
   cookiebot,
   'vanilla-cookieconsent': vanilla,
+};
+
+/* ---------------- Generico (banner sconosciuti, HubSpot) ---------------- */
+
+/**
+ * Scelta per categoria tramite l'interfaccia, per i banner senza un personalizzatore dedicato: si aprono le preferenze,
+ * si attiva solo la categoria statistica, si disattivano le altre modificabili e si salva. Dichiarato come euristica.
+ */
+export const genericPersonalizer: Personalizer = {
+  async choose(page, mode) {
+    if (mode === 'api') return null;
+    const steps: string[] = [];
+    const prefs = (await scan(page)).candidates.find((c) => TEXTS.preferences.test(c.text));
+    if (!prefs) return { ok: false, layer: null, via: null, detail: 'pulsante delle preferenze non trovato nel banner' };
+    steps.push(await clickCandidate(prefs));
+    let found: { frame: import('playwright').Frame; t: { label: string; checked: boolean; disabled: boolean; index?: number } }[] = [];
+    await waitFor(
+      async () => {
+        found = [];
+        for (const f of frames(page)) for (const t of await readToggles(f, f === page.mainFrame()).catch(() => [])) found.push({ frame: f, t });
+        return found.some((x) => x.t.index !== undefined && !x.t.disabled);
+      },
+      5000,
+      400,
+    );
+    const editable = found.filter((x) => x.t.index !== undefined && !x.t.disabled);
+    if (!editable.some((x) => STATS_RE.test(x.t.label))) return { ok: false, layer: null, via: null, detail: `nessuna categoria statistica tra le preferenze (${editable.map((x) => x.t.label).join(', ') || 'nessun interruttore'})` };
+    for (const { frame, t } of editable) {
+      const want = STATS_RE.test(t.label);
+      if (t.checked === want) continue;
+      const el = frame.locator(`[data-scookie-t="${t.index}"]`).first();
+      await el.click({ force: true, timeout: 3000 }).catch(() => el.evaluate((n) => (n as HTMLElement).click()));
+      steps.push(`${want ? 'attivazione' : 'disattivazione'} di "${t.label}"`);
+    }
+    const save = (await scan(page)).candidates.find((c) => TEXTS.preferencesSave.test(c.text));
+    if (!save) return { ok: false, layer: null, via: null, detail: 'pulsante per salvare le preferenze non trovato' };
+    steps.push(await clickCandidate(save));
+    return result('click', 'solo la categoria statistica selezionata (euristica sull\'interfaccia)', steps);
+  },
+  async check(page) {
+    // HubSpot registra le categorie nel cookie __hs_cookie_cat_pref (1 statistica, 2 pubblicità, 3 funzionalità)
+    const pref = (await page.evaluate("(document.cookie.match(/(?:^|; )__hs_cookie_cat_pref=([^;]*)/) || [])[1] || null").catch(() => null)) as string | null;
+    if (pref) {
+      const v = Object.fromEntries(decodeURIComponent(pref).split(/[_,]/).map((x) => x.split(':')));
+      if (v['1'] !== 'true') return { consistent: false, detail: `HubSpot: categoria statistica non accettata (${pref})` };
+      return v['2'] === 'true' ? { consistent: false, detail: `HubSpot: accettata anche la pubblicità (${pref})` } : { consistent: true, detail: `HubSpot: ${pref}` };
+    }
+    return { consistent: null, detail: 'stato del consenso non leggibile: la scelta si verifica sul traffico osservato' };
+  },
 };
