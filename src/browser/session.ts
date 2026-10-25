@@ -10,6 +10,7 @@ import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { detectBotChallenge, type BotBlock } from './antibot.js';
 import { Collector } from './collector.js';
 import { trimHar } from './har.js';
+import { maskPii } from '../util/pii.js';
 import { manualJourney, type ManualPlan } from './manual.js';
 
 export interface SessionPlan {
@@ -25,6 +26,8 @@ export interface SessionPlan {
   revokePage?: string;
   /** Navigazione manuale dell'operatore al posto delle pagine successive. */
   manual?: ManualPlan;
+  /** Numero della ripetizione (1 se lo scenario si esegue una sola volta). */
+  repeat?: number;
 }
 
 export interface SessionEnv {
@@ -114,7 +117,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     };
     if (strip(page.url()) !== strip(url)) {
       collector.currentUrl = page.url();
-      errors.push(`la pagina ${url} ha portato a ${page.url()} (reindirizzamento)`);
+      errors.push(`la pagina ${url} ha portato a ${maskPii(page.url())} (reindirizzamento)`);
     }
     // Una pagina di verifica anti-bot non è il sito: la sessione non è valida e non si prosegue.
     blocked ??= await detectBotChallenge(page, response);
@@ -223,10 +226,15 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
           return;
         }
         await settle();
-        for (const url of rest) {
-          if (await visit(url)) await settle();
-          else if (blocked) break;
-        }
+        // Stesso percorso in tutti gli scenari con scelta: si ricarica la pagina di partenza e si visitano le stesse
+        // pagine nello stesso ordine. Così "dopo il rifiuto", "dopo l'accettazione" e "dopo la revoca" confrontano le stesse pagine.
+        const journey = async () => {
+          for (const url of [first, ...rest]) {
+            if (await visit(url)) await settle();
+            else if (blocked) break;
+          }
+        };
+        await journey();
         await shot('3-fine');
         // Scenario "revoca": dopo aver navigato con il consenso, lo si revoca e si torna sulla prima pagina.
         if (plan.scenario === 'revoca' && interaction.outcome === 'eseguito' && !blocked) {
@@ -239,7 +247,9 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
           revocation = { ...rev, remaining };
           if (rev.outcome === 'eseguita') {
             await settle();
-            if (await visit(first)) await settle();
+            // Dopo la revoca, lo stesso percorso: ciò che parte qui è nuova raccolta, non l'invio residuo della pagina corrente
+            collector.markRevokeNav();
+            await journey();
             await shot('5-fine-revoca');
           }
         }
@@ -289,5 +299,6 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     ...(revocation ? { revocation } : {}),
     ...(manual ? { manual } : {}),
     ...(unreachable ? { unreachable } : {}),
+    ...(plan.repeat ? { repeat: plan.repeat } : {}),
   };
 }

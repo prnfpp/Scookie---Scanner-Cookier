@@ -89,12 +89,14 @@ test('nuovo cliente dal modulo, con errore leggibile se manca l\'indirizzo', asy
 });
 
 test('modifica dal modulo senza perdere le opzioni avanzate', async () => {
-  await page.click('text=Cliente di prova');
+  await page.click('#tab-clienti');
+  await page.click('#clients >> text=Cliente di prova');
   await page.waitForFunction(() => (document.querySelector('#f-cliente') as HTMLInputElement).value === 'Cliente di prova');
   await page.selectOption('#sites .site .s-mode', 'mix');
   await page.fill('#sites .site .s-extra', '/servizi/uno.html');
   await page.fill('#sites .site .s-escludi', '/area-riservata');
-  await page.click('text=Impostazioni generali');
+  await page.click('.step[data-step="2"]');
+  await page.click('#adv-general summary');
   await page.uncheck('#f-pdf');
   await page.click('#save');
   await page.waitForSelector('#save-msg .msg.ok');
@@ -107,18 +109,21 @@ test('modifica dal modulo senza perdere le opzioni avanzate', async () => {
   assert.equal(saved.report.pdf, false);
   // Riaprendo, l'esclusione si rilegge come percorso semplice
   await page.reload();
-  await page.click('text=Cliente di prova');
+  await page.click('#clients >> text=Cliente di prova');
+  await page.click('.step[data-step="1"]');
   await page.waitForFunction(() => (document.querySelector('#sites .site .s-escludi') as HTMLTextAreaElement)?.value === '/area-riservata');
 });
 
 test('anteprima pagine', async () => {
+  await page.click('.step[data-step="3"]');
   await page.click('#preview');
-  await page.waitForSelector('#job-result table', { timeout: 60000 });
-  const text = await page.textContent('#job-result');
+  await page.waitForSelector('#preview-result table', { timeout: 60000 });
+  const text = await page.textContent('#preview-result');
   assert.match(text ?? '', /servizi\/uno\.html/);
 });
 
 test('audit dall\'interfaccia e apertura del report', async () => {
+  await page.click('.step[data-step="4"]');
   await page.click('#run');
   await page.waitForSelector('text=Audit completato', { timeout: 240000 });
   const [report] = await Promise.all([page.waitForEvent('popup'), page.click('text=Apri il report')]);
@@ -129,7 +134,7 @@ test('audit dall\'interfaccia e apertura del report', async () => {
   assert.ok(imgOk);
   await report.close();
   await page.click('#tab-esecuzioni');
-  await page.waitForSelector('#runs table');
+  await page.waitForSelector('#runs .run');
   assert.match(await page.textContent('#runs') ?? '', /Cliente di prova/);
   assert.ok(existsSync(runsDir));
 });

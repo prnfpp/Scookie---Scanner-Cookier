@@ -25,6 +25,7 @@ scenari:
   modalita: percorso       # oppure per-pagina (tutti gli scenari su ogni pagina)
   # attivi: [nessuna-azione, rifiuta, accetta, personalizza, revoca]   # predefinito: tutti
   pagineDopoScelta: 3
+  # ripetizioni: 2        # 1-3: ogni scenario si ripete; le schede dicono "osservato in k esecuzioni su N"
 
 campionamento:
   perTipo: 2

@@ -7,6 +7,8 @@
   // Prima di qualsiasi scelta: cookie statistico, pixel pubblicitario, ping Consent Mode negato
   document.cookie = '_ga=GA1.1.' + Date.now() + '; max-age=63072000; path=/';
   pixel('http://pixel.adtest.example:' + P + '/tr?id=123&ev=PageView');
+  // L'indirizzo della pagina con i dati di un modulo (targa fittizia) finisce al pixel pubblicitario
+  pixel('http://pixel.adtest.example:' + P + '/tr?ev=Lead&dl=' + encodeURIComponent(location.origin + '/controllo?targa=ZZ999ZZ&dataNascita=01/01/1990'));
   fetch('http://analytics.stattest.example:' + P + '/g/collect?v=2&tid=G-TEST&gcs=G100', { mode: 'no-cors' });
   // Elementi che nessuna fonte sa classificare
   document.cookie = 'xyz_misterioso=1; max-age=31536000; path=/';

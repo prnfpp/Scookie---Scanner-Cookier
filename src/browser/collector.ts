@@ -3,6 +3,7 @@ import type { Classifier } from '../classify/classifier.js';
 import type { CookieRecord, Phase, RequestRecord, Stage, StorageRecord } from '../types.js';
 import { hostOf, type PartyResolver } from '../util/domains.js';
 import { preview } from '../util/misc.js';
+import { detectPii, maskPii } from '../util/pii.js';
 
 /** Parametri di consenso nelle richieste Google e IAB, utili come evidenza. */
 const CONSENT_PARAMS = ['gcs', 'gcd', 'npa', 'dma', 'dma_cps', 'gdpr', 'gdpr_consent', 'us_privacy', 'pscd'];
@@ -63,6 +64,12 @@ export class Collector {
     this.revokeEpoch = Date.now();
   }
 
+  /** Primo caricamento di pagina dopo la revoca: le richieste da qui in poi sono raccolta sulle pagine successive. */
+  revokeNavEpoch: number | null = null;
+  markRevokeNav() {
+    this.revokeNavEpoch = Date.now();
+  }
+
   /** Da chiamare prima di scorrere la pagina: se non c'è stata una scelta, si passa allo stadio "scroll". */
   /** Ferma la raccolta: ciò che avviene dopo (es. apertura delle preferenze per l'analisi del banner) non è registrato. */
   paused = false;
@@ -112,14 +119,15 @@ export class Collector {
       at: new Date(now).toISOString(),
       epoch: now,
       msFromChoice: null,
-      url,
+      // dati personali nell'indirizzo: nei dati e nel report solo mascherati (il valore completo resta nel HAR)
+      url: maskPii(url),
       host,
       method: r.method(),
       resourceType: r.resourceType(),
       party,
       phase: this.phase,
       stage: this.stage,
-      pageUrl: this.currentUrl,
+      pageUrl: maskPii(this.currentUrl),
       status: null,
     };
     const t = this.classifier.classifyHost(host, parsed.pathname);
@@ -136,6 +144,8 @@ export class Collector {
       if (v !== null && v !== '') params[p] = preview(v, 60);
     }
     if (Object.keys(params).length) rec.consentParams = params;
+    const pii = detectPii(url, body);
+    if (pii.length) rec.pii = pii;
     if (party === 'prima') {
       const hit = SERVER_SIDE_PATHS.find((s) => s.re.test(parsed.pathname + parsed.search));
       if (hit) rec.serverSide = hit.label;
@@ -163,7 +173,7 @@ export class Collector {
         party: this.party.party(c.domain),
         phase: this.phase,
         stage: this.stage,
-        firstSeenUrl: this.currentUrl,
+        firstSeenUrl: maskPii(this.currentUrl),
         firstSeenAt: now,
         valuePreview: preview(c.value),
         classification: this.classifier.classifyName(c.name, c.domain),
@@ -202,7 +212,7 @@ export class Collector {
             party: this.party.party(host),
             phase: this.phase,
             stage: this.stage,
-            firstSeenUrl: this.currentUrl,
+            firstSeenUrl: maskPii(this.currentUrl),
             firstSeenAt: now,
             classification: this.classifier.classifyName(k, host),
           });
@@ -218,6 +228,7 @@ export class Collector {
       ...r,
       msFromChoice: choice === null ? null : epoch - choice,
       ...(revoke !== null && epoch >= revoke ? { msFromRevoke: epoch - revoke } : {}),
+      ...(this.revokeNavEpoch !== null && epoch >= this.revokeNavEpoch ? { afterRevokeNav: true } : {}),
     }));
     return { cookies: [...this.cookies.values()], storage: [...this.storage.values()], requests };
   }
