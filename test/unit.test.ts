@@ -182,6 +182,7 @@ test('classificazione per nome e dominio: niente attribuzioni per solo nome', ()
   assert.equal(v.category, 'sconosciuta', 'il dominio è un indizio, non una classificazione');
   assert.equal(c.classifyHost('careers.conte.it', '/cdn-cgi/challenge-platform/h/b/jsd')?.categoria, 'tecnico');
   assert.equal(c.classifyHost('player.vimeo.com', '/cdn-cgi/challenge-platform/scripts/jsd/main.js')?.azienda, 'Cloudflare');
+  assert.equal(c.classifyHost('www.esempio.it', '/cdn-cgi/rum')?.categoria, 'statistica');
 });
 
 test('OneTrust: gruppi con ID propri letti dalla configurazione', () => {

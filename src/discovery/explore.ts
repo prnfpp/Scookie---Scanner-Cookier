@@ -149,7 +149,10 @@ export async function exploreByClicks(browser: Browser, seeds: string[], opts: E
         }
       }
       // Anche i link trovati nelle pagine di questo livello si visitano al livello successivo.
-      level = [...new Set([...next, ...[...found].filter((u) => !visited.has(u))])].sort();
+      // prima le pagine del sito in esame, poi quelle dei sottodomini da attraversare; a parità, in ordine alfabetico
+      level = [...new Set([...next, ...[...found].filter((u) => !visited.has(u))])].sort(
+        (a, b) => Number(!kept.get(a)) - Number(!kept.get(b)) || a.localeCompare(b),
+      );
     }
   } finally {
     await closeSafely(ctx, 20000, 'chiusura contesto di esplorazione');

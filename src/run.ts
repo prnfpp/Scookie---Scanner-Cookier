@@ -179,7 +179,8 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   if (manualSites.length && !opts.manualDriver) {
     log(`Navigazione manuale prevista per: ${manualSites.map((s) => s.url).join(', ')}. Il browser si aprirà in una finestra: restare al computer.`);
   }
-  const browser = await chromium.launch(launchOptions(config, manualSites.length && !opts.manualDriver ? false : config.browser.headless));
+  const headless = manualSites.length && !opts.manualDriver ? false : config.browser.headless;
+  const browser = await chromium.launch(launchOptions(config, headless));
   const sessions: SessionResult[] = [];
   const discovery: DiscoveryResult[] = [];
   const declared: DeclaredSet[] = [];
@@ -324,7 +325,8 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const rev = writeReviewTemplate(runDir, findings, config.cliente);
   if (rev.prefilled) log(`Revisione: ${rev.prefilled} schede precompilate dalla revisione di ${rev.from}`);
   const html = renderHtml({
-    config,
+    // il report descrive il browser come è stato davvero usato (con la navigazione manuale ha una finestra)
+    config: { ...config, browser: { ...config.browser, headless } },
     toolVersion: TOOL_VERSION,
     browserVersion,
     userAgent,

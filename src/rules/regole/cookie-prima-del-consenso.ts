@@ -56,7 +56,7 @@ export const cookiePrimaDelConsenso: Rule = {
         : rows.every((r) => r?.declaredAlwaysActive)
           ? ` (dichiarat${names.length === 1 ? 'o' : 'i'} dal sito come "${[...new Set(rows.flatMap((r) => r!.declaredCategories))].join('", "')}", sempre attiv${names.length === 1 ? 'o' : 'i'})`
           : rows.every((r) => !r)
-            ? ' (non dichiarati dal sito)'
+            ? ` (non dichiarat${names.length === 1 ? 'o' : 'i'} dal sito)`
             : '';
       out.push({
         site: first.s.site,

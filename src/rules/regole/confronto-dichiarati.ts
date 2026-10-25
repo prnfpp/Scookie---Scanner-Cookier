@@ -129,8 +129,11 @@ export const tecnicoDopoConsenso: Rule = {
   defaultNorms: ['gdpr13', 'garante2021'],
   evaluate({ comparison, sessions }) {
     const out: RawFinding[] = [];
+    // Il confronto ha senso solo dove il rifiuto è stato eseguito davvero: altrimenti "solo dopo l'accettazione" non dice nulla
+    const rejected = new Set(sessions.filter((s) => s.scenario === 'rifiuta' && s.interaction.outcome === 'eseguito').map((s) => s.site));
     const rows = comparison.filter(
       (r) =>
+        rejected.has(r.site) &&
         r.status === 'dichiarato' &&
         r.declaredAlwaysActive &&
         r.scenarios.includes('accetta') &&
