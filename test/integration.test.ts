@@ -153,7 +153,9 @@ test('sito-f: tracciamento attivato dallo scroll distinto dal caricamento', () =
 
 test('sito-a: dati personali verso terzi, mascherati nel report e nei dati', () => {
   const f = result.findings.find((x) => x.ruleId === 'dati-personali-a-terzi' && x.site.includes('sito-a.test'))!;
-  assert.equal(f.severity, 'alta');
+  // dati di prova non dichiarati nella configurazione: trovati per nome del parametro, certezza media
+  assert.equal(f.severity, 'media');
+  assert.ok(f.details.some((d) => /^Certezza: media/.test(d)));
   assert.ok(f.details.some((d) => /targa: ZZ•••ZZ/.test(d)), f.details.join(' | '));
   for (const file of ['report.html', 'dati.json', 'richieste.csv']) {
     const text = readFileSync(join(result.runDir, file), 'utf8');
@@ -226,7 +228,8 @@ test('sito-e: elenco dichiarato ricavato dalle tabelle della cookie policy', () 
   const dati = JSON.parse(readFileSync(join(result.runDir, 'dati.json'), 'utf8')) as { declared: { site: string; source: string; items: { name: string; category: string }[] }[] };
   const d = dati.declared.find((x) => x.site.includes('sito-e.test'))!;
   assert.match(d.source, /cookie policy/);
-  assert.deepEqual(d.items.map((i) => [i.name, i.category]), [['pref', 'tecnico'], ['_ga', 'statistica']]);
+  // la tabella con celle unite (rowspan) non fa slittare le colonne: niente durate lette come nomi
+  assert.deepEqual(d.items.map((i) => [i.name, i.category]), [['pref', 'tecnico'], ['_ga', 'statistica'], ['_fbp', 'marketing']]);
 });
 
 test('scenario personalizza: rispettato su vanilla-cookieconsent, violato su OneTrust di prova', () => {

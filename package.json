@@ -16,6 +16,7 @@
     "scookie": "node dist/src/cli.js",
     "test": "npm run build && node --test --test-concurrency=1 \"dist/test/*.test.js\"",
     "licenses": "node scripts/check-licenses.mjs",
+    "icona": "bash scripts/installa-icona-mac.sh",
     "interfaccia": "node dist/src/cli.js interfaccia"
   },
   "files": [

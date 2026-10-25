@@ -177,6 +177,14 @@ ${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`)
       parts.push(`<p><strong>Navigazione manuale</strong> — sessione ${esc(s.id)}, scenario "${esc(s.scenario)}", ${end} dopo ${m.seconds} s. Istruzioni date all'operatore: "${esc(m.instructions)}".${m.pages.length <= 1 || m.seconds < 60 ? ' <strong>Probabilmente incompleta</strong> (troppo breve o una sola pagina): i fatti che ne derivano vanno confermati rifacendola.' : ''}</p>
 <ol class="muted">${m.pages.map((u) => `<li>${esc(u)}</li>`).join('')}</ol>`);
     }
+    // Percorso registrato in una navigazione manuale precedente e rigiocato in automatico
+    const replays = sessions.filter((x) => x.site === d.site && x.replay);
+    if (replays.length) {
+      const rp = replays[0].replay!;
+      const ok = replays.filter((x) => !x.replay!.stoppedAt).length;
+      parts.push(`<p><strong>Percorso registrato</strong> — registrato il ${esc(new Date(rp.recordedAt).toLocaleDateString('it-IT'))} (sessione ${esc(rp.fromSession)}, ${rp.stepsTotal} azioni dell'operatore) e rigiocato in automatico dopo la scelta in ${replays.length} sessioni: completo in ${ok} su ${replays.length}.${ok < replays.length ? ` Interruzioni: ${esc([...new Set(replays.filter((x) => x.replay!.stoppedAt).map((x) => x.replay!.stoppedAt!))].join('; '))}.` : ''}</p>
+<ol class="muted">${rp.pages.map((u) => `<li>${esc(u)}</li>`).join('')}</ol>`);
+    }
   }
 
   parts.push(`<h3>Interazione con il banner</h3><p>Per ogni sito e scenario: CMP riconosciuti, metodo che ha eseguito la scelta (selettori manuali, adattatore del CMP, euristica sui testi, API del CMP) e verifica dello stato del consenso registrato dopo la scelta.</p>

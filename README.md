@@ -32,7 +32,15 @@ npx playwright install chromium
 npm run build
 ```
 
-Per aggiornare il tool in futuro, dalla stessa cartella: `git pull`, poi `npm install` e `npm run build`.
+**Icona sulla Scrivania (Mac, consigliata).** Sempre dalla cartella del tool:
+
+```sh
+npm run icona
+```
+
+Sulla Scrivania compare l'icona **Scookie**. Il doppio clic controlla gli aggiornamenti su GitHub e li installa (scarica, aggiorna i componenti se servono, ricompila), poi apre l'interfaccia nel browser: non serve più il Terminale. La prima volta macOS può chiedere conferma: tasto destro sull'icona > Apri. Se Scookie è già aperto, il doppio clic mostra semplicemente l'interfaccia. Il registro dell'avvio è in `~/Library/Logs/Scookie.log`. Le configurazioni dei clienti (`clienti/`) e i risultati (`runs/`) non sono toccati dagli aggiornamenti.
+
+Senza icona, per aggiornare il tool dalla stessa cartella: `git pull`, poi `npm install` e `npm run build`.
 
 Ogni volta che si riapre il Terminale bisogna prima entrare nella cartella del tool: `cd Scookie---Scanner-Cookier`.
 
@@ -56,6 +64,10 @@ Nell'interfaccia ci sono tre schede in alto: **Clienti**, **Audit** ed **Esecuzi
 - **Salva**: le configurazioni sono gli stessi file YAML della cartella `clienti/` descritti sotto, quindi si possono usare anche dal Terminale.
 - **Audit**: barra di avanzamento con **tempo rimanente stimato** (calcolato sulla durata media delle sessioni già fatte), fase in corso, avanzamento per sito. Se serve una navigazione manuale compare "Azione richiesta"; se la connessione cade, l'audit si mette in pausa e riprende da solo. Alla fine: **Apri il report**, PDF e **Revisiona le schede**.
 - **Esecuzioni**: tutti i report passati, con il conteggio delle schede per gravità e i quattro passi Leggi → Revisiona → Rivisto → Confronta. La revisione delle schede si fa direttamente nell'interfaccia (esito e nota per scheda), senza aprire Excel. Se un sito non ha dati (pagine non caricate), il pulsante **Ripeti solo questi siti** rilancia l'audit solo per quelli. Il paese di uscita è evidenziato in rosso se non è l'Italia.
+
+In fondo alla scheda Clienti, il riquadro **Programma** dice se ci sono aggiornamenti su GitHub: **Aggiorna e riavvia** li installa e riapre l'interfaccia (se Scookie è stato aperto dall'icona), **Chiudi Scookie** lo chiude.
+
+**Il computer resta sveglio durante l'audit.** Un audit completo può durare più di un'ora: per tutta la durata il tool impedisce lo stop per inattività (su Mac con `caffeinate`), anche se non tocchi il computer. Non chiudere il coperchio del portatile: con il coperchio chiuso il Mac va comunque in stop, salvo con alimentatore e monitor esterno collegati.
 
 Le sezioni 4 e 5 descrivono le stesse operazioni dal Terminale, utili anche per capire le opzioni del file di configurazione.
 
@@ -147,6 +159,19 @@ Come funziona: il browser si apre in una finestra, il tool esegue la scelta sul 
       scenari: [rifiuta, accetta]      # predefinito; anche nessuna-azione
       maxMinuti: 10                    # poi la sessione si chiude da sola
 ```
+
+**Percorso registrato.** Durante la navigazione manuale il tool registra i tuoi clic e i campi che compili (non le azioni sul banner dei cookie). Alla fine il percorso si salva accanto alla configurazione (`clienti/percorsi/`): **dalle esecuzioni successive si rigioca da solo**, dopo la scelta sul banner, in ogni ripetizione e senza operatore. Così anche il flusso del preventivo risulta "osservato in 3 su 3". Il report dice in quante sessioni il percorso è stato completato; se il sito cambia e un passo non si trova più, la sessione lo segnala. Per rifarlo: nell'interfaccia, scheda del sito, **Registra di nuovo** (oppure si elimina il file in `clienti/percorsi/`).
+
+**Dati di prova.** Indica nella configurazione i dati che inserisci nei moduli (nell'interfaccia: passo Opzioni, "Dati di prova delle navigazioni manuali"):
+
+```yaml
+datiDiProva:
+  targa: AA123BB
+  dataNascita: 01/01/1990
+  email: test.audit@esempio.it
+```
+
+Il tool li riconosce in ogni forma (es. la data come `01/01/1990` o `1990-01-01`, anche dentro un indirizzo codificato) come **prova certa** che quei dati arrivano a un terzo, e li riporta in chiaro (sono fittizi o concordati). I valori che soltanto somigliano a dati personali restano mascherati e hanno certezza più bassa.
 
 Non toccare il banner dei cookie durante la navigazione manuale. **Usa una targa e dati concordati col cliente o palesemente fittizi**: i moduli inviati arrivano davvero al sito, e se il sito li mette negli indirizzi delle pagine possono finire a terze parti (la regola `dati-personali-a-terzi` lo rileva). Nel report e nei CSV i valori compaiono solo mascherati (es. `AB•••CD`); in chiaro restano solo nei file HAR. Nell'interfaccia il campo è nella scheda del sito, sotto le pagine da includere.
 
@@ -310,13 +335,13 @@ Una cartella per esecuzione (`runs/<data>_<cliente>/`):
 
 | File | Contenuto |
 | --- | --- |
-| `report.html`, `report.pdf` | il documento da consegnare: perimetro e metodo, sintesi, schede delle criticità con prove e norme, inventario, allegati |
+| `report.html`, `report.pdf` | il documento da consegnare: perimetro e metodo, sintesi per il legale (i fatti raggruppati per causa e ordinati per gravità, forza della prova e ripetibilità), schede delle criticità con prove e norme, inventario, allegati |
 | `cookie.csv`, `storage.csv`, `richieste.csv`, `sessioni.csv` | dati grezzi per sessione (separatore `;`, si aprono in Excel) |
 | `confronto-dichiarati.csv` | confronto tra elementi osservati ed elenco dichiarato |
 | `criticita.csv` | elenco delle criticità |
 | `revisione.csv` | modulo per la revisione manuale delle schede (esito e nota); con `revisione` produce `report-rivisto.html`/`.pdf` e `revisione-applicata.json` (impronte) |
 | `dati.json` | tutti i dati in formato strutturato |
-| `evidenze/` | screenshot e HAR per sessione (i HAR conservano sempre i corpi delle richieste; dei corpi delle risposte, per default solo i testuali fino a 512 KB: vedi `report.harContenuti`); in `evidenze/criticita/` le prove con il numero della criticità nel nome (`C-003_…png`) |
+| `evidenze/` | screenshot e HAR per sessione, compressi (`.har.gz`: su Mac un doppio clic restituisce il `.har`). I HAR conservano sempre i corpi delle richieste; i corpi delle risposte (per default solo i testuali fino a 512 KB: vedi `report.harContenuti`) restano solo per le sessioni citate nelle schede. Con `report.harCompressi: false` i HAR restano interi e non compressi. In `evidenze/criticita/` le prove con il numero della criticità nel nome (`C-003_…png`) |
 | `manifest.json` (+ `.sha256`) | configurazione usata, versione del tool, browser, user agent, hash di ogni file |
 
 ## Come interagisce con banner che non conosce
@@ -348,7 +373,7 @@ Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Coo
 | `categorie-non-presentate` | OneTrust: categorie configurate con cookie associati che non compaiono nel pannello delle preferenze (fatto documentale) |
 | `tecnico-solo-dopo-consenso` | elementi dichiarati **solo** tecnici "sempre attivi" che compaiono solo dopo l'accettazione (es. Dynatrace); non scatta se l'elemento è dichiarato anche in una categoria soggetta a consenso |
 | `evidenza-asimmetrica` | al primo livello o nelle preferenze "Accetta" e "Rifiuta" hanno forma diversa (pulsante pieno contro link) o superficie molto diversa |
-| `dati-personali-a-terzi` | targa, data di nascita, email, codice fiscale o telefono negli indirizzi o nei corpi delle richieste verso terze parti (valori mascherati nel report) |
+| `dati-personali-a-terzi` | targa, data di nascita, email, codice fiscale o telefono negli indirizzi o nei corpi delle richieste verso terze parti. Certezza alta (gravità alta) se coincidono con i `datiDiProva`; media se trovati per nome del parametro; bassa se somigliano solo per forma. L'invio di un modulo al servizio che lo gestisce (es. HubSpot Forms) è informativo; le email pubblicate dal sito stesso e le PEC non contano |
 | `revoca-non-trovata` | nessun link o pulsante per riaprire le preferenze fuori dal banner |
 | `link-informativa-assente` | nessun link alla cookie policy nel banner |
 | `personalizzazione-non-rispettata` | accettata solo la statistica, ma partono marketing o altre categorie |

@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import { maskPii } from '../util/pii.js';
 import type { Collector } from './collector.js';
+import { RECORDER, type RecordedStep } from './replay.js';
 
 export interface ManualPlan {
   /** Istruzioni mostrate all'operatore (es. "compila il preventivo con la targa di prova AB123CD"). */
@@ -14,6 +15,8 @@ export interface ManualOutcome {
   pages: string[];
   endedBy: 'operatore' | 'tempo' | 'pagina-chiusa';
   seconds: number;
+  /** Azioni dell'operatore (clic e campi compilati), per rigiocare il percorso in automatico. */
+  steps: RecordedStep[];
 }
 
 /**
@@ -93,6 +96,19 @@ export async function manualJourney(
   // sul contesto, non sulla pagina: il pulsante funziona anche nelle schede aperte dal sito
   await page.context().exposeBinding('__scookieFatto', () => finish('operatore')).catch(() => {});
   onFinisher?.(() => finish('operatore'));
+  // registrazione delle azioni dell'operatore, per poter rigiocare il percorso nelle esecuzioni successive
+  const steps: RecordedStep[] = [];
+  await page
+    .context()
+    .exposeBinding('__scookieRec', (_src, step: RecordedStep) => {
+      const last = steps[steps.length - 1];
+      // lo stesso campo modificato più volte conta col valore finale
+      if (last && step.type === 'fill' && last.type === 'fill' && last.css === step.css) steps[steps.length - 1] = step;
+      else steps.push(step);
+    })
+    .catch(() => {});
+  await page.context().addInitScript(RECORDER);
+  await page.evaluate(RECORDER).catch(() => {});
   await page.context().addInitScript(OVERLAY(plan.instructions));
   await page.evaluate(OVERLAY(plan.instructions)).catch(() => {});
 
@@ -121,5 +137,5 @@ export async function manualJourney(
     })
     .catch(() => {});
   if (endedBy !== 'pagina-chiusa') await collector.snapshot(page).catch(() => {});
-  return { instructions: plan.instructions, pages, endedBy, seconds: Math.round((Date.now() - started) / 1000) };
+  return { instructions: plan.instructions, pages, endedBy, seconds: Math.round((Date.now() - started) / 1000), steps };
 }

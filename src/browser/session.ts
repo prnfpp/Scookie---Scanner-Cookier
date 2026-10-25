@@ -12,6 +12,7 @@ import { Collector } from './collector.js';
 import { trimHar } from './har.js';
 import { maskPii } from '../util/pii.js';
 import { manualJourney, type ManualPlan } from './manual.js';
+import { replayJourney, type RecordedPath } from './replay.js';
 
 export interface SessionPlan {
   id: string;
@@ -26,6 +27,8 @@ export interface SessionPlan {
   revokePage?: string;
   /** Navigazione manuale dell'operatore al posto delle pagine successive. */
   manual?: ManualPlan;
+  /** Percorso registrato in una navigazione manuale precedente, da rigiocare in automatico dopo la scelta. */
+  replay?: RecordedPath;
   /** Numero della ripetizione (1 se lo scenario si esegue una sola volta). */
   repeat?: number;
 }
@@ -163,6 +166,15 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let revocation: SessionResult['revocation'];
   let manual: SessionResult['manual'];
   let unreachable: string | undefined;
+  let replay: SessionResult['replay'];
+  const runReplay = async () => {
+    stage = `percorso registrato su ${maskPii(collector.currentUrl)}`;
+    const r = await replayJourney(page, collector, plan.replay!);
+    replay = { ...r, recordedAt: plan.replay!.savedAt, fromSession: plan.replay!.fromSession };
+    env.log?.(`    percorso registrato: ${r.stepsDone}/${r.stepsTotal} passi${r.stoppedAt ? `; interrotto al ${r.stoppedAt}` : ''}`);
+    if (r.stoppedAt) errors.push(`percorso registrato interrotto al ${r.stoppedAt}: il sito può essere cambiato, va registrato di nuovo`);
+    await shot('3-fine');
+  };
   const runManual = async () => {
     env.log?.(`    NAVIGAZIONE MANUALE: nella finestra del browser segui le istruzioni e premi "Ho finito" (massimo ${Math.round(plan.manual!.maxMs / 60000)} minuti).`);
     manual = await manualJourney(page, collector, plan.manual!, env.manualDriver, env.onManualFinisher);
@@ -213,6 +225,10 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
           await runManual();
           return;
         }
+        if (plan.replay) {
+          await runReplay();
+          return;
+        }
         await settle();
         await shot('3-fine');
         if (plan.analyzeBanner && obs.visible) {
@@ -237,6 +253,10 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         }
         if (plan.manual) {
           await runManual();
+          return;
+        }
+        if (plan.replay) {
+          await runReplay();
           return;
         }
         await settle();
@@ -313,6 +333,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     ...(bannerAnalysis ? { bannerAnalysis } : {}),
     ...(revocation ? { revocation } : {}),
     ...(manual ? { manual } : {}),
+    ...(replay ? { replay, pages: replay.pages } : {}),
     ...(unreachable ? { unreachable } : {}),
     ...(plan.repeat ? { repeat: plan.repeat } : {}),
   };
