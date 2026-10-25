@@ -46,13 +46,16 @@ npm run interfaccia
 
 Si apre il browser su una pagina di Scookie (indirizzo `http://127.0.0.1:4777`). La pagina funziona solo sul tuo computer: non è pubblicata su internet e i dati dei clienti restano in locale. Il Terminale deve restare aperto finché si usa l'interfaccia; per chiuderla, `Ctrl+C` nel Terminale.
 
-Nell'interfaccia:
+Nell'interfaccia ci sono tre schede in alto: **Clienti**, **Audit** ed **Esecuzioni**. In alto a destra un indicatore mostra sempre se un audit è in corso e a che punto è.
 
-- **Clienti** → **+ Nuovo cliente**: nome del cliente, poi uno o più siti (dominio e sottodomini). Per ogni sito si sceglie quali pagine controllare: in automatico, in automatico più alcune indicate a mano, oppure solo quelle indicate a mano. In "Opzioni avanzate" si trovano cookie policy, file dei cookie dichiarati e pulsanti del banner da indicare a mano; in "Impostazioni generali" numero di pagine, scenari, paese di uscita e PDF.
+- **Clienti**: una scheda per cliente, con i siti e l'esito dell'ultimo audit. **+ Nuovo cliente** apre il modulo, diviso in quattro passi:
+  1. **Siti**: nome del cliente, poi uno o più siti (dominio e sottodomini). Per ogni sito si sceglie quali pagine controllare: in automatico, in automatico più alcune indicate a mano, oppure solo quelle indicate a mano. In "Opzioni avanzate del sito" si trovano cookie policy, file dei cookie dichiarati e pulsanti del banner da indicare a mano.
+  2. **Opzioni**: scenari, numero di ripetizioni (1–3), paese di uscita; in "Opzioni avanzate" numero di pagine, HAR, PDF e browser visibile.
+  3. **Controllo**: **Anteprima pagine** mostra quali pagine verrebbero visitate, e una lista ricorda cosa verificare prima di partire.
+  4. **Avvio**: durata stimata e pulsante **Avvia audit**.
 - **Salva**: le configurazioni sono gli stessi file YAML della cartella `clienti/` descritti sotto, quindi si possono usare anche dal Terminale.
-- **Anteprima pagine**: mostra quali pagine verrebbero visitate, prima di lanciare l'audit.
-- **Avvia audit**: l'avanzamento si aggiorna in tempo reale; alla fine il pulsante **Apri il report**.
-- **Esecuzioni**: tutti i report passati, con PDF e file CSV. Il paese di uscita è evidenziato in rosso se non è l'Italia.
+- **Audit**: barra di avanzamento con **tempo rimanente stimato** (calcolato sulla durata media delle sessioni già fatte), fase in corso, avanzamento per sito. Se serve una navigazione manuale compare "Azione richiesta"; se la connessione cade, l'audit si mette in pausa e riprende da solo. Alla fine: **Apri il report**, PDF e **Revisiona le schede**.
+- **Esecuzioni**: tutti i report passati, con il conteggio delle schede per gravità e i quattro passi Leggi → Revisiona → Rivisto → Confronta. La revisione delle schede si fa direttamente nell'interfaccia (esito e nota per scheda), senza aprire Excel. Se un sito non ha dati (pagine non caricate), il pulsante **Ripeti solo questi siti** rilancia l'audit solo per quelli. Il paese di uscita è evidenziato in rosso se non è l'Italia.
 
 Le sezioni 4 e 5 descrivono le stesse operazioni dal Terminale, utili anche per capire le opzioni del file di configurazione.
 
@@ -145,7 +148,7 @@ Come funziona: il browser si apre in una finestra, il tool esegue la scelta sul 
       maxMinuti: 10                    # poi la sessione si chiude da sola
 ```
 
-Non toccare il banner dei cookie durante la navigazione manuale. Usa solo dati di prova concordati con il cliente: i moduli inviati arrivano davvero al sito. Nell'interfaccia il campo è nella scheda del sito, sotto le pagine da includere.
+Non toccare il banner dei cookie durante la navigazione manuale. **Usa una targa e dati concordati col cliente o palesemente fittizi**: i moduli inviati arrivano davvero al sito, e se il sito li mette negli indirizzi delle pagine possono finire a terze parti (la regola `dati-personali-a-terzi` lo rileva). Nel report e nei CSV i valori compaiono solo mascherati (es. `AB•••CD`); in chiaro restano solo nei file HAR. Nell'interfaccia il campo è nella scheda del sito, sotto le pagine da includere.
 
 #### Se il sito blocca il tool
 
@@ -205,7 +208,7 @@ Ogni scheda indica la **forza della prova**: *risorsa scaricata* (es. lo script 
 ### 7. Come usarlo bene
 
 1. **Prima dell'audit** concordare con il cliente il perimetro (domini, sottodomini, pagine importanti come preventivi o checkout) e annotarlo nel file di configurazione.
-2. **Eseguire l'audit due volte** a qualche minuto di distanza: se i risultati coincidono, sono stabili; se differiscono, il report lo mostra e va approfondito.
+2. **Ripetere gli scenari** con `scenari.ripetizioni: 2` o `3` (nell'interfaccia: passo Opzioni). Ogni scheda riporta "Osservato in k esecuzioni su N": un fatto visto 3 volte su 3 è stabile, uno visto 1 volta su 3 va approfondito.
 3. **Controllare a campione** le criticità più gravi aprendo il sito in un browser normale in finestra anonima.
 4. **Consegnare** report e cartella al consulente legale o al DPO, che valuta la conformità. Il tool non dà indicazioni su come sistemare.
 5. **Revisionare le schede** prima di consegnare: in ogni esecuzione c'è il file `revisione.csv` (si apre con Excel), con una riga per scheda. Nella colonna `esito` scrivi `confermato`, `falso positivo` o `da verificare`, e nella colonna `nota` il motivo. Poi, nell'interfaccia, **Applica revisione** (oppure `npm run scookie -- revisione runs/<cartella>`): nasce `report-rivisto.html`/`.pdf`, con l'esito accanto a ogni scheda e i falsi positivi spostati in coda. Il report originale, i dati e le prove non cambiano. Nell'esecuzione successiva dello stesso cliente il modulo arriva già compilato per le schede uguali.
@@ -246,9 +249,13 @@ Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte
 | `personalizza` | dalle preferenze si attiva solo la categoria statistica e si verifica che non partano marketing e simili (adattatori per OneTrust, Cookiebot, vanilla-cookieconsent; per gli altri banner, compreso HubSpot, dall'interfaccia con l'euristica) |
 | `revoca` | si accetta, si naviga, poi si riapre il banner dal comando "preferenze cookie" (testo, icona del CMP o link a una pagina come `/preferenze-cookies`, anche trovata nella sitemap) e si rifiuta. Se nessun comando c'è, la revoca è simulata via API del CMP e il report lo dichiara come prova più debole; se dopo la revoca succede lo stesso che dopo il rifiuto, non è contato come fatto nuovo |
 
+**Percorso identico**: in tutti gli scenari, dopo la scelta si ricarica la pagina di partenza e si visitano le stesse pagine, nello stesso ordine. Nella revoca, dopo aver revocato, si rifà lo stesso percorso. Così "dopo il rifiuto", "dopo l'accettazione" e "dopo la revoca" confrontano le stesse pagine. Dopo la revoca si distingue l'**invio residuo** (richieste partite dalla pagina in cui si è revocato, entro pochi istanti: gravità bassa) dalla **nuova raccolta** nelle pagine visitate dopo.
+
+**Ripetizioni**: con `scenari.ripetizioni` (1–3) ogni scenario si ripete N volte con un browser pulito; le regole si valutano su ogni ripetizione e la scheda dice in quante è stata osservata.
+
 Il report descrive sempre l'elemento esatto cliccato (es. `pulsante "Rifiuta tutti" (#onetrust-reject-all-handler)`), così si distingue un vero "Rifiuta" da una X di chiusura o da un "Continua senza accettare".
 
-**Analisi del banner**: pulsanti presenti al primo livello (accetta, rifiuta, preferenze, chiusura), link alla cookie policy, categorie già attive quando si aprono le preferenze (comprese quelle "sempre attive"), presenza di un comando per riaprire le preferenze fuori dal banner (cercato in tutta la pagina; il fondo pagina viene fotografato come prova). Per i comandi di accettazione e rifiuto misura l'**evidenza visiva**: pulsante o link, dimensioni, dimensione del testo, sfondo e contrasto (formula WCAG), senza valutazioni. Le preferenze vengono aperte a fine sessione, dopo aver fermato la registrazione, quindi non alterano i dati raccolti.
+**Analisi del banner**: pulsanti presenti al primo livello (accetta, rifiuta, preferenze, chiusura), link alla cookie policy, categorie già attive quando si aprono le preferenze (comprese quelle "sempre attive"), presenza di un comando per riaprire le preferenze fuori dal banner (cercato in tutta la pagina; il fondo pagina viene fotografato come prova). Per i comandi di accettazione e rifiuto misura l'**evidenza visiva**, al primo livello e nel pannello delle preferenze: pulsante con sfondo pieno o link, superficie (es. "4,3 volte più grande"), dimensione del testo e posizione nel banner. Il contrasto (formula WCAG) è riportato solo come leggibilità del testo, non come misura di evidenza. Gli interruttori delle preferenze si leggono solo dentro il contenitore del CMP (es. `#onetrust-pc-sdk`), non dai moduli della pagina. Le preferenze vengono aperte a fine sessione, dopo aver fermato la registrazione, quindi non alterano i dati raccolti.
 
 **Classificazione**: un cookie è riconosciuto per nome **e** dominio (es. `sessionId` di Stonly non viene scambiato per quello di Instagram; `__cf_bm` e `cf_clearance` sono cookie tecnici di Cloudflare). Prima si consulta l'elenco curato [`data/cookies.yaml`](data/cookies.yaml), poi Open Cookie Database filtrato per dominio. Un nome sconosciuto scritto sul dominio di un fornitore noto **non** viene attribuito a quel fornitore: resta "da valutare", con il fornitore del dominio come indizio (es. una chiave di Cloudflare dentro il lettore Vimeo). I percorsi `/cdn-cgi/` di Cloudflare (verifica anti-bot) sono tecnici su qualsiasi sito. Una terza parte sconosciuta contattata prima della scelta è segnalata con gravità media.
 
@@ -339,7 +346,9 @@ Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Coo
 | `struttura-banner` | primo livello senza un pulsante di rifiuto (solo accetta, preferenze o X) |
 | `categorie-preattivate` | categorie non tecniche già attive all'apertura delle preferenze |
 | `categorie-non-presentate` | OneTrust: categorie configurate con cookie associati che non compaiono nel pannello delle preferenze (fatto documentale) |
-| `tecnico-solo-dopo-consenso` | elementi dichiarati tecnici "sempre attivi" che compaiono solo dopo l'accettazione (es. Dynatrace) |
+| `tecnico-solo-dopo-consenso` | elementi dichiarati **solo** tecnici "sempre attivi" che compaiono solo dopo l'accettazione (es. Dynatrace); non scatta se l'elemento è dichiarato anche in una categoria soggetta a consenso |
+| `evidenza-asimmetrica` | al primo livello o nelle preferenze "Accetta" e "Rifiuta" hanno forma diversa (pulsante pieno contro link) o superficie molto diversa |
+| `dati-personali-a-terzi` | targa, data di nascita, email, codice fiscale o telefono negli indirizzi o nei corpi delle richieste verso terze parti (valori mascherati nel report) |
 | `revoca-non-trovata` | nessun link o pulsante per riaprire le preferenze fuori dal banner |
 | `link-informativa-assente` | nessun link alla cookie policy nel banner |
 | `personalizzazione-non-rispettata` | accettata solo la statistica, ma partono marketing o altre categorie |

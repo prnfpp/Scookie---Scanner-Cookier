@@ -9,20 +9,53 @@ const list = (xs: string[]) => (xs.length ? xs.map((x) => `"${x}"`).join(', ') :
 const fmtNum = (n: number) => n.toLocaleString('it-IT', { maximumFractionDigits: 1 });
 const lookText = (l: CommandLook) =>
   `${l.kind} di ${l.width}×${l.height} px, testo ${l.fontSize} px${l.fontWeight >= 600 ? ' in grassetto' : ''} (${l.color})` +
-  `${l.background ? `, sfondo ${l.background}` : ', senza sfondo proprio'}${l.contrast ? `, contrasto ${fmtNum(l.contrast)}:1` : ''}`;
+  `${l.background ? `, sfondo ${l.background}` : ', senza sfondo proprio'}${where(l) ? `, ${where(l)}` : ''}`;
 
-/** Confronto oggettivo tra il comando di accettazione e quello di rifiuto: solo misure, nessuna valutazione. */
-function prominenceText(a: BannerAnalysis): { line: string[]; sentence: string } {
-  const p = a.prominence;
-  if (!p?.accept || !p.reject) return { line: [], sentence: '' };
+/** Posizione del comando nel banner, in parole: "in alto a destra del banner". */
+function where(l: CommandLook): string {
+  if (!l.box || !l.container || l.container.w < 2 || l.container.h < 2) return '';
+  const cx = (l.box.x + l.box.w / 2 - l.container.x) / l.container.w;
+  const cy = (l.box.y + l.box.h / 2 - l.container.y) / l.container.h;
+  const v = cy < 0.34 ? 'in alto' : cy > 0.66 ? 'in basso' : 'a metà altezza';
+  const h = cx < 0.34 ? 'a sinistra' : cx > 0.66 ? 'a destra' : 'al centro';
+  return `${v} ${h} del banner`;
+}
+
+/** Distanza in pixel tra i bordi di due comandi (0 se si toccano). */
+function gap(a: CommandLook, b: CommandLook): number | null {
+  if (!a.box || !b.box) return null;
+  const dx = Math.max(0, Math.max(a.box.x, b.box.x) - Math.min(a.box.x + a.box.w, b.box.x + b.box.w));
+  const dy = Math.max(0, Math.max(a.box.y, b.box.y) - Math.min(a.box.y + a.box.h, b.box.y + b.box.h));
+  return Math.round(Math.hypot(dx, dy));
+}
+
+type Prom = { accept: CommandLook | null; reject: CommandLook | null } | undefined;
+
+/**
+ * Confronto oggettivo tra il comando di accettazione e quello di rifiuto: tipo (pulsante pieno o link), superficie,
+ * testo, posizione e distanza. Il contrasto misura la leggibilità del testo sul proprio sfondo e non l'evidenza
+ * del comando: è riportato solo nei dettagli, con questa avvertenza.
+ */
+function prominenceText(p: Prom): { lines: string[]; sentence: string; asymmetric: boolean; ratio: number } {
+  if (!p?.accept || !p.reject) return { lines: [], sentence: '', asymmetric: false, ratio: 1 };
   const ratio = (p.accept.width * p.accept.height) / Math.max(1, p.reject.width * p.reject.height);
-  const line = [`Accettazione "${p.accept.text}": ${lookText(p.accept)}`, `Rifiuto "${p.reject.text}": ${lookText(p.reject)}`];
-  const differs = p.accept.kind !== p.reject.kind || ratio >= 1.5 || ratio <= 1 / 1.5;
-  const sentence = differs
-    ? ` Aspetto dei due comandi: "${p.accept.text}" è un ${p.accept.kind}${p.accept.background ? ` con sfondo ${p.accept.background}` : ''}, "${p.reject.text}" è un ${p.reject.kind}${p.reject.background ? ` con sfondo ${p.reject.background}` : ' senza sfondo'}; ` +
-      `l'area del comando di accettazione è ${fmtNum(ratio)} volte quella del comando di rifiuto (testo ${p.accept.fontSize} px contro ${p.reject.fontSize} px).`
-    : ' I comandi di accettazione e di rifiuto hanno aspetto e dimensioni simili.';
-  return { line, sentence };
+  const d = gap(p.accept, p.reject);
+  const contrast = (l: CommandLook) => (l.contrast ? `${fmtNum(l.contrast)}:1` : 'n.d.');
+  const lines = [
+    `Accettazione "${p.accept.text}": ${lookText(p.accept)}`,
+    `Rifiuto "${p.reject.text}": ${lookText(p.reject)}`,
+    ...(d !== null ? [`Distanza tra i due comandi: ${d} px`] : []),
+    `Contrasto del testo sul proprio sfondo (leggibilità, non evidenza del comando): accettazione ${contrast(p.accept)}, rifiuto ${contrast(p.reject)}`,
+  ];
+  const asymmetric = p.accept.kind !== p.reject.kind || ratio >= 1.5;
+  const pos = (l: CommandLook) => (where(l) ? ` ${where(l)}` : '');
+  const sentence = asymmetric
+    ? `"${p.accept.text}" è un ${p.accept.kind}${p.accept.background ? ` con sfondo pieno ${p.accept.background}` : ''}${pos(p.accept)}; ` +
+      `"${p.reject.text}" è un ${p.reject.kind}${p.reject.background ? ` con sfondo ${p.reject.background}` : ' senza sfondo'}${pos(p.reject)}` +
+      `${d !== null && d > 40 ? `, a ${d} px dal comando di accettazione` : ''}. ` +
+      `La superficie del comando di accettazione è ${fmtNum(ratio)} volte quella del comando di rifiuto (testo ${p.accept.fontSize} px contro ${p.reject.fontSize} px).`
+    : 'I comandi di accettazione e di rifiuto hanno aspetto e dimensioni simili.';
+  return { lines, sentence, asymmetric, ratio };
 }
 
 /** Struttura del banner al primo livello: quali comandi offre, link all'informativa, modo per rivedere la scelta. */
@@ -34,7 +67,7 @@ export const strutturaBanner: Rule = {
   evaluate({ sessions }) {
     return analyses(sessions).map(({ s, a }): RawFinding => {
       const f = a.firstLayer;
-      const prom = prominenceText(a);
+      const prom = prominenceText(a.prominence);
       return {
         site: s.site,
         scenario: s.scenario,
@@ -45,10 +78,10 @@ export const strutturaBanner: Rule = {
           `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura (X) ${f.close.length ? list(f.close) : 'assente'}. ` +
           `Link all'informativa nel banner: ${a.policyLink ? `"${a.policyLink.text}"` : 'non trovato'}. ` +
           `Modo per rivedere la scelta nella pagina: ${a.revokeLink ? `"${a.revokeLink.text}"` : 'non trovato'}.` +
-          prom.sentence,
+          (prom.sentence ? ` ${prom.asymmetric ? 'Evidenza dei comandi: vedi la scheda dedicata.' : prom.sentence}` : ''),
         details: [
           `Tutti i comandi rilevati nel banner: ${list(f.all)}`,
-          ...prom.line,
+          ...prom.lines,
           ...(a.policyLink ? [`Informativa: ${a.policyLink.href}`] : []),
           ...(a.preferences?.opened
             ? [`Secondo livello aperto con ${a.preferences.via}: ${a.preferences.toggles.map((t) => `${t.label} ${t.checked ? 'attiva' : 'non attiva'}${t.disabled ? ' (non modificabile)' : ''}`).join('; ') || 'nessuna categoria leggibile'}`]
@@ -187,6 +220,40 @@ export const categorieNonPresentate: Rule = {
         ),
         evidence: sessionEvidence(s, ['1-banner']).filter((e) => !e.file.endsWith('.har')),
       });
+    }
+    return out;
+  },
+};
+
+/**
+ * Accettazione più evidente del rifiuto (pulsante pieno contro link, superficie, posizione), al primo livello
+ * o nel pannello delle preferenze: un aspetto del banner che può incidere sulla validità del consenso.
+ */
+export const evidenzaAsimmetrica: Rule = {
+  id: 'evidenza-asimmetrica',
+  title: 'Comandi di accettazione e rifiuto con evidenza diversa',
+  defaultSeverity: 'media',
+  defaultNorms: ['garante2021', 'gdpr4_11', 'gdpr7'],
+  evaluate({ sessions }) {
+    const out: RawFinding[] = [];
+    for (const { s, a } of analyses(sessions)) {
+      for (const [where, p, shot] of [
+        ['al primo livello del banner', a.prominence, '1-banner'],
+        ['nel pannello delle preferenze', a.preferences?.prominence, '4-preferenze'],
+      ] as const) {
+        const prom = prominenceText(p);
+        if (!prom.asymmetric) continue;
+        out.push({
+          site: s.site,
+          scenario: s.scenario,
+          pageUrl: s.pages[0],
+          groupKey: `${where}|${p!.accept!.text}|${p!.reject!.text}`,
+          headline: `${where[0].toUpperCase()}${where.slice(1)} "${p!.accept!.text}" è un ${p!.accept!.kind} ${fmtNum(prom.ratio)} volte più grande di "${p!.reject!.text}" (${p!.reject!.kind})`,
+          description: `Misure dei comandi ${where}. ${prom.sentence}`,
+          details: prom.lines,
+          evidence: sessionEvidence(s, [shot]).filter((e) => !e.file.endsWith('.har')),
+        });
+      }
     }
     return out;
   },

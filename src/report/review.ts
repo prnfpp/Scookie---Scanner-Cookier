@@ -95,6 +95,57 @@ export function writeReviewTemplate(runDir: string, findings: Finding[], cliente
   return { prefilled, from: prefilled ? prev!.run : null };
 }
 
+export interface ReviewRow {
+  scheda: string;
+  chiave: string;
+  regola: string;
+  sito: string;
+  gravita: string;
+  titolo: string;
+  esito: ReviewOutcome;
+  nota: string;
+}
+
+function readRawRows(runDir: string): string[][] {
+  const path = join(runDir, REVIEW_FILE);
+  if (!existsSync(path)) throw new Error(`Nella cartella manca ${REVIEW_FILE}`);
+  const buf = readFileSync(path);
+  let text = buf.toString('utf8');
+  if (text.includes('\uFFFD')) text = new TextDecoder('windows-1252').decode(buf);
+  return parseCsv(text, detectSeparator(text));
+}
+
+/** Righe del modulo di revisione, per la revisione dall'interfaccia. */
+export function readReviewRows(runDir: string): ReviewRow[] {
+  const [head, ...data] = readRawRows(runDir);
+  if (!head) return [];
+  const col = (n: string) => head.findIndex((h) => h.trim().toLowerCase() === n);
+  const get = (r: string[], n: string) => (col(n) >= 0 ? (r[col(n)] ?? '').trim() : '');
+  return data.map((r) => ({
+    scheda: get(r, 'scheda'),
+    chiave: get(r, 'chiave'),
+    regola: get(r, 'regola'),
+    sito: get(r, 'sito'),
+    gravita: get(r, 'gravita'),
+    titolo: get(r, 'titolo'),
+    esito: normalizeOutcome(get(r, 'esito')),
+    nota: get(r, 'nota'),
+  }));
+}
+
+/** Aggiorna esito e nota delle righe indicate (per chiave) e riscrive il modulo. */
+export function writeReviewRows(runDir: string, updates: { chiave: string; esito: string; nota: string }[]): ReviewRow[] {
+  const rows = readReviewRows(runDir);
+  for (const u of updates) {
+    const r = rows.find((x) => x.chiave === u.chiave);
+    if (!r) continue;
+    r.esito = normalizeOutcome(u.esito ?? '');
+    r.nota = String(u.nota ?? '').slice(0, 500);
+  }
+  writeFileSync(join(runDir, REVIEW_FILE), toCsv(HEADERS, rows.map((r) => HEADERS.map((h) => r[h as keyof ReviewRow]))));
+  return rows;
+}
+
 interface Manifest {
   strumento: { versione: string };
   inizio: string;

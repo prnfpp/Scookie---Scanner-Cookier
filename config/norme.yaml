@@ -27,6 +27,14 @@ norme:
     titolo: Art. 7 GDPR
     riferimento: "Regolamento (UE) 2016/679, art. 7 — Condizioni per il consenso"
     url: https://eur-lex.europa.eu/legal-content/IT/TXT/?uri=CELEX:32016R0679
+  gdpr5:
+    titolo: Art. 5 GDPR
+    riferimento: "Regolamento (UE) 2016/679, art. 5 — Principi applicabili al trattamento (minimizzazione, limitazione della finalità)"
+    url: https://eur-lex.europa.eu/legal-content/IT/TXT/?uri=CELEX:32016R0679
+  gdpr6:
+    titolo: Art. 6 GDPR
+    riferimento: "Regolamento (UE) 2016/679, art. 6 — Liceità del trattamento"
+    url: https://eur-lex.europa.eu/legal-content/IT/TXT/?uri=CELEX:32016R0679
   gdpr13:
     titolo: Art. 13 GDPR
     riferimento: "Regolamento (UE) 2016/679, art. 13 — Informazioni da fornire"
@@ -77,6 +85,12 @@ regole:
   tecnico-solo-dopo-consenso:
     norme: [gdpr13, garante2021]
     gravita: media
+  evidenza-asimmetrica:
+    norme: [garante2021, gdpr4_11, gdpr7]
+    gravita: media
+  dati-personali-a-terzi:
+    norme: [gdpr5, gdpr6, garante2021]
+    gravita: alta
   categorie-non-presentate:
     norme: [gdpr13, garante2021]
     gravita: bassa

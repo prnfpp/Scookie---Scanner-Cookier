@@ -157,6 +157,11 @@ export const configSchema = z
         /** Pagine da visitare dopo la scelta (minimo 1). */
         pagineDopoScelta: z.number().int().min(1).default(3),
         /**
+         * Quante volte ripetere ogni scenario (1-3), ciascuna con un profilo browser nuovo: le schede dicono
+         * in quante esecuzioni su quante il fatto si è osservato. Il tempo dell'audit si moltiplica.
+         */
+        ripetizioni: z.number().int().min(1).max(3).default(1),
+        /**
          * Scenari da eseguire. personalizza = accetta solo la categoria statistica (per i CMP che lo consentono in modo
          * affidabile); revoca = accetta, poi revoca il consenso dal link nella pagina e rifiuta.
          */
@@ -165,7 +170,7 @@ export const configSchema = z
           .default(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca']),
       })
       .strict()
-      .default({ modalita: 'percorso', pagineDopoScelta: 3, attivi: ['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca'] }),
+      .default({ modalita: 'percorso', pagineDopoScelta: 3, ripetizioni: 1, attivi: ['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca'] }),
     campionamento: z
       .object({
         /** Pagine per tipo nel primo giro di campionamento; se i tipi sono pochi, il campione si completa fino a maxPagine. */
