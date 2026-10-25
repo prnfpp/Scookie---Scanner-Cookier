@@ -84,7 +84,8 @@ test('sito irraggiungibile: sessioni non valide, nessuna criticità, avviso nel 
   const ss = result.sessions.filter((x) => x.site.includes('spento.test'));
   assert.ok(ss.length && ss.every((x) => x.unreachable));
   assert.ok(!result.findings.some((f) => f.sites.some((x) => x.includes('spento.test'))));
-  assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Attenzione — pagine non caricate/);
+  assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Pagine non caricate\.<\/strong>/);
+  assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Nessun dato per spento\.test/);
 });
 
 test('ripetizioni: ogni scenario due volte, le schede dicono in quante è stato osservato', () => {
