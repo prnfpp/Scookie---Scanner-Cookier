@@ -70,7 +70,13 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
         500,
       );
       await shot('4-preferenze');
-      preferences = { opened: true, via: opened, toggles };
+      // Anche nel pannello: evidenza di "Consenti tutti" rispetto a "Rifiuta tutti"
+      const inner = (await scan(page)).candidates;
+      const prom = {
+        accept: await lookOf(inner.find((c) => TEXTS.accept.test(c.text))),
+        reject: await lookOf(inner.find((c) => TEXTS.preferencesReject.test(c.text) || TEXTS.reject.test(c.text))),
+      };
+      preferences = { opened: true, via: opened, toggles, prominence: prom };
     } catch (e) {
       preferences = { opened: false, via: (e as Error).message.split('\n')[0], toggles: [] };
     }
@@ -117,6 +123,14 @@ async function measure(c: Candidate): Promise<CommandLook | null> {
       }
       bg ??= { r: 255, g: 255, b: 255 };
       const fg = parse(s.color);
+      // contenitore del banner: l'antenato più esterno sovrapposto alla pagina (fixed/sticky) o con ruolo di finestra
+      let root: Element = el;
+      for (let n: Element | null = el.parentElement; n && n !== document.body; n = n.parentElement) {
+        const st = getComputedStyle(n);
+        if (st.position === 'fixed' || st.position === 'sticky' || n.getAttribute('role') === 'dialog' || n.getAttribute('aria-modal') === 'true') root = n;
+      }
+      const rr = root.getBoundingClientRect();
+      const box = (x: DOMRect) => ({ x: Math.round(x.left), y: Math.round(x.top), w: Math.round(x.width), h: Math.round(x.height) });
       const contrast = fg ? (Math.max(lum(fg), lum(bg)) + 0.05) / (Math.min(lum(fg), lum(bg)) + 0.05) : null;
       return {
         text,
@@ -128,6 +142,8 @@ async function measure(c: Candidate): Promise<CommandLook | null> {
         color: fg ? hex(fg) : s.color,
         background: hasBg && own ? hex(own) : null,
         contrast: contrast ? Math.round(contrast * 10) / 10 : null,
+        box: box(r),
+        container: root === el ? undefined : box(rr),
       };
     }, c.text);
 }
@@ -139,8 +155,22 @@ async function measure(c: Candidate): Promise<CommandLook | null> {
  */
 export async function readToggles(frame: import('playwright').Frame, isMain: boolean): Promise<{ label: string; checked: boolean; disabled: boolean; index?: number }[]> {
   return frame.evaluate((isMain) => {
+    // Contenitori dei CMP noti: se uno è visibile, si leggono solo i suoi interruttori (non il resto della pagina)
+    const KNOWN = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '#didomi-host', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#cmplz-cookiebanner-container', '#hs-modal', '#hs-eu-cookie-confirmation', '.iubenda-cs-preferences', '#iubenda-cs-banner'];
+    const shown = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 1 && r.height > 1 && getComputedStyle(el).visibility !== 'hidden';
+    };
+    const known = KNOWN.flatMap((sel) => Array.from(document.querySelectorAll(sel))).filter(shown);
     const CONSENT_UI = /cookie|consent|onetrust|optanon|\bot-|\bcmp|privacy|gdpr|hs-eu|hs-banner|hs-modal|cky|cmplz|didomi|usercentrics|\buc-|iubenda|cc_div|cc-main|cybot|klaro|tarteaucitron/i;
     const inConsentUi = (el: Element): boolean => {
+      if (known.length) {
+        // dentro un contenitore noto (anche attraverso lo shadow DOM)
+        for (let n: Node | null = el; n; n = (n as Element).parentElement ?? ((n.getRootNode() as ShadowRoot).host || null)) {
+          if (known.includes(n as Element)) return true;
+        }
+        return false;
+      }
       let n: Node | null = el;
       while (n) {
         if (n instanceof Element) {

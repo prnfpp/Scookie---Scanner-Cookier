@@ -91,6 +91,10 @@ export interface RequestRecord {
   msFromChoice: number | null;
   /** Richiesta inviata da un service worker del sito (non dalla pagina): può riferirsi a eventi precedenti. */
   fromServiceWorker?: boolean;
+  /** Dati personali trovati nell'indirizzo o nel corpo (valori mascherati). */
+  pii?: { kind: string; param: string | null; masked: string }[];
+  /** Scenario "revoca": richiesta partita dopo il primo caricamento di pagina successivo alla revoca. */
+  afterRevokeNav?: boolean;
   /** Scenario "revoca": millisecondi dalla revoca (msFromChoice è misurato dall'accettazione). */
   msFromRevoke?: number | null;
   url: string;
@@ -144,7 +148,13 @@ export interface BannerAnalysis {
   /** Modo per riaprire le preferenze nella pagina, fuori dal banner. */
   revokeLink: { text: string; how: string } | null;
   /** Secondo livello: categorie con lo stato in cui si presentano, prima di qualsiasi scelta. */
-  preferences: { opened: boolean; via: string; toggles: { label: string; checked: boolean; disabled: boolean }[] } | null;
+  preferences: {
+    opened: boolean;
+    via: string;
+    toggles: { label: string; checked: boolean; disabled: boolean }[];
+    /** Evidenza di "Consenti tutti" e "Rifiuta tutti" nel pannello delle preferenze. */
+    prominence?: { accept: CommandLook | null; reject: CommandLook | null };
+  } | null;
   /** Aspetto dei comandi di accettazione e rifiuto al primo livello (misure oggettive, nessuna valutazione). */
   prominence?: { accept: CommandLook | null; reject: CommandLook | null };
 }
@@ -160,8 +170,11 @@ export interface CommandLook {
   color: string;
   /** Sfondo proprio dell'elemento, se presente. */
   background: string | null;
-  /** Rapporto di contrasto WCAG tra testo e sfondo effettivo. */
+  /** Rapporto di contrasto WCAG tra testo e sfondo effettivo (leggibilità del testo, non evidenza del comando). */
   contrast: number | null;
+  /** Posizione del comando e del contenitore del banner (pixel nella finestra). */
+  box?: { x: number; y: number; w: number; h: number };
+  container?: { x: number; y: number; w: number; h: number };
 }
 
 export interface Evidence {
@@ -190,6 +203,8 @@ export interface SessionResult {
   retryOf?: string;
   /** Scenario "revoca": come è stato revocato il consenso e quali cookie non tecnici restavano nel browser. */
   revocation?: { outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null; remaining: string[] };
+  /** Numero della ripetizione dello scenario (con scenari.ripetizioni > 1). */
+  repeat?: number;
   /** Prima pagina non raggiungibile (es. connessione assente, computer in stop): la sessione non descrive il sito. */
   unreachable?: string;
   /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
@@ -263,5 +278,7 @@ export interface Finding {
   sites: string[];
   /** Chiave stabile tra esecuzioni (regola, oggetto, dominio): serve al confronto tra due esecuzioni. */
   key?: string;
+  /** Con ripetizioni: in quante esecuzioni dello scenario il fatto si è osservato, su quante. */
+  repeats?: { seen: number; of: number };
   norms: NormRef[];
 }

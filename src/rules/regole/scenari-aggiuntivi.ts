@@ -24,7 +24,13 @@ export const attivazioneDopoRevoca: Rule = {
       const keys = new Set([...cookies.map((c) => c.classification.platform ?? c.domain), ...reqs.map((r) => r.tracker!.company)]);
       for (const key of keys) {
         const cs = cookies.filter((c) => (c.classification.platform ?? c.domain) === key);
-        const rs = reqs.filter((r) => r.tracker!.company === key);
+        const all = reqs.filter((r) => r.tracker!.company === key);
+        // Invio residuo (sulla pagina in cui si revoca, es. dati già raccolti inviati alla chiusura della pagina)
+        // e nuova raccolta (sulle pagine visitate dopo la revoca) sono fatti di peso diverso.
+        const fresh = all.filter((r) => r.afterRevokeNav);
+        const residual = all.filter((r) => !r.afterRevokeNav);
+        const onlyResidual = !cs.length && !fresh.length && residual.length > 0;
+        const rs = fresh.length ? fresh : all;
         const level = cs.length ? 'identificativo' : requestEvidenceLevel(rs);
         const sample = rs.length ? strongestRequest(rs) : undefined;
         const viaApi = s.revocation!.via === 'api';
@@ -32,22 +38,35 @@ export const attivazioneDopoRevoca: Rule = {
         const consentShort = googleConsentSummary(rs).short;
         const parts: string[] = [];
         if (cs.length) parts.push(`${cs.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${cs.length} cookie`} (${cs.map((c) => c.name).join(', ')})`);
-        if (rs.length) parts.push(`${rs.length === 1 ? 'parte' : 'partono'} ${nReq(rs.length)} a ${hostsSummary(rs)}`);
+        if (fresh.length) parts.push(`sulle pagine visitate dopo la revoca ${fresh.length === 1 ? 'parte' : 'partono'} ${nReq(fresh.length)} a ${hostsSummary(fresh)}`);
+        if (residual.length) {
+          const first = Math.min(...residual.map((r) => r.msFromRevoke ?? Infinity));
+          parts.push(
+            `sulla pagina in cui è avvenuta la revoca ${residual.length === 1 ? 'parte' : 'partono'} ${nReq(residual.length)} a ${hostsSummary(residual)}` +
+              (Number.isFinite(first) ? ` (la prima ${first} ms dopo la revoca)` : ''),
+          );
+        }
         out.push({
           site: s.site,
           scenario: s.scenario,
           pageUrl: sample?.pageUrl ?? cs[0]?.firstSeenUrl ?? null,
           // Comportamento uguale a quello dopo il rifiuto: già nelle schede del rifiuto, qui solo come conferma.
           // Revoca simulata via API (un utente non può farla): prova più debole.
-          severity: sameAsReject ? 'bassa' : level === 'risorsa' || viaApi ? 'media' : undefined,
+          // Solo invio residuo: compatibile con dati già raccolti inviati alla chiusura della pagina, prova debole.
+          severity: sameAsReject || onlyResidual ? 'bassa' : level === 'risorsa' || viaApi ? 'media' : undefined,
           evidenceLevel: level,
           // revoca dal link della pagina o solo via API: casi diversi, schede diverse
-          groupKey: `${key}|${s.revocation!.via ?? 'link'}|${sameAsReject}`,
-          headline: sameAsReject
+          groupKey: `${key}|${s.revocation!.via ?? 'link'}|${sameAsReject}|${onlyResidual}`,
+          headline: onlyResidual
+            ? `Dopo la revoca, ${key} invia solo dati residui dalla pagina in cui si è revocato`
+            : sameAsReject
             ? `Dopo la revoca, ${key} si comporta come dopo il rifiuto`
             : `Dopo la revoca del consenso${viaApi ? ' (simulata via API)' : ''}, ${key} continua a ${cs.length ? 'scrivere identificativi' : level === 'raccolta' ? 'ricevere dati' : 'essere caricato'}${!cs.length && consentShort ? `, ${consentShort}` : ''}`,
           description:
             `Dopo aver accettato e poi revocato il consenso (${s.revocation!.how}), per ${key} ${parts.join(' e ')}.` +
+            (onlyResidual
+              ? ' Sulle pagine visitate dopo la revoca non parte nulla: è compatibile con l\'invio di dati già raccolti sulla pagina corrente (molti strumenti li inviano alla chiusura o al cambio di pagina), non con una nuova raccolta.'
+              : '') +
             (sameAsReject ? ' Lo stesso fornitore risulta attivo anche dopo il rifiuto (vedi le schede "Tracciamenti attivi dopo il rifiuto"): non è un comportamento diverso.' : ''),
           details: [
             ...(s.revocation!.remaining.length ? [`Cookie non tecnici ancora presenti subito dopo la revoca: ${s.revocation!.remaining.join(', ')}`] : []),

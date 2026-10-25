@@ -18,6 +18,7 @@ import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms } from './rules/engine.js'
 import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult } from './types.js';
 import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
 import { TOOL_VERSION } from './version.js';
+import { ProgressTracker, type Progress } from './progress.js';
 
 export interface RunOptions {
   outDir?: string;
@@ -25,6 +26,10 @@ export interface RunOptions {
   log?: (msg: string) => void;
   /** Solo test: simula l'operatore nelle sessioni con navigazione manuale (il browser resta senza finestra). */
   manualDriver?: (page: Page) => Promise<void>;
+  /** Avanzamento per l'interfaccia (fase, sessioni, tempo stimato). */
+  onProgress?: (p: Progress) => void;
+  /** Esegue solo questi siti della configurazione (indirizzi), es. per ripetere quelli non raggiunti. */
+  onlySites?: string[];
 }
 
 export interface RunResult {
@@ -99,24 +104,31 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
     return out.length ? out : [sample[from].url];
   };
 
-  if (active.has('nessuna-azione')) {
-    for (const [k, p] of sample.entries()) {
-      plans.push({ id: id('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url], analyzeBanner: k === 0 });
+  // Con le ripetizioni ogni scenario si esegue più volte, ciascuna con un profilo nuovo (id con suffisso -r2, -r3)
+  const reps = cfg.scenari.ripetizioni;
+  for (let r = 1; r <= reps; r++) {
+    const rid = (scenario: ScenarioName) => `${id(scenario)}${reps > 1 ? `-r${r}` : ''}`;
+    const repeat = reps > 1 ? r : undefined;
+    if (active.has('nessuna-azione')) {
+      for (const [k, p] of sample.entries()) {
+        plans.push({ id: rid('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url], analyzeBanner: k === 0 && r === 1, repeat });
+      }
     }
-  }
-  const choiceScenarios = (['rifiuta', 'accetta', 'personalizza', 'revoca'] as const).filter((s) => active.has(s));
-  const starts = cfg.scenari.modalita === 'per-pagina' ? sample.map((_, i) => i) : [0];
-  for (const i of starts) {
-    for (const scenario of choiceScenarios) {
-      plans.push({
-        id: id(scenario),
-        site: discovery.site,
-        siteConfig: site,
-        scenario,
-        pageType: sample[i].type,
-        pages: [sample[i].url, ...following(i)],
-        revokePage: scenario === 'revoca' ? discovery.revokePages?.[0] : undefined,
-      });
+    const choiceScenarios = (['rifiuta', 'accetta', 'personalizza', 'revoca'] as const).filter((s) => active.has(s));
+    const starts = cfg.scenari.modalita === 'per-pagina' ? sample.map((_, i) => i) : [0];
+    for (const i of starts) {
+      for (const scenario of choiceScenarios) {
+        plans.push({
+          id: rid(scenario),
+          site: discovery.site,
+          siteConfig: site,
+          scenario,
+          pageType: sample[i].type,
+          pages: [sample[i].url, ...following(i)],
+          revokePage: scenario === 'revoca' ? discovery.revokePages?.[0] : undefined,
+          repeat,
+        });
+      }
     }
   }
   // Navigazione manuale: una sessione per scenario richiesto, dalla pagina di partenza indicata
@@ -184,7 +196,11 @@ function failedHosts(s: SessionResult): string {
 }
 
 export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Promise<RunResult> {
-  const { config } = loaded;
+  const config = opts.onlySites?.length
+    ? { ...loaded.config, siti: loaded.config.siti.filter((s) => opts.onlySites!.some((u) => new URL(u).hostname === new URL(s.url).hostname)) }
+    : loaded.config;
+  if (!config.siti.length) throw new Error('Nessuno dei siti indicati è nella configurazione');
+  const progress = new ProgressTracker(opts.onProgress ?? (() => {}), 30 + (opts.pdf ?? config.report.pdf ? 20 : 0) + 5 * config.siti.length);
   const log = opts.log ?? ((m: string) => console.log(m));
   const startedAt = new Date().toISOString();
   const runDir = join(opts.outDir ?? loaded.resolvePath(config.output), `${timestampForPath()}_${slug(config.cliente, 40)}`);
@@ -224,6 +240,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   try {
     browserVersion = `Chromium ${browser.version()}`;
     userAgent = await resolveUserAgent(browser, config);
+    progress.phase('uscita', 'verifica del paese di uscita');
     if (config.browser.verificaUscita !== 'no') {
       exit = await detectExit(browser, config.browser.servizioUscita, config.browser.paeseUscita);
       log(`Uscita: ${exit.note}${exit.ip ? ` IP ${exit.ip}.` : ''}`);
@@ -240,11 +257,15 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
     for (let i = 0; i < config.siti.length; i++) {
       const site = config.siti[i];
       log(`\n[${site.url}] scoperta pagine…`);
+      progress.phase('scoperta', `${new URL(site.url).hostname} (${i + 1} di ${config.siti.length})`);
       let d = await discoverSite(browser, site, config, userAgent);
       if (d.notes.some((n) => NETWORK_ERROR.test(n))) {
         // Connessione caduta durante la scoperta (es. computer in stop): si aspetta che torni e si ripete una volta
         log('  connessione assente durante la scoperta: attesa del ripristino…');
-        if (await waitOnline(browser, site.url, log)) d = await discoverSite(browser, site, config, userAgent);
+        progress.wait('connessione');
+        const back = await waitOnline(browser, site.url, log);
+        progress.wait(null);
+        if (back) d = await discoverSite(browser, site, config, userAgent);
       }
       discovery.push(d);
       log(`  ${d.found} URL trovate, campione di ${d.sample.length} pagine`);
@@ -261,10 +282,14 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       nextId += plans.length;
       jobs.push({ i, site, d, decl, plans, manual: [] });
     }
+    for (const j of jobs) progress.plan(j.d.site, j.plans.filter((p) => !p.manual).length, j.plans.filter((p) => p.manual).length);
 
     const exec = async (job: (typeof jobs)[number], plan: SessionPlan) => {
       const { decl } = job;
       log(`  ${plan.id} (${plan.pages.length} pagine)…`);
+      const t0 = Date.now();
+      progress.start(`${new URL(plan.site).hostname} · ${plan.scenario}${plan.manual ? ' (navigazione manuale)' : ''}${plan.repeat ? ` · ripetizione ${plan.repeat}` : ''}`);
+      if (plan.manual) progress.wait('manuale');
       const res = await runSession(browser, plan, {
         config,
         runDir,
@@ -282,17 +307,21 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       });
       const i2 = res.interaction;
       log(`    banner: ${i2.bannerVisibleBefore ? 'sì' : 'no'}; metodo: ${i2.method}; esito: ${i2.outcome}; verifica: ${i2.verification}; cookie: ${res.cookies.length}; richieste: ${res.requests.length}`);
+      if (plan.manual) progress.wait(null);
       await sleep(config.protocollo.pausaTraSessioni);
+      progress.finished(plan.site, (Date.now() - t0) / 1000, !!plan.manual);
       return res;
     };
 
     const manualPlans = jobs.flatMap((j) => j.plans.filter((p) => p.manual).map((p) => ({ j, p })));
     if (manualPlans.length) {
       log(`\nNavigazioni manuali (${manualPlans.length}): si fanno adesso, poi l'audit prosegue da solo.`);
+      progress.phase('manuale');
       for (const { j, p } of manualPlans) j.manual.push(await exec(j, p));
       log('\nNavigazioni manuali concluse: da qui l\'audit prosegue da solo. Il computer deve restare acceso, sveglio e collegato a internet.');
     }
 
+    progress.phase('automatiche');
     for (const job of jobs) {
       const { site, d, decl } = job;
       const plans = job.plans.filter((p) => !p.manual);
@@ -306,8 +335,12 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
         const first = siteResults[k];
         if (!first.unreachable || !NETWORK_ERROR.test(first.unreachable)) continue;
         log(`    ${first.id}: connessione assente, attesa del ripristino…`);
-        if (!(await waitOnline(browser, site.url, log))) break;
+        progress.wait('connessione');
+        const back = await waitOnline(browser, site.url, log);
+        progress.wait(null);
+        if (!back) break;
         const plan = plans.find((p) => p.id === first.id)!;
+        progress.extra(d.site);
         const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta` });
         retry.retryOf = first.id;
         retry.errors.unshift(`Ripetizione di ${first.id}: sessione fallita per mancanza di connessione (${first.unreachable}).`);
@@ -330,6 +363,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
           retries++;
           const plan = plans.find((p) => p.id === first.id.replace(/_ripetuta$/, ''))!;
           log(`    banner assente solo in questa sessione: ripetizione di ${first.id}`);
+          progress.extra(d.site);
           const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta${first.retryOf ? '2' : ''}` });
           retry.retryOf = first.id;
           const failed = failedHosts(first);
@@ -378,7 +412,21 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const comparison: ComparisonRow[] = declared.flatMap((d) =>
     compareDeclared(d.site, validSessions.filter((s) => s.site === d.site), d),
   );
+  progress.phase('report', 'regole, report e allegati');
   const findings = evaluateRules({ config, sessions: validSessions, blocked: blockedSessions, declared, comparison, exit, discovery }, norms);
+  // Ripetizioni: le regole si valutano anche su ogni ripetizione da sola; per ogni scheda si conta in quante compare.
+  // Le navigazioni manuali non si ripetono e non entrano nel conteggio.
+  const reps = config.scenari.ripetizioni;
+  if (reps > 1) {
+    const seen = new Map<string, number>();
+    for (let r = 1; r <= reps; r++) {
+      const subset = validSessions.filter((s) => s.repeat === r);
+      const comp = declared.flatMap((d) => compareDeclared(d.site, subset.filter((s) => s.site === d.site), d));
+      const keys = new Set(evaluateRules({ config, sessions: subset, blocked: blockedSessions, declared, comparison: comp, exit, discovery }, norms).map((f) => f.key));
+      for (const k of keys) if (k) seen.set(k, (seen.get(k) ?? 0) + 1);
+    }
+    for (const f of findings) if (f.key) f.repeats = { seen: Math.max(1, seen.get(f.key) ?? 0), of: reps };
+  }
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
@@ -386,6 +434,27 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
 
   writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ discovery, sessions, sessioniScartate: discarded, declared, comparison, findings }, null, 2));
   const csvs = writeCsvs(runDir, sessions, comparison, findings);
+  // Riepilogo leggero per l'interfaccia (l'elenco delle esecuzioni non deve leggere dati.json, che può essere grande)
+  const unreachableSites = [...new Set(sessions.filter((s) => s.unreachable).map((s) => s.site))].filter((site) =>
+    sessions.filter((s) => s.site === site).every((s) => s.unreachable || s.blocked),
+  );
+  writeFileSync(
+    join(runDir, 'riepilogo.json'),
+    JSON.stringify(
+      {
+        cliente: config.cliente,
+        configurazione: basename(loaded.path),
+        siti: config.siti.map((s) => s.url),
+        sitiSenzaDati: unreachableSites,
+        sessioniNonValide: sessions.filter((s) => s.unreachable || s.blocked).length,
+        gravita: Object.fromEntries((['alta', 'media', 'bassa', 'informativa'] as const).map((g) => [g, findings.filter((f) => f.severity === g).length])),
+        criticita: findings.length,
+        durataSec: Math.round((Date.now() - Date.parse(startedAt)) / 1000),
+      },
+      null,
+      2,
+    ),
+  );
   // Modulo per la revisione manuale delle schede (con i giudizi già dati nell'esecuzione precedente, se ci sono)
   const rev = writeReviewTemplate(runDir, findings, config.cliente);
   if (rev.prefilled) log(`Revisione: ${rev.prefilled} schede precompilate dalla revisione di ${rev.from}`);
@@ -437,6 +506,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       openCookieDatabase: { licenza: 'Apache-2.0', sha256: await sha256File(ocdPath) },
       trackerExtra: config.trackerExtra ? basename(config.trackerExtra) : null,
     },
+    sitiEseguiti: config.siti.map((s) => s.url),
     sessioni: sessions.length,
     criticita: findings.length,
     csv: csvs,
@@ -444,6 +514,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   };
   writeFileSync(join(runDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   writeFileSync(join(runDir, 'manifest.json.sha256'), `${await sha256File(join(runDir, 'manifest.json'))}  manifest.json\n`);
+  progress.phase('fine');
   log(`\nCompletato: ${sessions.length} sessioni, ${findings.length} criticità. Report: ${join(runDir, 'report.html')}`);
   return { runDir, findings, sessions };
 }

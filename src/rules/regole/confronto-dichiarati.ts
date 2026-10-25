@@ -1,3 +1,4 @@
+import { normalizeDeclaredCategory } from '../../classify/classifier.js';
 import type { ComparisonRow } from '../../types.js';
 import { CATEGORY_LABEL, groupBy } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
@@ -135,6 +136,9 @@ export const tecnicoDopoConsenso: Rule = {
       (r) =>
         rejected.has(r.site) &&
         r.status === 'dichiarato' &&
+        // dichiarato anche in una categoria soggetta a consenso (es. tecnici e profilazione): comparire solo dopo
+        // il consenso è coerente con quella dichiarazione; l'incoerenza tra le due categorie ha già la sua scheda
+        r.declaredCategories.every((c) => normalizeDeclaredCategory(c) === 'tecnico') &&
         r.declaredAlwaysActive &&
         r.scenarios.includes('accetta') &&
         !r.scenarios.includes('rifiuta') &&
