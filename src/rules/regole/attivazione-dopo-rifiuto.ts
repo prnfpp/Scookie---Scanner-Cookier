@@ -11,6 +11,12 @@ export const attivazioneDopoRifiuto: Rule = {
   evaluate({ sessions }) {
     const out: RawFinding[] = [];
     for (const s of sessions.filter((x) => x.scenario === 'rifiuta' && x.interaction.outcome === 'eseguito')) {
+      // Lo stesso cookie già scritto prima della scelta (nella sessione, con altro dominio o percorso, o nella
+      // sessione senza azione dello stesso sito): dopo il rifiuto è un aggiornamento, non un identificativo nuovo.
+      const preSame = new Set(s.cookies.filter((c) => c.phase === 'prima').map((c) => c.name));
+      const preSite = new Set(sessions.filter((x) => x.site === s.site && x.scenario === 'nessuna-azione').flatMap((x) => x.cookies.map((c) => c.name)));
+      const cookieNote = (name: string) =>
+        preSame.has(name) ? ' (già presente prima della scelta in questa sessione: continua a essere scritto o aggiornato)' : preSite.has(name) ? ' (compare già prima di qualsiasi scelta nelle sessioni senza azione dello stesso sito)' : '';
       const cookies = s.cookies.filter((c) => c.phase === 'dopo' && NON_TECHNICAL.has(c.classification.category));
       const reqs = s.requests.filter(
         (r) => r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r),
@@ -38,13 +44,18 @@ export const attivazioneDopoRifiuto: Rule = {
           pageUrl: pages[0] ?? null,
           severity: level === 'risorsa' ? 'media' : undefined,
           evidenceLevel: level,
+          subjects: [key],
           groupKey: `${key}|${cat}`,
           headline: `Dopo il rifiuto, ${key} continua a ${cs.length ? 'scrivere identificativi nel browser' : level === 'raccolta' ? 'ricevere dati di navigazione' : 'essere caricato dal sito'}${!cs.length && consentShort ? `, ${consentShort}` : ''}`,
-          description: `Dopo il rifiuto (eseguito ${choiceHow(s.interaction)}), per ${key} (${CATEGORY_LABEL[cat!]}) ${parts.join(' e ')}.`,
+          description:
+            `Dopo il rifiuto (eseguito ${choiceHow(s.interaction)}), per ${key} (${CATEGORY_LABEL[cat!]}) ${parts.join(' e ')}.` +
+            (cs.length && cs.every((c) => preSame.has(c.name))
+              ? ' Gli stessi cookie erano già presenti prima della scelta: dopo il rifiuto continuano a essere scritti o aggiornati, non sono identificativi nuovi.'
+              : ''),
           details: [
             `Pagine in cui si osserva: ${pages.join(', ')}`,
             `Metodo di interazione: ${s.interaction.method}; verifica stato consenso: ${s.interaction.verification} ${s.interaction.verificationDetail}`,
-            ...cs.map((c) => `cookie ${c.name} — ${c.domain}, prima volta su ${c.firstSeenUrl}`),
+            ...cs.map((c) => `cookie ${c.name} — ${c.domain}, prima volta su ${c.firstSeenUrl}${cookieNote(c.name)}`),
             ...(sample ? [`Richiesta di esempio: ${sample.msFromChoice} ms dopo la scelta — ${sample.url.slice(0, 200)}`] : []),
             ...(consent ? [`Consenso Google dichiarato nella richiesta di esempio: ${consent}${sample?.fromServiceWorker ? ' (richiesta inviata da un service worker del sito)' : ''}`] : []),
             ...(summary.detail ? [summary.detail] : []),

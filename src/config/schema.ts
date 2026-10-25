@@ -206,6 +206,21 @@ export const configSchema = z
     norme: z.string().optional(),
     /** File YAML aggiuntivo di domini tracker (si somma all'elenco incluso). */
     trackerExtra: z.string().optional(),
+    /**
+     * Dati di prova inseriti dall'operatore nelle navigazioni manuali (targa, data di nascita…). Il tool li riconosce
+     * nelle richieste come prova certa, li riporta in chiaro (sono fittizi o concordati) e distingue i valori che
+     * soltanto somigliano a dati personali.
+     */
+    datiDiProva: z
+      .object({
+        targa: z.string().optional(),
+        dataNascita: z.string().optional(),
+        email: z.string().optional(),
+        codiceFiscale: z.string().optional(),
+        telefono: z.string().optional(),
+      })
+      .strict()
+      .optional(),
     report: z
       .object({
         pdf: z.boolean().default(true),
@@ -214,11 +229,16 @@ export const configSchema = z
          * I corpi delle richieste (dati inviati ai terzi) restano sempre.
          */
         harContenuti: z.enum(['tutti', 'testo', 'nessuno']).default('testo'),
+        /**
+         * HAR compressi (.har.gz) e, per le sessioni non citate nelle schede, senza corpi delle risposte:
+         * la cartella si consegna più facilmente. Su Mac un doppio clic sul .gz restituisce il .har.
+         */
+        harCompressi: z.boolean().default(true),
         /** Testo libero da includere nella sezione "Limiti". */
         noteLimiti: z.array(z.string()).default([]),
       })
       .strict()
-      .default({ pdf: true, harContenuti: 'testo', noteLimiti: [] }),
+      .default({ pdf: true, harContenuti: 'testo', harCompressi: true, noteLimiti: [] }),
     siti: z.array(siteSchema).min(1),
   })
   .strict();

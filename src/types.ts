@@ -256,6 +256,13 @@ export interface NormRef {
   url?: string;
 }
 
+/** In quante ripetizioni automatiche è stato osservato; `manual`: solo in una sessione manuale, fatta una volta. */
+export interface Repeats {
+  seen: number;
+  of: number;
+  manual?: boolean;
+}
+
 export interface Finding {
   id: string; // C-001
   ruleId: string;
@@ -274,12 +281,13 @@ export interface Finding {
   evidenceLevel?: 'risorsa' | 'raccolta' | 'identificativo';
   /** Frase breve e in linguaggio semplice per la sintesi iniziale. */
   headline?: string;
+  /** Fornitori o piattaforme di cui parla la scheda. */
+  subjects?: string[];
   /** Siti a cui si riferisce la scheda (più di uno se raggruppata tra sottodomini). */
   sites: string[];
   /** Chiave stabile tra esecuzioni (regola, oggetto, dominio): serve al confronto tra due esecuzioni. */
   key?: string;
   /** Con ripetizioni: in quante esecuzioni dello scenario il fatto si è osservato, su quante. */
-  /** In quante ripetizioni è stato osservato; `manual`: solo nella navigazione manuale, che si fa una volta. */
-  repeats?: { seen: number; of: number; manual?: boolean };
+  repeats?: Repeats & { perSite?: (Repeats & { host: string })[] };
   norms: NormRef[];
 }

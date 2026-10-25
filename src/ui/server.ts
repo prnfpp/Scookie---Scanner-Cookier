@@ -29,6 +29,7 @@ const TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.pdf': 'application/pdf',
   '.har': 'application/json; charset=utf-8',
+  '.gz': 'application/gzip',
   '.sha256': 'text/plain; charset=utf-8',
 };
 
@@ -383,7 +384,7 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
     const abs = resolve(runsDir, ...parts);
     if (!abs.startsWith(runsDir + sep) || !existsSync(abs) || !statSync(abs).isFile()) throw new HttpError(404, 'File non trovato');
     const ext = extname(abs).toLowerCase();
-    const download = ['.har', '.csv', '.json', '.sha256'].includes(ext);
+    const download = ['.har', '.gz', '.csv', '.json', '.sha256'].includes(ext);
     send(res, 200, readFileSync(abs), TYPES[ext] ?? 'application/octet-stream', download ? { 'content-disposition': `attachment; filename="${parts[parts.length - 1]}"` } : {});
   }
 

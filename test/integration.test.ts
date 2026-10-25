@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -283,7 +284,13 @@ test('output: report, dati, evidenze con hash verificabili', () => {
     assert.ok(existsSync(join(result.runDir, f)), f);
   }
   const manifest = JSON.parse(readFileSync(join(result.runDir, 'manifest.json'), 'utf8')) as { file: { path: string; sha256: string }[] };
-  assert.ok(manifest.file.some((f) => f.path.endsWith('.har')));
+  // HAR compressi; quelli delle sessioni non citate nelle schede senza corpi delle risposte
+  const hars = manifest.file.filter((f) => f.path.endsWith('.har.gz'));
+  assert.ok(hars.length && !manifest.file.some((f) => f.path.endsWith('.har')));
+  const cited = new Set(result.findings.flatMap((f) => f.evidence.map((e) => e.file)));
+  const uncited = hars.find((f) => !cited.has(f.path))!;
+  const log = JSON.parse(gunzipSync(readFileSync(join(result.runDir, uncited.path))).toString('utf8')) as { log: { entries: { response: { content: { text?: string } } }[] } };
+  assert.ok(log.log.entries.length && log.log.entries.every((e) => e.response.content.text === undefined));
   for (const f of manifest.file) {
     const h = createHash('sha256').update(readFileSync(join(result.runDir, f.path))).digest('hex');
     assert.equal(h, f.sha256, f.path);
