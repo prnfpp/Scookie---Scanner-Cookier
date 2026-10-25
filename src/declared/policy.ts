@@ -59,7 +59,9 @@ export async function readPolicyDeclared(browser: Browser, url: string, userAgen
         const head = grid[0].map((c) => (c ?? '').toLowerCase());
         const iName = head.findIndex((h) => /^(nome|name|cookie|nome del cookie|cookie name|denominazione)$/.test(h) || /^nome\b/.test(h));
         if (iName < 0) continue;
-        const iCat = head.findIndex((h) => /(categoria|category|tipologia|tipo di cookie|finalit|purpose|scopo)/.test(h));
+        // una colonna "Categoria" vale più di una colonna con la finalità descritta ("Scopo", "Finalità")
+        const iCatStrict = head.findIndex((h) => /(categoria|category|tipologia|tipo di cookie)/.test(h));
+        const iCat = iCatStrict >= 0 ? iCatStrict : head.findIndex((h) => /(finalit|purpose|scopo)/.test(h));
         const iDom = head.findIndex((h) => /(dominio|domain|host|fornitore|provider|terza parte)/.test(h));
         const section = headingBefore(table);
         for (const cells of grid.slice(1)) {
