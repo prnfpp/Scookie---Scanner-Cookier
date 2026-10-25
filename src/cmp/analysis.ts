@@ -70,13 +70,17 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
         500,
       );
       await shot('4-preferenze');
-      // Anche nel pannello: evidenza di "Consenti tutti" rispetto a "Rifiuta tutti"
-      const inner = (await scan(page)).candidates;
-      const prom = {
-        accept: await lookOf(inner.find((c) => TEXTS.accept.test(c.text))),
-        reject: await lookOf(inner.find((c) => TEXTS.preferencesReject.test(c.text) || TEXTS.reject.test(c.text))),
-      };
-      preferences = { opened: true, via: opened, toggles, prominence: prom };
+      // Anche nel pannello: evidenza di "Consenti tutti" rispetto a "Rifiuta tutti". Solo comandi dentro il
+      // pannello di un gestore noto: il banner di primo livello spesso resta visibile sotto e va escluso.
+      const inner: Candidate[] = [];
+      for (const c of (await scan(page)).candidates) if (await inPreferencePanel(c)) inner.push(c);
+      const prom = inner.length
+        ? {
+            accept: await lookOf(inner.find((c) => TEXTS.accept.test(c.text))),
+            reject: await lookOf(inner.find((c) => TEXTS.preferencesReject.test(c.text) || TEXTS.reject.test(c.text))),
+          }
+        : undefined;
+      preferences = { opened: true, via: opened, toggles, ...(prom ? { prominence: prom } : {}) };
     } catch (e) {
       preferences = { opened: false, via: (e as Error).message.split('\n')[0], toggles: [] };
     }
@@ -91,6 +95,20 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
     preferences,
     prominence,
   };
+}
+
+/** Pannelli delle preferenze dei gestori noti (secondo livello), distinti dal banner di primo livello. */
+const PREFERENCE_PANELS = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '.didomi-consent-popup-preferences', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#hs-modal', '[id^="hs-"][id*="modal"]', '.iubenda-cs-preferences'];
+
+async function inPreferencePanel(c: Candidate): Promise<boolean> {
+  return c.frame
+    .locator(`[data-scookie-c="${c.index}"]`)
+    .first()
+    .evaluate((el, sel) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && sel.some((s) => !!el.closest(s));
+    }, PREFERENCE_PANELS)
+    .catch(() => false);
 }
 
 /** Misure oggettive di un comando: dimensioni, testo, sfondo e contrasto (formula WCAG 2.x). */
@@ -156,7 +174,7 @@ async function measure(c: Candidate): Promise<CommandLook | null> {
 export async function readToggles(frame: import('playwright').Frame, isMain: boolean): Promise<{ label: string; checked: boolean; disabled: boolean; index?: number }[]> {
   return frame.evaluate((isMain) => {
     // Contenitori dei CMP noti: se uno è visibile, si leggono solo i suoi interruttori (non il resto della pagina)
-    const KNOWN = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '#didomi-host', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#cmplz-cookiebanner-container', '#hs-modal', '#hs-eu-cookie-confirmation', '.iubenda-cs-preferences', '#iubenda-cs-banner'];
+    const KNOWN = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '#didomi-host', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#cmplz-cookiebanner-container', '#hs-modal', '#hs-eu-cookie-confirmation', '#hs-banner-parent', '[id^="hs-"][id*="modal"]', '.iubenda-cs-preferences', '#iubenda-cs-banner'];
     const shown = (el: Element) => {
       const r = el.getBoundingClientRect();
       return r.width > 1 && r.height > 1 && getComputedStyle(el).visibility !== 'hidden';
@@ -185,7 +203,8 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
     };
     const all: Element[] = [];
     const walk = (root: Document | ShadowRoot) => {
-      for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"]'))) {
+      // anche interruttori fatti con pulsanti (aria-pressed), come in alcuni banner HubSpot
+      for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"], button[aria-pressed], button[aria-checked]'))) {
         // marcature di una lettura precedente: andrebbero a confondersi con quelle nuove
         el.removeAttribute('data-scookie-t');
         all.push(el);
@@ -223,7 +242,7 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
       .filter((el) => visible(el) && (!isMain || inConsentUi(el)))
       .map((el, index) => {
         const input = el as HTMLInputElement;
-        const checked = input.type === 'checkbox' ? input.checked : el.getAttribute('aria-checked') === 'true';
+        const checked = input.type === 'checkbox' ? input.checked : el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-pressed') === 'true';
         const disabled = input.disabled || el.getAttribute('aria-disabled') === 'true';
         el.setAttribute('data-scookie-t', String(index));
         return { label: labelOf(el).replace(/\s+/g, ' ').slice(0, 80), checked, disabled, index };

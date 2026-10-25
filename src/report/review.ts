@@ -151,7 +151,7 @@ interface Manifest {
   inizio: string;
   fine: string;
   ambiente: { browser: string; userAgent: string; uscita: ExitInfo };
-  configurazione: { contenuto: string };
+  configurazione: { contenuto: string; file?: string };
   norme: { file: string };
   file: { path: string; sha256: string; bytes: number }[];
 }
@@ -174,6 +174,7 @@ export async function applyReview(runDir: string, opts: { pdf?: boolean } = {}):
   const config = configSchema.parse(parse(m.configurazione.contenuto));
   const html = renderHtml({
     config,
+    configFile: m.configurazione.file,
     toolVersion: m.strumento.versione,
     browserVersion: m.ambiente.browser,
     userAgent: m.ambiente.userAgent,

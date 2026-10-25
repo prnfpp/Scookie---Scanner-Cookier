@@ -83,9 +83,10 @@ export const categoriaIncoerente: Rule = {
   title: 'Categoria dichiarata non coerente',
   defaultSeverity: 'media',
   defaultNorms: ['gdpr13', 'garante2021', 'art122'],
-  evaluate({ comparison }) {
+  evaluate({ comparison, sessions }) {
     const out: RawFinding[] = [];
     const rows = comparison.filter((r) => r.categoryIssue);
+    const platforms = (list: ComparisonRow[]) => [...new Set(list.map((r) => sessions.flatMap((s) => s.cookies).find((c) => c.name === r.name && c.classification.platform)?.classification.platform).filter((p): p is string => !!p))];
     for (const [key, list] of groupBy(rows, (r) => `${r.site}|${r.categoryIssue}|${r.categoryIssue === 'incoerente' ? r.declaredCategories.join(' + ') : ''}`)) {
       const r = list[0];
       const names = list.map((x) => `${label(x)} — riconosciuto come ${CATEGORY_LABEL[x.observedCategory ?? 'sconosciuta']}${x.categoryIssue === 'categorie-multiple' ? `; categorie dichiarate: ${x.declaredCategories.join(', ')}` : ''}`);
@@ -96,6 +97,7 @@ export const categoriaIncoerente: Rule = {
           site: r.site,
           scenario: null,
           pageUrl: null,
+          subjects: platforms(list),
           groupKey: key.split('|').slice(1).join('|'),
           headline: `Elementi di ${observed} dichiarati nella categoria tecnica${r.declaredAlwaysActive ? ' "sempre attiva"' : ''} "${cat}"`,
           description: `${list.length === 1 ? '1 elemento riconosciuto' : `${list.length} elementi riconosciuti`} come ${observed} ${list.length === 1 ? 'è dichiarato' : 'sono dichiarati'} nella categoria "${cat}", trattata come tecnica${r.declaredAlwaysActive ? ' e "sempre attiva" (non rifiutabile)' : ''}.`,
@@ -153,6 +155,7 @@ export const tecnicoDopoConsenso: Rule = {
         site,
         scenario: 'accetta',
         pageUrl: null,
+        subjects: [platform],
         groupKey: platform,
         headline: `${platform}: elementi dichiarati tecnici e "sempre attivi" compaiono solo dopo l'accettazione${afterRevoke ? ' e restano dopo la revoca' : ''}`,
         description:

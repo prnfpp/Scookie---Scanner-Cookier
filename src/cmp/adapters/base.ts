@@ -34,6 +34,8 @@ export interface SelectorCmpSpec {
   stateExpr: string;
   check(state: unknown, choice: Choice): ConsentCheck;
   declared?(page: Page): Promise<DeclaredItem[] | null>;
+  /** Espressione JS che riapre il banner (per la revoca). */
+  reopenExpr?: string;
 }
 
 async function evalExpr<T>(page: Page, expr: string): Promise<T | null> {
@@ -64,6 +66,13 @@ export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
       return (await page.locator(spec.detectSelectors.join(', ')).count().catch(() => 0)) > 0;
     },
     bannerVisible,
+    ...(spec.reopenExpr
+      ? {
+          async reopen(page: Page) {
+            return (await evalExpr(page, `(() => { ${spec.reopenExpr}; return true; })()`)) !== null;
+          },
+        }
+      : {}),
     async choose(page, choice, mode) {
       if (mode === 'api') {
         const api = choice === 'accetta' ? spec.accept.api : spec.reject.api;

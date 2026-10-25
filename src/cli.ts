@@ -87,7 +87,7 @@ program
   .option('-p, --porta <numero>', 'porta locale', '4777')
   .option('--no-apri', 'non aprire il browser automaticamente')
   .action(async (opts: { clienti: string; esecuzioni: string; porta: string; apri: boolean }) => {
-    const ui = await startUi({ clientsDir: opts.clienti, runsDir: opts.esecuzioni, port: Number(opts.porta) }).catch((e: NodeJS.ErrnoException) => {
+    const ui = await startUi({ clientsDir: opts.clienti, runsDir: opts.esecuzioni, port: Number(opts.porta), onQuit: () => process.exit(0) }).catch((e: NodeJS.ErrnoException) => {
       if (e.code === 'EADDRINUSE') {
         throw new Error(`La porta ${opts.porta} è già in uso: forse l'interfaccia è già aperta in un'altra finestra del terminale. In alternativa: npm run interfaccia -- --porta 4778`);
       }

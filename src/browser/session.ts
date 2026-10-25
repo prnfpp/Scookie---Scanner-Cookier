@@ -12,6 +12,7 @@ import { Collector } from './collector.js';
 import { trimHar } from './har.js';
 import { maskPii } from '../util/pii.js';
 import { manualJourney, type ManualPlan } from './manual.js';
+import { replayJourney, type RecordedPath } from './replay.js';
 
 export interface SessionPlan {
   id: string;
@@ -26,6 +27,8 @@ export interface SessionPlan {
   revokePage?: string;
   /** Navigazione manuale dell'operatore al posto delle pagine successive. */
   manual?: ManualPlan;
+  /** Percorso registrato in una navigazione manuale precedente, da rigiocare in automatico dopo la scelta. */
+  replay?: RecordedPath;
   /** Numero della ripetizione (1 se lo scenario si esegue una sola volta). */
   repeat?: number;
 }
@@ -39,6 +42,8 @@ export interface SessionEnv {
   onDeclared?: (items: DeclaredItem[], cmp: string) => void;
   /** Solo test: simula l'operatore nelle sessioni con navigazione manuale. */
   manualDriver?: (page: Page) => Promise<void>;
+  /** Riceve la funzione che chiude la navigazione manuale in corso (null quando non ce n'è una). */
+  onManualFinisher?: (finish: (() => void) | null) => void;
   /** Avvisa l'operatore che una sessione manuale sta per iniziare. */
   log?: (msg: string) => void;
 }
@@ -81,7 +86,10 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   const collector = new Collector(context, new PartyResolver(domain, config.dominiPropri), env.classifier);
   const page = await context.newPage();
 
+  /** Passo in corso: se la sessione si blocca, l'anomalia dice dove. */
+  let stage = 'apertura del browser';
   const shot = async (label: string) => {
+    stage = `screenshot "${label}" di ${maskPii(collector.currentUrl)}`;
     const rel = `evidenze/${plan.id}_${slug(label)}.png`;
     try {
       await page.screenshot({ path: join(env.runDir, rel), timeout: 15000 });
@@ -93,6 +101,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
 
   let blocked: BotBlock | null = null;
   const visit = async (url: string): Promise<boolean> => {
+    stage = `caricamento di ${maskPii(url)}`;
     collector.currentUrl = url;
     let response: Response | null = null;
     try {
@@ -116,8 +125,9 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
       }
     };
     if (strip(page.url()) !== strip(url)) {
-      collector.currentUrl = page.url();
-      errors.push(`la pagina ${url} ha portato a ${maskPii(page.url())} (reindirizzamento)`);
+      collector.currentUrl = maskPii(page.url());
+      const note = `la pagina ${url} ha portato a ${maskPii(page.url())} (reindirizzamento)`;
+      if (!errors.includes(note)) errors.push(note);
     }
     // Una pagina di verifica anti-bot non è il sito: la sessione non è valida e non si prosegue.
     blocked ??= await detectBotChallenge(page, response);
@@ -129,6 +139,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   };
 
   const settle = async () => {
+    stage = `attesa e scroll su ${maskPii(collector.currentUrl)}`;
     if (p.scroll) {
       // Lo scroll è un'azione dell'utente: ciò che compare da qui in poi non è più "al caricamento".
       collector.markScroll();
@@ -155,10 +166,24 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let revocation: SessionResult['revocation'];
   let manual: SessionResult['manual'];
   let unreachable: string | undefined;
+  let replay: SessionResult['replay'];
+  const runReplay = async () => {
+    stage = `percorso registrato su ${maskPii(collector.currentUrl)}`;
+    const r = await replayJourney(page, collector, plan.replay!);
+    replay = { ...r, recordedAt: plan.replay!.savedAt, fromSession: plan.replay!.fromSession };
+    env.log?.(`    percorso registrato: ${r.stepsDone}/${r.stepsTotal} passi${r.stoppedAt ? `; interrotto al ${r.stoppedAt}` : ''}`);
+    if (r.stoppedAt) errors.push(`percorso registrato interrotto al ${r.stoppedAt}: il sito può essere cambiato, va registrato di nuovo`);
+    await shot('3-fine');
+  };
   const runManual = async () => {
     env.log?.(`    NAVIGAZIONE MANUALE: nella finestra del browser segui le istruzioni e premi "Ho finito" (massimo ${Math.round(plan.manual!.maxMs / 60000)} minuti).`);
-    manual = await manualJourney(page, collector, plan.manual!, env.manualDriver);
+    manual = await manualJourney(page, collector, plan.manual!, env.manualDriver, env.onManualFinisher);
     env.log?.(`    navigazione manuale conclusa (${manual.endedBy === 'operatore' ? 'premuto "Ho finito"' : manual.endedBy === 'tempo' ? 'tempo scaduto' : 'finestra chiusa'})`);
+    if (manual.pages.length <= 1 || manual.seconds < 60) {
+      const note = `navigazione manuale probabilmente incompleta: conclusa dopo ${manual.seconds} s con ${manual.pages.length === 1 ? 'una sola pagina' : `${manual.pages.length} pagine`} visitate; va rifatta`;
+      errors.push(note);
+      env.log?.(`    ATTENZIONE: ${note}`);
+    }
     await shot('3-fine');
   };
   const banner = plan.siteConfig.banner;
@@ -200,10 +225,15 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
           await runManual();
           return;
         }
+        if (plan.replay) {
+          await runReplay();
+          return;
+        }
         await settle();
         await shot('3-fine');
         if (plan.analyzeBanner && obs.visible) {
           collector.pause();
+          stage = `analisi del banner su ${maskPii(collector.currentUrl)}`;
           bannerAnalysis = await analyzeBanner(page, obs.adapters, shot).catch((e) => {
             errors.push(`analisi del banner non riuscita: ${(e as Error).message.split('\n')[0]}`);
             return undefined;
@@ -223,6 +253,10 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         }
         if (plan.manual) {
           await runManual();
+          return;
+        }
+        if (plan.replay) {
+          await runReplay();
           return;
         }
         await settle();
@@ -262,7 +296,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     // Le sessioni manuali durano quanto serve all'operatore, entro il loro tempo massimo
     await withTimeout(flow(), plan.manual ? Math.max(p.timeoutSessione, plan.manual.maxMs + 120000) : p.timeoutSessione, 'sessione interrotta');
   } catch (e) {
-    errors.push(`errore durante la sessione: ${(e as Error).message.split('\n')[0]}`);
+    const msg = (e as Error).message.split('\n')[0];
+    errors.push(`errore durante la sessione: ${msg}${msg.startsWith('sessione interrotta') ? ` (passo in corso: ${stage})` : ''}`);
   } finally {
     // La chiusura salva il file HAR: se non avviene, la sessione resta senza HAR e lo si annota.
     const err = await closeSafely(context, 90000, 'chiusura contesto (salvataggio HAR)');
@@ -298,6 +333,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     ...(bannerAnalysis ? { bannerAnalysis } : {}),
     ...(revocation ? { revocation } : {}),
     ...(manual ? { manual } : {}),
+    ...(replay ? { replay, pages: replay.pages } : {}),
     ...(unreachable ? { unreachable } : {}),
     ...(plan.repeat ? { repeat: plan.repeat } : {}),
   };

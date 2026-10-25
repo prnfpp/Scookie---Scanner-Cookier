@@ -271,10 +271,32 @@ export async function performRevocation(
   if (revokePage) {
     await page.goto(revokePage, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(1500);
+    // nella pagina di gestione dei cookie di solito c'è il pulsante che riapre il banner
+    for (const f of frames(page)) {
+      if (!(await findRevokeControl(f))) continue;
+      const link = f.locator('[data-scookie-revoke]').first();
+      await link.click({ timeout: 5000 }).catch(() => link.click({ timeout: 5000, force: true }).catch(() => {}));
+      await page.waitForTimeout(1000);
+      break;
+    }
     const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
     const where = `${notes.length ? `${notes.join('; ')}; ` : 'nessun comando nella pagina; '}aperta la pagina di gestione dei cookie trovata nella sitemap (${revokePage})`;
     if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'pagina', how: `${where}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
     notes.push(`pagina ${revokePage} aperta, ma rifiuto non eseguito (${r.detail})`);
+  }
+  // Banner riaperto con l'API del CMP (come fa il suo link "Impostazioni cookie"), poi rifiuto con un click vero
+  for (const a of await detectCmps(page)) {
+    if (!a.reopen || !(await a.reopen(page).catch(() => false))) continue;
+    await page.waitForTimeout(1500);
+    const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
+    if (r.outcome === 'eseguito') {
+      return {
+        outcome: 'eseguita',
+        via: 'api',
+        how: `${notes.length ? `${notes.join('; ')}; ` : ''}banner riaperto con l'API di ${a.name} (la stessa del suo link "Impostazioni cookie"), poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}`,
+      };
+    }
+    notes.push(`banner riaperto con l'API di ${a.name}, ma rifiuto non eseguito (${r.detail})`);
   }
   for (const a of await detectCmps(page)) {
     const r = await a.choose(page, 'rifiuta', 'api').catch(() => null);
