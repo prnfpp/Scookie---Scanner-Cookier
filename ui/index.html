@@ -48,9 +48,9 @@ nav.tabs button:hover { opacity: 1; background: rgba(255,255,255,.08); }
 nav.tabs button.on { opacity: 1; background: rgba(255,255,255,.15); }
 .status { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: .86rem; background: rgba(255,255,255,.1); padding: 6px 12px 6px 9px; border-radius: 999px; border: 0; color: inherit; cursor: pointer; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #8FD4B0; flex: none; }
-.status.run .dot { background: #93C5FD; animation: pulse 1.4s infinite; }
-.status.wait .dot { background: #F2C46B; animation: pulse 1s infinite; }
-.status.err .dot { background: #F19A86; }
+.status.st-run .dot { background: #93C5FD; animation: pulse 1.4s infinite; }
+.status.st-wait .dot { background: #F2C46B; animation: pulse 1s infinite; }
+.status.st-err .dot { background: #F19A86; }
 @keyframes pulse { 50% { opacity: .35; } }
 .mini { width: 60px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.22); overflow: hidden; }
 .mini i { display: block; height: 100%; background: #93C5FD; width: 0; transition: width .4s; }
@@ -309,6 +309,7 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
       <div class="row spread"><h2>Tocca a te: navigazione manuale</h2><span class="chip warn">In attesa</span></div>
       <p>Si è aperta una finestra del browser: il tool ha già fatto la scelta sul banner. Segui le istruzioni nel riquadro in basso a sinistra della finestra e premi <b>"Ho finito"</b>.</p>
       <p class="small muted">Non toccare il banner dei cookie. Usa solo dati palesemente fittizi o concordati con il cliente: i moduli inviati arrivano davvero al sito e ai suoi fornitori.</p>
+      <div class="row"><button class="btn primary" id="manual-done">Ho finito la navigazione</button><span class="small muted">Stesso effetto del pulsante nel riquadro della finestra: usalo se il riquadro non si vede.</span></div>
     </div>
     <div class="msg warn hidden" id="job-offline"><b>Connessione assente.</b> Il tool riprova da solo ogni 10 secondi: controlla il Wi-Fi o che il computer non sia in stop.</div>
     <div id="job-result"></div>
@@ -784,7 +785,7 @@ function renderStatus(j) {
   const running = j && j.status === 'in-corso';
   const waiting = running && pr && pr.waiting;
   const pct = running && pr && pr.total ? Math.round(progressPct(pr)) : null;
-  st.className = 'status ' + (waiting ? 'wait' : running ? 'run' : j && j.status === 'errore' ? 'err' : '');
+  st.className = 'status ' + (waiting ? 'st-wait' : running ? 'st-run' : j && j.status === 'errore' ? 'st-err' : '');
   $('#status-t').textContent = waiting === 'manuale' ? 'Azione richiesta' : waiting === 'connessione' ? 'In pausa: connessione' : running ? (j.kind === 'audit' ? 'Audit in corso' : 'Anteprima in corso') : j && j.status === 'errore' ? 'Ultima operazione: errore' : 'Pronto';
   $('#mini').classList.toggle('hidden', pct == null);
   if (pct != null) $('#mini i').style.width = pct + '%';
@@ -905,6 +906,18 @@ async function loadRuns() {
   }).join('');
 }
 $('#refresh-runs').onclick = loadRuns;
+$('#manual-done').onclick = async () => {
+  const b = $('#manual-done');
+  b.disabled = true;
+  try {
+    await api('/api/manuale/fatto', { method: 'POST', body: {} });
+    toast('Navigazione manuale conclusa: l\'audit prosegue.');
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    setTimeout(() => (b.disabled = false), 3000);
+  }
+};
 $('#runs').addEventListener('click', async (ev) => {
   const open = ev.target.closest('[data-open-run]');
   if (open) return openReview(open.dataset.openRun);

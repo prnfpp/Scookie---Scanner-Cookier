@@ -151,6 +151,8 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
   const token = randomBytes(24).toString('hex');
   let job: Job | null = null;
   let jobSeq = 0;
+  /** Chiude la navigazione manuale in corso (pulsante "Ho finito" dell'interfaccia). */
+  let manualFinish: (() => void) | null = null;
   let port = opts.port;
 
   const allowedHosts = () => new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
@@ -299,6 +301,9 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
       }
       const j = startJob('audit', body.file!, async (jj) => {
         const result = await runAudit(loaded, {
+          onManualFinisher: (f) => {
+            manualFinish = f;
+          },
           outDir: runsDir,
           pdf: body.pdf === false ? false : undefined,
           onlySites,
@@ -313,6 +318,13 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
         jj.runName = result.runDir.split(sep).pop() ?? null;
       });
       return json(res, 202, { id: j.id });
+    }
+    // "Ho finito" dall'interfaccia, se il riquadro nella finestra del browser non è raggiungibile
+    if (path === '/api/manuale/fatto' && method === 'POST') {
+      if (!manualFinish) throw new HttpError(409, 'Nessuna navigazione manuale in corso');
+      manualFinish();
+      manualFinish = null;
+      return json(res, 200, { ok: true });
     }
     if (path === '/api/lavoro' && method === 'GET') {
       return json(res, 200, job);

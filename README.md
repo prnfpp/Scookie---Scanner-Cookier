@@ -137,7 +137,7 @@ I limiti si cambiano in `campionamento.esplorazione` (`sePaginaMeno`, `profondit
 
 Alcuni percorsi richiedono di compilare moduli (targa, data di nascita…) e il tool non li fa da solo. Per questi c'è la **navigazione manuale assistita**, che si attiva scrivendo le istruzioni nel campo "Navigazione manuale" del sito (non parte da sola). Le navigazioni manuali si fanno **tutte all'inizio dell'audit**, subito dopo la scoperta delle pagine: dopo, l'audit prosegue da solo e puoi lasciare il computer. Nell'interfaccia compare l'avviso "Azione richiesta" finché non premi "Ho finito".
 
-Come funziona: il browser si apre in una finestra, il tool esegue la scelta sul banner (es. "Rifiuta"), poi un riquadro in basso a sinistra mostra le istruzioni e tu navighi a mano. Quando hai finito premi **"Ho finito"** nel riquadro. Tutto quello che succede viene registrato come nelle altre sessioni (cookie, richieste, HAR, screenshot) e le regole lo valutano allo stesso modo; il report elenca le pagine che hai percorso.
+Come funziona: il browser si apre in una finestra, il tool esegue la scelta sul banner (es. "Rifiuta"), poi un riquadro in basso a sinistra mostra le istruzioni e tu navighi a mano. Quando hai finito premi **"Ho finito"** nel riquadro (oppure **"Ho finito la navigazione"** nella scheda Audit dell'interfaccia, se il riquadro non si vede). Solo le navigazioni manuali hanno una finestra: scoperta delle pagine e sessioni automatiche restano senza finestra, così il computer resta utilizzabile. Tutto quello che succede viene registrato come nelle altre sessioni (cookie, richieste, HAR, screenshot) e le regole lo valutano allo stesso modo; il report elenca le pagine che hai percorso.
 
 ```yaml
   - url: https://app.esempio.it/

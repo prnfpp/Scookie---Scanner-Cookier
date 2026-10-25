@@ -3,7 +3,10 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { chromium } from 'playwright';
 import { stringify } from 'yaml';
+import type { Collector } from '../src/browser/collector.js';
+import { manualJourney } from '../src/browser/manual.js';
 import { loadConfig } from '../src/config/load.js';
 import { runAudit, type RunResult } from '../src/run.js';
 import { FIXTURES, startFixtureServer } from './fixtures/server.js';
@@ -84,4 +87,32 @@ test('ripetizioni: ogni scenario due volte, le schede dicono in quante è stato 
   const f = result.findings.find((x) => x.ruleId === 'cookie-prima-del-consenso' && x.site.includes('sito-a.test'))!;
   assert.deepEqual(f.repeats, { seen: 2, of: 2 });
   assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Osservato in 2 esecuzioni su 2/);
+});
+
+test('riquadro "Ho finito": formattato e cliccabile con CSP restrittiva e finestra modale del sito', async () => {
+  const browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext();
+    await ctx.route('http://csp.test/**', (r) =>
+      r.fulfill({
+        contentType: 'text/html',
+        headers: { 'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'; require-trusted-types-for 'script'" },
+        body: '<!doctype html><body><h1>CSP</h1><dialog id=d><p>Modale</p></dialog><script>document.getElementById("d").showModal()</script></body>',
+      }),
+    );
+    const page = await ctx.newPage();
+    await page.goto('http://csp.test/');
+    let external: (() => void) | null = null;
+    const collector = { snapshot: async () => {}, currentUrl: '' } as unknown as Collector;
+    const journey = manualJourney(page, collector, { instructions: 'Prova <b>fittizia</b>', maxMs: 30000 }, undefined, (f) => (external = f ?? external));
+    const btn = page.locator('#scookie-operatore >> text=Ho finito');
+    await btn.waitFor();
+    assert.equal(await btn.evaluate((b) => getComputedStyle(b).backgroundColor), 'rgb(52, 199, 89)');
+    assert.ok(await page.locator('#scookie-operatore >> text=Prova <b>fittizia</b>').count(), 'istruzioni come testo');
+    assert.ok(external, 'chiusura disponibile anche per l\'interfaccia');
+    await btn.click({ timeout: 5000 });
+    assert.equal((await journey).endedBy, 'operatore');
+  } finally {
+    await browser.close();
+  }
 });

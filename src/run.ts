@@ -26,6 +26,8 @@ export interface RunOptions {
   log?: (msg: string) => void;
   /** Solo test: simula l'operatore nelle sessioni con navigazione manuale (il browser resta senza finestra). */
   manualDriver?: (page: Page) => Promise<void>;
+  /** Riceve la funzione che chiude la navigazione manuale in corso (null quando non ce n'è una). */
+  onManualFinisher?: (finish: (() => void) | null) => void;
   /** Avanzamento per l'interfaccia (fase, sessioni, tempo stimato). */
   onProgress?: (p: Progress) => void;
   /** Esegue solo questi siti della configurazione (indirizzi), es. per ripetere quelli non raggiunti. */
@@ -212,13 +214,15 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const extra: TrackerEntry[] = config.trackerExtra ? Classifier.loadExtraTrackers(loaded.resolvePath(config.trackerExtra)) : [];
   const classifier = new Classifier(extra);
 
-  // Con la navigazione manuale il browser deve avere una finestra (salvo nei test, dove l'operatore è simulato)
+  // Solo le navigazioni manuali hanno una finestra (un browser a parte, chiuso a fine fase); scoperta e sessioni
+  // automatiche restano senza finestra, così il computer resta utilizzabile. Nei test l'operatore è simulato.
   const manualSites = config.siti.filter((s) => s.navigazioneManuale);
   if (manualSites.length && !opts.manualDriver) {
     log(`Navigazione manuale prevista per: ${manualSites.map((s) => s.url).join(', ')}. Il browser si aprirà in una finestra: restare al computer.`);
   }
-  const headless = manualSites.length && !opts.manualDriver ? false : config.browser.headless;
+  const headless = config.browser.headless;
   const browser = await chromium.launch(launchOptions(config, headless));
+  let manualBrowser: Browser | null = null;
   const sessions: SessionResult[] = [];
   const discovery: DiscoveryResult[] = [];
   const declared: DeclaredSet[] = [];
@@ -290,12 +294,14 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       const t0 = Date.now();
       progress.start(`${new URL(plan.site).hostname} · ${plan.scenario}${plan.manual ? ' (navigazione manuale)' : ''}${plan.repeat ? ` · ripetizione ${plan.repeat}` : ''}`);
       if (plan.manual) progress.wait('manuale');
-      const res = await runSession(browser, plan, {
+      if (plan.manual && !opts.manualDriver && headless && !manualBrowser) manualBrowser = await chromium.launch(launchOptions(config, false));
+      const res = await runSession(plan.manual && manualBrowser ? manualBrowser : browser, plan, {
         config,
         runDir,
         classifier,
         userAgent,
         manualDriver: opts.manualDriver,
+        onManualFinisher: opts.onManualFinisher,
         log,
         onDeclared: decl.source
           ? undefined
@@ -317,7 +323,13 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
     if (manualPlans.length) {
       log(`\nNavigazioni manuali (${manualPlans.length}): si fanno adesso, poi l'audit prosegue da solo.`);
       progress.phase('manuale');
-      for (const { j, p } of manualPlans) j.manual.push(await exec(j, p));
+      try {
+        for (const { j, p } of manualPlans) j.manual.push(await exec(j, p));
+      } finally {
+        // assegnato dentro exec: TypeScript non lo vede
+        await (manualBrowser as Browser | null)?.close().catch(() => {});
+        manualBrowser = null;
+      }
       log('\nNavigazioni manuali concluse: da qui l\'audit prosegue da solo. Il computer deve restare acceso, sveglio e collegato a internet.');
     }
 
@@ -459,8 +471,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const rev = writeReviewTemplate(runDir, findings, config.cliente);
   if (rev.prefilled) log(`Revisione: ${rev.prefilled} schede precompilate dalla revisione di ${rev.from}`);
   const html = renderHtml({
-    // il report descrive il browser come è stato davvero usato (con la navigazione manuale ha una finestra)
-    config: { ...config, browser: { ...config.browser, headless } },
+    config,
     toolVersion: TOOL_VERSION,
     browserVersion,
     userAgent,
