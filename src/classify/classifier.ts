@@ -154,6 +154,10 @@ export class Classifier {
     if (path.startsWith('/cdn-cgi/challenge-platform/')) {
       return { dominio: host, azienda: 'Cloudflare', categoria: 'tecnico', nota: 'Verifica anti-bot Cloudflare (si attiva soprattutto con browser automatici)' };
     }
+    // /cdn-cgi/rum è Cloudflare Web Analytics (statistica); /cdn-cgi/zaraz/ è il gestore di tag, che può inoltrare a terzi
+    if (path.startsWith('/cdn-cgi/rum')) {
+      return { dominio: host, azienda: 'Cloudflare', categoria: 'statistica', nota: 'Cloudflare Web Analytics' };
+    }
     if (path.startsWith('/cdn-cgi/') && !path.startsWith('/cdn-cgi/zaraz/')) {
       return { dominio: host, azienda: 'Cloudflare', categoria: 'tecnico', nota: 'Infrastruttura Cloudflare (/cdn-cgi/)' };
     }

@@ -48,21 +48,24 @@ export const sottodominiDisomogenei: Rule = {
     // che ha un proprio banner e una propria informativa).
     for (const target of declared) {
       const host = new URL(target.site).hostname;
-      for (const other of declared) {
-        if (other === target || !other.source || other.source === target.source) continue;
-        const about = other.items.filter((i) => i.domain && (i.domain.replace(/^\./, '') === host || i.domain.endsWith(`.${host}`)));
-        if (!about.length) continue;
+      const about = (i: { domain?: string }) => !!i.domain && (i.domain.replace(/^\./, '') === host || i.domain.endsWith(`.${host}`));
+      // altri elenchi (con fonte diversa) che contengono voci di questo sito; elenchi identici contano una volta
+      const others = declared.filter((o) => o !== target && o.source && o.source !== target.source && o.items.some(about));
+      const bySource = groupBy(others, (o) => o.source!);
+      if (!bySource.size) continue;
+      for (const [source, sites] of bySource) {
+        const items = sites[0].items.filter(about);
         out.push({
           site: target.site,
           scenario: null,
           pageUrl: null,
           severity: 'bassa',
-          groupKey: `doppia-dichiarazione|${other.site}`,
+          groupKey: `doppia-dichiarazione|${source}`,
           headline: `Per ${host} esistono due elenchi dichiarati diversi`,
           description:
-            `L'elenco dichiarato di ${other.site} (${other.source}) contiene ${about.length === 1 ? '1 voce' : `${about.length} voci`} relative a ${host}, ` +
+            `L'elenco dichiarato ${source} (usato da ${sites.map((o) => o.site).join(', ')}) contiene ${items.length === 1 ? '1 voce' : `${items.length} voci`} relative a ${host}, ` +
             `che però usa un proprio elenco (${target.source ?? 'nessun elenco leggibile'}). Per lo stesso sito esistono quindi due dichiarazioni diverse.`,
-          details: about.slice(0, 15).map((i) => `${i.name} (${i.domain}) — categoria dichiarata in ${other.site}: ${i.declaredCategory ?? '—'}`),
+          details: items.slice(0, 15).map((i) => `${i.name} (${i.domain}) — categoria dichiarata: ${i.declaredCategory || '—'}`),
           evidence: [],
         });
       }

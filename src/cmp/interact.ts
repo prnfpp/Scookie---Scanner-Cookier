@@ -3,7 +3,7 @@ import type { BannerConfig } from '../config/schema.js';
 import type { InteractionReport } from '../types.js';
 import { describeElement, frames, waitFor } from './dom.js';
 import { PERSONALIZERS, genericPersonalizer } from './personalize.js';
-import { REVOKE_HREF, REVOKE_SELECTORS, REVOKE_TEXT } from './revoke.js';
+import { findRevokeControl } from './revoke.js';
 import { heuristicBannerVisible, heuristicChoose } from './heuristic.js';
 import { hasManual, manualBannerVisible, manualChoose } from './manual.js';
 import { ADAPTERS } from './registry.js';
@@ -253,54 +253,35 @@ export async function performRevocation(
   /** Pagina di gestione dei cookie trovata nella sitemap, da usare se nella pagina non c'è un comando. */
   revokePage?: string,
 ): Promise<{ outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null }> {
-  let link = null;
+  // Prima il comando nella pagina, come farebbe un utente; se manca o non funziona, la pagina dedicata; infine l'API.
+  const notes: string[] = [];
   for (const f of frames(page)) {
-    for (const sel of REVOKE_SELECTORS) {
-      const l = f.locator(sel).first();
-      if ((await l.count().catch(() => 0)) > 0) {
-        link = l;
-        break;
-      }
-    }
-    if (!link) {
-      const byText = f.locator('a, button, [role="button"]').filter({ hasText: REVOKE_TEXT }).first();
-      if ((await byText.count().catch(() => 0)) > 0) link = byText;
-    }
-    if (!link) {
-      const found = await f
-        .evaluate((src) => {
-          const re = new RegExp(src, 'i');
-          const a = Array.from(document.querySelectorAll('a[href]')).find((x) => re.test((x as HTMLAnchorElement).href));
-          a?.setAttribute('data-scookie-revoke', '1');
-          return !!a;
-        }, REVOKE_HREF.source)
-        .catch(() => false);
-      if (found) link = f.locator('[data-scookie-revoke]').first();
-    }
-    if (link) break;
-  }
-  if (link) {
+    const found = await findRevokeControl(f);
+    if (!found) continue;
+    const link = f.locator('[data-scookie-revoke]').first();
     const label = await describeElement(link);
     await link.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
-    await link.click({ timeout: 5000 }).catch(() => link!.click({ timeout: 5000, force: true }));
+    await link.click({ timeout: 5000 }).catch(() => link.click({ timeout: 5000, force: true }).catch(() => {}));
     await page.waitForTimeout(1000);
     const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
     if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'link', how: `click su ${label}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
-    return { outcome: 'non-trovata', via: null, how: `click su ${label}, ma rifiuto non eseguito: ${r.detail}` };
+    notes.push(`click su ${label}, ma rifiuto non eseguito (${r.detail})`);
+    break;
   }
   if (revokePage) {
     await page.goto(revokePage, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(1500);
     const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
-    const where = `nessun comando nella pagina; aperta la pagina di gestione dei cookie trovata nella sitemap (${revokePage})`;
+    const where = `${notes.length ? `${notes.join('; ')}; ` : 'nessun comando nella pagina; '}aperta la pagina di gestione dei cookie trovata nella sitemap (${revokePage})`;
     if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'pagina', how: `${where}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
+    notes.push(`pagina ${revokePage} aperta, ma rifiuto non eseguito (${r.detail})`);
   }
   for (const a of await detectCmps(page)) {
     const r = await a.choose(page, 'rifiuta', 'api').catch(() => null);
     if (r?.ok) {
       await page.waitForTimeout(waitAfterMs);
-      return { outcome: 'eseguita', via: 'api', how: `nessun link per riaprire le preferenze trovato nella pagina; revoca simulata ${r.detail.replace(/^scelta eseguita /, '')}, che un utente non può fare` };
+      return { outcome: 'eseguita', via: 'api', how: `${notes.length ? notes.join('; ') : 'nessun link per riaprire le preferenze trovato nella pagina'}; revoca simulata ${r.detail.replace(/^scelta eseguita /, '')}, che un utente non può fare` };
     }
   }
-  return { outcome: 'non-trovata', via: null, how: 'nessun link per riaprire le preferenze trovato nella pagina e nessuna API del CMP utilizzabile' };
+  return { outcome: 'non-trovata', via: null, how: `${notes.length ? notes.join('; ') : 'nessun link per riaprire le preferenze trovato nella pagina'} e nessuna API del CMP utilizzabile` };
 }
