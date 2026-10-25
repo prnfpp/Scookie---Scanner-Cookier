@@ -2,27 +2,11 @@ import type { Page } from 'playwright';
 import type { BannerAnalysis } from '../types.js';
 import { frames, waitFor } from './dom.js';
 import { TEXTS, clickCandidate, scan, type Candidate } from './heuristic.js';
+import { REVOKE_SELECTORS, REVOKE_TEXT } from './revoke.js';
 import type { CmpAdapter } from './types.js';
 
 const POLICY_TEXT = /cookie|privacy|informativa|policy|trattamento dei dati/i;
 const CLOSE_LIKE = /^(×|✕|✖|x|chiudi|close|dismiss)$/i;
-
-// Link o pulsanti per riaprire le preferenze dopo la scelta (di solito nel footer).
-const REVOKE_TEXT =
-  /((preferenze|impostazioni|gestisci|gestione|modifica|personalizza)\s.{0,25}cookie|cookie\s.{0,20}(preferenze|impostazioni|settings|preferences)|revoca.{0,30}consenso|privacy (settings|choices)|cookie settings|manage cookies|le tue scelte)/i;
-const REVOKE_SELECTORS = [
-  '.ot-sdk-show-settings',
-  '#ot-sdk-btn',
-  'a[href*="Cookiebot.renew"]',
-  'a[href*="CookieConsent.renew"]',
-  '.iubenda-cs-preferences-link',
-  'a[href*="Didomi.preferences.show"]',
-  '[data-cc="c-settings"]',
-  '[data-cc="show-preferencesModal"]',
-  '.cky-btn-revisit',
-  '#cmplz-manage-consent',
-  '#hs-eu-cookie-settings-button',
-];
 
 /** Classifica i pulsanti del primo livello del banner per funzione. */
 function classify(candidates: Candidate[]) {
@@ -84,7 +68,9 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
       await waitFor(
         async () => {
           toggles = [];
-          for (const f of frames(page)) toggles.push(...(await readToggles(f).catch(() => [])));
+          for (const f of frames(page)) toggles.push(...(await readToggles(f, f === page.mainFrame()).catch(() => [])));
+          // Lo stesso interruttore può comparire due volte (es. versione mobile e desktop del pannello)
+          toggles = toggles.filter((t, i) => toggles.findIndex((x) => x.label === t.label && x.checked === t.checked) === i);
           return toggles.length > 0;
         },
         4000,
@@ -107,9 +93,27 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
   };
 }
 
-/** Interruttori e caselle delle categorie visibili (anche in shadow DOM), con etichetta, stato e blocco. */
-async function readToggles(frame: import('playwright').Frame) {
-  return frame.evaluate(() => {
+/**
+ * Interruttori e caselle delle categorie visibili (anche in shadow DOM), con etichetta, stato e blocco.
+ * Nella pagina principale solo quelli dentro l'interfaccia del gestore del consenso: le altre caselle
+ * (es. moduli del sito) non c'entrano. Nei frame si leggono tutti: un frame del CMP è tutto interfaccia di consenso.
+ */
+async function readToggles(frame: import('playwright').Frame, isMain: boolean) {
+  return frame.evaluate((isMain) => {
+    const CONSENT_UI = /cookie|consent|onetrust|optanon|\bot-|\bcmp|privacy|gdpr|hs-eu|hs-banner|hs-modal|cky|cmplz|didomi|usercentrics|\buc-|iubenda|cc_div|cc-main|cybot|klaro|tarteaucitron/i;
+    const inConsentUi = (el: Element): boolean => {
+      let n: Node | null = el;
+      while (n) {
+        if (n instanceof Element) {
+          const sig = `${n.id} ${typeof n.className === 'string' ? n.className : ''}`;
+          if (CONSENT_UI.test(sig) || n.getAttribute('aria-modal') === 'true' || n.getAttribute('role') === 'dialog' || n.hasAttribute('data-scookie-c')) return true;
+          // banner e pannelli di consenso sconosciuti sono quasi sempre sovrapposti alla pagina
+          if (n !== document.body && n !== document.documentElement && getComputedStyle(n).position === 'fixed') return true;
+        }
+        n = (n as Element).parentElement ?? ((n.getRootNode() as ShadowRoot).host || null);
+      }
+      return false;
+    };
     const all: Element[] = [];
     const walk = (root: Document | ShadowRoot) => {
       for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"]'))) all.push(el);
@@ -136,16 +140,16 @@ async function readToggles(frame: import('playwright').Frame) {
       // testo del contenitore più vicino che abbia un titolo
       let p: Element | null = el.parentElement;
       for (let i = 0; p && i < 4; i++, p = p.parentElement) {
-        const h = p.querySelector('h3, h4, h5, strong, [class*="title"], [class*="name"]');
+        const h = p.querySelector('h3, h4, h5, strong, [class*="title"], [class*="name"], [class*="header"]');
         if (h?.textContent?.trim()) return h.textContent.trim();
       }
       return '(senza etichetta)';
     };
-    return all.filter(visible).map((el) => {
+    return all.filter((el) => visible(el) && (!isMain || inConsentUi(el))).map((el) => {
       const input = el as HTMLInputElement;
       const checked = input.type === 'checkbox' ? input.checked : el.getAttribute('aria-checked') === 'true';
       const disabled = input.disabled || el.getAttribute('aria-disabled') === 'true';
       return { label: labelOf(el).replace(/\s+/g, ' ').slice(0, 80), checked, disabled };
     });
-  });
+  }, isMain);
 }

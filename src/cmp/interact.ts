@@ -3,6 +3,7 @@ import type { BannerConfig } from '../config/schema.js';
 import type { InteractionReport } from '../types.js';
 import { describeElement, frames, waitFor } from './dom.js';
 import { PERSONALIZERS } from './personalize.js';
+import { REVOKE_SELECTORS, REVOKE_TEXT } from './revoke.js';
 import { heuristicBannerVisible, heuristicChoose } from './heuristic.js';
 import { hasManual, manualBannerVisible, manualChoose } from './manual.js';
 import { ADAPTERS } from './registry.js';
@@ -222,22 +223,6 @@ export async function performPersonalize(
   return { ...base, outcome: 'non-trovato', detail: `scelta per categoria non riuscita: ${attempts.join(' | ')}` };
 }
 
-const REVOKE_SELECTORS = [
-  '.ot-sdk-show-settings',
-  '#ot-sdk-btn',
-  'a[href*="Cookiebot.renew"]',
-  'a[href*="CookieConsent.renew"]',
-  '.iubenda-cs-preferences-link',
-  'a[href*="Didomi.preferences.show"]',
-  '[data-cc="c-settings"]',
-  '[data-cc="show-preferencesModal"]',
-  '.cky-btn-revisit',
-  '#cmplz-manage-consent',
-  '#hs-eu-cookie-settings-button',
-];
-const REVOKE_TEXT =
-  /((preferenze|impostazioni|gestisci|gestione|modifica|personalizza)\s.{0,25}cookie|cookie\s.{0,20}(preferenze|impostazioni|settings|preferences)|revoca.{0,30}consenso|privacy (settings|choices)|cookie settings|manage cookies|le tue scelte)/i;
-
 /**
  * Revoca del consenso dopo l'accettazione, come farebbe un utente: si clicca il link per riaprire le preferenze
  * (di solito nel footer) e si rifiuta nel banner che si apre. Se il link non c'è, si usa l'API del CMP e lo si dichiara.
@@ -276,7 +261,7 @@ export async function performRevocation(
     const r = await a.choose(page, 'rifiuta', 'api').catch(() => null);
     if (r?.ok) {
       await page.waitForTimeout(waitAfterMs);
-      return { outcome: 'eseguita', how: `nessun link per riaprire le preferenze trovato nella pagina; revoca eseguita via API del CMP (${r.detail})` };
+      return { outcome: 'eseguita', how: `nessun link per riaprire le preferenze trovato nella pagina; revoca eseguita ${r.detail.replace(/^scelta eseguita /, '')}` };
     }
   }
   return { outcome: 'non-trovata', how: 'nessun link per riaprire le preferenze trovato nella pagina e nessuna API del CMP utilizzabile' };
