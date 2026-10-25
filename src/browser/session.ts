@@ -10,6 +10,7 @@ import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { detectBotChallenge, type BotBlock } from './antibot.js';
 import { Collector } from './collector.js';
 import { trimHar } from './har.js';
+import { manualJourney, type ManualPlan } from './manual.js';
 
 export interface SessionPlan {
   id: string;
@@ -20,6 +21,10 @@ export interface SessionPlan {
   pages: string[];
   /** Se true, a fine sessione si analizza la struttura del banner (prima sessione "nessuna azione" del sito). */
   analyzeBanner?: boolean;
+  /** Scenario "revoca": pagina di gestione dei cookie trovata nella sitemap, se c'è. */
+  revokePage?: string;
+  /** Navigazione manuale dell'operatore al posto delle pagine successive. */
+  manual?: ManualPlan;
 }
 
 export interface SessionEnv {
@@ -29,6 +34,10 @@ export interface SessionEnv {
   userAgent: string;
   /** Se definita, la sessione legge l'elenco dichiarato dal CMP e lo passa qui. */
   onDeclared?: (items: DeclaredItem[], cmp: string) => void;
+  /** Solo test: simula l'operatore nelle sessioni con navigazione manuale. */
+  manualDriver?: (page: Page) => Promise<void>;
+  /** Avvisa l'operatore che una sessione manuale sta per iniziare. */
+  log?: (msg: string) => void;
 }
 
 const DEFAULT_BANNER_WAIT = 6000;
@@ -126,6 +135,12 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let choiceAt: string | null = null;
   let bannerAnalysis: BannerAnalysis | undefined;
   let revocation: SessionResult['revocation'];
+  let manual: SessionResult['manual'];
+  const runManual = async () => {
+    env.log?.(`    NAVIGAZIONE MANUALE: nella finestra del browser segui le istruzioni e premi "Ho finito" (massimo ${Math.round(plan.manual!.maxMs / 60000)} minuti).`);
+    manual = await manualJourney(page, collector, plan.manual!, env.manualDriver);
+    await shot('3-fine');
+  };
   const banner = plan.siteConfig.banner;
   const bannerWait = banner?.attesa ?? DEFAULT_BANNER_WAIT;
 
@@ -159,6 +174,10 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
           consentStateBefore: obs.states,
           bannerVisibleBefore: obs.visible,
         };
+        if (plan.manual) {
+          await runManual();
+          return;
+        }
         await settle();
         await shot('3-fine');
         if (plan.analyzeBanner && obs.visible) {
@@ -180,6 +199,10 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         } else {
           collector.undoChoice();
         }
+        if (plan.manual) {
+          await runManual();
+          return;
+        }
         await settle();
         for (const url of rest) {
           if (await visit(url)) await settle();
@@ -189,7 +212,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         // Scenario "revoca": dopo aver navigato con il consenso, lo si revoca e si torna sulla prima pagina.
         if (plan.scenario === 'revoca' && interaction.outcome === 'eseguito' && !blocked) {
           collector.markRevoke();
-          const rev = await performRevocation(page, banner, p.attesaDopoScelta, bannerWait);
+          const rev = await performRevocation(page, banner, p.attesaDopoScelta, bannerWait, plan.revokePage);
           await shot('4-dopo-revoca');
           const remaining = (await context.cookies())
             .filter((c) => NON_TECHNICAL.has(env.classifier.classifyName(c.name, c.domain).category))
@@ -207,7 +230,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
 
   try {
     // Tetto di durata: una pagina che non risponde non deve bloccare l'intera esecuzione.
-    await withTimeout(flow(), p.timeoutSessione, 'sessione interrotta');
+    // Le sessioni manuali durano quanto serve all'operatore, entro il loro tempo massimo
+    await withTimeout(flow(), plan.manual ? Math.max(p.timeoutSessione, plan.manual.maxMs + 120000) : p.timeoutSessione, 'sessione interrotta');
   } catch (e) {
     errors.push(`errore durante la sessione: ${(e as Error).message.split('\n')[0]}`);
   } finally {
@@ -230,7 +254,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     registrableDomain: domain,
     scenario: plan.scenario,
     pageType: plan.pageType,
-    pages: plan.pages,
+    pages: manual ? manual.pages : plan.pages,
     startedAt,
     endedAt: new Date().toISOString(),
     choiceAt,
@@ -244,5 +268,6 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     ...(blocked ? { blocked } : {}),
     ...(bannerAnalysis ? { bannerAnalysis } : {}),
     ...(revocation ? { revocation } : {}),
+    ...(manual ? { manual } : {}),
   };
 }

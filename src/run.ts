@@ -1,7 +1,7 @@
 import { copyFileSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { chromium, type Browser, type LaunchOptions } from 'playwright';
+import { chromium, type Browser, type LaunchOptions, type Page } from 'playwright';
 import { Classifier, type TrackerEntry } from './classify/classifier.js';
 import type { LoadedConfig } from './config/load.js';
 import type { AuditConfig } from './config/schema.js';
@@ -13,6 +13,7 @@ import { detectExit, type ExitInfo } from './browser/exit.js';
 import { runSession, type SessionPlan } from './browser/session.js';
 import { renderHtml } from './report/html.js';
 import { writeCsvs } from './report/csv.js';
+import { REVIEW_FILE, writeReviewTemplate } from './report/review.js';
 import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms } from './rules/engine.js';
 import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult } from './types.js';
 import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
@@ -22,6 +23,8 @@ export interface RunOptions {
   outDir?: string;
   pdf?: boolean;
   log?: (msg: string) => void;
+  /** Solo test: simula l'operatore nelle sessioni con navigazione manuale (il browser resta senza finestra). */
+  manualDriver?: (page: Page) => Promise<void>;
 }
 
 export interface RunResult {
@@ -51,6 +54,8 @@ export async function resolveUserAgent(browser: Browser, cfg: AuditConfig): Prom
   const ctx = await browser.newContext();
   const ua = await (await ctx.newPage()).evaluate(() => navigator.userAgent);
   await closeSafely(ctx, 15000);
+  // Esecuzione di controllo: lo user agent di un browser qualunque, senza dichiarazione dell'audit
+  if (cfg.browser.uaNormale) return ua.replace('HeadlessChrome', 'Chrome');
   return cfg.browser.userAgentSuffix ? `${ua} ${cfg.browser.userAgentSuffix}` : ua;
 }
 
@@ -81,7 +86,31 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
   const starts = cfg.scenari.modalita === 'per-pagina' ? sample.map((_, i) => i) : [0];
   for (const i of starts) {
     for (const scenario of choiceScenarios) {
-      plans.push({ id: id(scenario), site: discovery.site, siteConfig: site, scenario, pageType: sample[i].type, pages: [sample[i].url, ...following(i)] });
+      plans.push({
+        id: id(scenario),
+        site: discovery.site,
+        siteConfig: site,
+        scenario,
+        pageType: sample[i].type,
+        pages: [sample[i].url, ...following(i)],
+        revokePage: scenario === 'revoca' ? discovery.revokePages?.[0] : undefined,
+      });
+    }
+  }
+  // Navigazione manuale: una sessione per scenario richiesto, dalla pagina di partenza indicata
+  const m = site.navigazioneManuale;
+  if (m) {
+    const start = m.partenza ? new URL(m.partenza, discovery.site).toString() : sample[0].url;
+    for (const scenario of m.scenari) {
+      plans.push({
+        id: `${id(scenario)}-manuale`,
+        site: discovery.site,
+        siteConfig: site,
+        scenario,
+        pageType: 'navigazione manuale',
+        pages: [start],
+        manual: { instructions: m.istruzioni, maxMs: m.maxMinuti * 60000 },
+      });
     }
   }
   return plans;
@@ -145,7 +174,12 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const extra: TrackerEntry[] = config.trackerExtra ? Classifier.loadExtraTrackers(loaded.resolvePath(config.trackerExtra)) : [];
   const classifier = new Classifier(extra);
 
-  const browser = await chromium.launch(launchOptions(config));
+  // Con la navigazione manuale il browser deve avere una finestra (salvo nei test, dove l'operatore è simulato)
+  const manualSites = config.siti.filter((s) => s.navigazioneManuale);
+  if (manualSites.length && !opts.manualDriver) {
+    log(`Navigazione manuale prevista per: ${manualSites.map((s) => s.url).join(', ')}. Il browser si aprirà in una finestra: restare al computer.`);
+  }
+  const browser = await chromium.launch(launchOptions(config, manualSites.length && !opts.manualDriver ? false : config.browser.headless));
   const sessions: SessionResult[] = [];
   const discovery: DiscoveryResult[] = [];
   const declared: DeclaredSet[] = [];
@@ -201,6 +235,8 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
           runDir,
           classifier,
           userAgent,
+          manualDriver: opts.manualDriver,
+          log,
           onDeclared: decl.source
             ? undefined
             : (items, cmp) => {
@@ -228,7 +264,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       if (siteResults.some((s) => valid(s) && s.interaction.bannerVisibleBefore)) {
         for (let k = 0; k < siteResults.length && retries < MAX_RETRIES; k++) {
           const first = siteResults[k];
-          if (first.interaction.bannerVisibleBefore || !valid(first)) continue;
+          if (first.interaction.bannerVisibleBefore || !valid(first) || first.manual) continue;
           retries++;
           const plan = plans.find((p) => p.id === first.id)!;
           log(`    banner assente solo in questa sessione: ripetizione di ${first.id}`);
@@ -276,7 +312,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const comparison: ComparisonRow[] = declared.flatMap((d) =>
     compareDeclared(d.site, validSessions.filter((s) => s.site === d.site), d),
   );
-  const findings = evaluateRules({ config, sessions: validSessions, blocked: blockedSessions, declared, comparison, exit }, norms);
+  const findings = evaluateRules({ config, sessions: validSessions, blocked: blockedSessions, declared, comparison, exit, discovery }, norms);
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
@@ -284,6 +320,9 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
 
   writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ discovery, sessions, sessioniScartate: discarded, declared, comparison, findings }, null, 2));
   const csvs = writeCsvs(runDir, sessions, comparison, findings);
+  // Modulo per la revisione manuale delle schede (con i giudizi già dati nell'esecuzione precedente, se ci sono)
+  const rev = writeReviewTemplate(runDir, findings, config.cliente);
+  if (rev.prefilled) log(`Revisione: ${rev.prefilled} schede precompilate dalla revisione di ${rev.from}`);
   const html = renderHtml({
     config,
     toolVersion: TOOL_VERSION,
@@ -317,7 +356,8 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   }
 
   const ocdPath = fileURLToPath(new URL('../../data/vendor/open-cookie-database.csv', import.meta.url));
-  const allFiles = await hashFiles(runDir, listFiles(runDir).filter((p) => p !== 'manifest.json'));
+  // revisione.csv è un modulo da compilare dopo l'esecuzione: non entra nelle impronte (lo traccia revisione-applicata.json)
+  const allFiles = await hashFiles(runDir, listFiles(runDir).filter((p) => p !== 'manifest.json' && p !== REVIEW_FILE));
   const manifest = {
     strumento: { nome: 'scookie', versione: TOOL_VERSION },
     cliente: config.cliente,

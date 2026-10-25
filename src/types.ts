@@ -89,6 +89,8 @@ export interface RequestRecord {
   at: string;
   /** Millisecondi rispetto al click sul banner (negativi = prima). Null se nessun click. */
   msFromChoice: number | null;
+  /** Scenario "revoca": millisecondi dalla revoca (msFromChoice è misurato dall'accettazione). */
+  msFromRevoke?: number | null;
   url: string;
   host: string;
   method: string;
@@ -141,6 +143,23 @@ export interface BannerAnalysis {
   revokeLink: { text: string; how: string } | null;
   /** Secondo livello: categorie con lo stato in cui si presentano, prima di qualsiasi scelta. */
   preferences: { opened: boolean; via: string; toggles: { label: string; checked: boolean; disabled: boolean }[] } | null;
+  /** Aspetto dei comandi di accettazione e rifiuto al primo livello (misure oggettive, nessuna valutazione). */
+  prominence?: { accept: CommandLook | null; reject: CommandLook | null };
+}
+
+export interface CommandLook {
+  text: string;
+  /** Aspetto: pulsante (con sfondo o bordo) o link/testo semplice. */
+  kind: 'pulsante' | 'link';
+  width: number;
+  height: number;
+  fontSize: number;
+  fontWeight: number;
+  color: string;
+  /** Sfondo proprio dell'elemento, se presente. */
+  background: string | null;
+  /** Rapporto di contrasto WCAG tra testo e sfondo effettivo. */
+  contrast: number | null;
 }
 
 export interface Evidence {
@@ -168,7 +187,9 @@ export interface SessionResult {
   /** Se la sessione è la ripetizione di un'altra, l'id di quella scartata. */
   retryOf?: string;
   /** Scenario "revoca": come è stato revocato il consenso e quali cookie non tecnici restavano nel browser. */
-  revocation?: { outcome: 'eseguita' | 'non-trovata'; how: string; remaining: string[] };
+  revocation?: { outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null; remaining: string[] };
+  /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
+  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number };
   /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */
   bannerAnalysis?: BannerAnalysis;
   /** Se presente, la navigazione è stata intercettata da un sistema anti-bot: sessione non valida. */

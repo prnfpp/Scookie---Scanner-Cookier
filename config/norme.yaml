@@ -74,6 +74,12 @@ regole:
   struttura-banner:
     norme: [garante2021]
     gravita: informativa
+  tecnico-solo-dopo-consenso:
+    norme: [gdpr13, garante2021]
+    gravita: media
+  categorie-non-presentate:
+    norme: [gdpr13, garante2021]
+    gravita: bassa
   banner-assente:
     norme: [garante2021, gdpr13]
     gravita: informativa
