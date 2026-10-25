@@ -16,7 +16,8 @@ export interface Personalizer {
   check(page: Page): Promise<ConsentCheck>;
 }
 
-const STATS_RE = /statist|analytic|analitic|prestazion|performance|misurazion|measurement/i;
+// "Analisi" è il nome italiano della categoria statistica in HubSpot
+const STATS_RE = /statist|analytic|analitic|\banalisi\b|prestazion|performance|misurazion|measurement/i;
 
 /** Imposta una casella o un interruttore, anche quando l'input è nascosto dietro un elemento grafico. */
 async function setToggle(page: Page, input: Locator, on: boolean): Promise<string | null> {

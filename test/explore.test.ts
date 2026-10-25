@@ -3,6 +3,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser } from 'playwright';
 import { configSchema } from '../src/config/schema.js';
 import { discoverSite } from '../src/discovery/discover.js';
+import { findRevokeControl } from '../src/cmp/revoke.js';
 import { launchOptions } from '../src/run.js';
 import { startFixtureServer } from './fixtures/server.js';
 
@@ -56,4 +57,21 @@ test('esplorazione fermata da una verifica anti-bot', async () => {
   });
   const d = await discoverSite(browser, config.siti[0], config, 'ScookieAudit/test');
   assert.ok(d.notes.some((n) => /Esplorazione fermata: verifica anti-bot Cloudflare/.test(n)), d.notes.join(' | '));
+});
+
+test('comando di revoca: solo elementi visibili, mai il link all\'informativa', async () => {
+  const b = await chromium.launch();
+  try {
+    const page = await b.newPage();
+    // elemento OneTrust nascosto e link all'informativa con "gestione dei cookie" nel testo: nessun comando
+    await page.setContent('<div id="ot-sdk-btn" style="display:none">Impostazioni</div><footer><a href="/cookie-policy">Informativa sulla gestione dei cookie</a></footer>');
+    assert.equal(await findRevokeControl(page.mainFrame()), null);
+    // link a una pagina dedicata, con testo generico
+    await page.setContent('<footer><a href="https://x.test/preferenze-cookies">Le tue preferenze</a></footer>');
+    assert.match((await findRevokeControl(page.mainFrame()))?.how ?? '', /link alla pagina .*preferenze-cookies/);
+    await page.setContent('<footer><a href="#">Impostazioni cookie</a></footer>');
+    assert.equal((await findRevokeControl(page.mainFrame()))?.how, 'testo del comando');
+  } finally {
+    await b.close();
+  }
 });

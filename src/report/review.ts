@@ -7,7 +7,7 @@ import type { ExitInfo } from '../browser/exit.js';
 import { configSchema } from '../config/schema.js';
 import type { DiscoveryResult } from '../discovery/discover.js';
 import type { ComparisonRow, DeclaredSet, Finding, SessionResult } from '../types.js';
-import { parseCsv, toCsv } from '../util/csv.js';
+import { detectSeparator, parseCsv, toCsv } from '../util/csv.js';
 import { sha256File } from '../util/misc.js';
 import { findingKey, renderHtml, type ReviewEntry, type ReviewOutcome } from './html.js';
 
@@ -27,8 +27,13 @@ function normalizeOutcome(v: string): ReviewOutcome {
 export function readReview(runDir: string): Map<string, ReviewEntry> | null {
   const path = join(runDir, REVIEW_FILE);
   if (!existsSync(path)) return null;
-  const rows = parseCsv(readFileSync(path, 'utf8'), ';');
+  // Excel salva spesso i CSV in Windows-1252 e, con impostazioni non italiane, con la virgola come separatore
+  const buf = readFileSync(path);
+  let text = buf.toString('utf8');
+  if (text.includes('\uFFFD')) text = new TextDecoder('windows-1252').decode(buf);
+  const rows = parseCsv(text, detectSeparator(text));
   const [head, ...data] = rows;
+  if (!head) throw new Error(`${REVIEW_FILE} è vuoto`);
   const col = (name: string) => head.findIndex((h) => h.trim().toLowerCase() === name);
   const [iKey, iEsito, iNota] = [col('chiave'), col('esito'), col('nota')];
   if (iKey < 0 || iEsito < 0) throw new Error(`${REVIEW_FILE}: mancano le colonne "chiave" ed "esito"`);
