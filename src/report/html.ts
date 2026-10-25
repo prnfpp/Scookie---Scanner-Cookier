@@ -120,11 +120,15 @@ ${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</st
   };
   const top = findings.filter((f) => f.headline && (f.severity === 'alta' || f.severity === 'media')).slice(0, 10);
   const blockedSites = [...new Set(sessions.filter((s) => s.blocked).map((s) => host(s.site)))];
+  const unreachable = sessions.filter((s) => s.unreachable);
+  const unreachableSites = [...new Set(unreachable.map((s) => host(s.site)))];
+  const allUnreachable = unreachableSites.filter((h) => sessions.filter((s) => host(s.site) === h).every((s) => s.unreachable || s.blocked));
   parts.push(`<h2>Sintesi per il legale</h2>
 ${top.length ? `<p>I fatti principali osservati, in ordine di priorità di verifica. Il dettaglio e le prove sono nelle schede indicate.</p>
 <ol>${top.map((f) => `<li>${esc(f.headline)}${f.sites.length === 1 ? ` <span class="muted">(${esc(host(f.sites[0]))})</span>` : ''} — ${sevBadge(f.severity)} <a href="#${f.id}">${f.id}</a></li>`).join('')}</ol>` : '<p>Non sono emersi fatti con priorità alta o media.</p>'}
 ${findings.length > top.length ? `<p class="muted">Altre ${findings.length - top.length} schede, di priorità minore o di contesto, sono elencate nella sezione 3.</p>` : ''}
-${blockedSites.length ? `<p class="warn"><strong>Attenzione.</strong> Su ${esc(blockedSites.join(', '))} la navigazione è stata intercettata da un sistema anti-bot: le sessioni coinvolte non sono valide e non sono state usate per le criticità.</p>` : ''}`);
+${blockedSites.length ? `<p class="warn"><strong>Attenzione.</strong> Su ${esc(blockedSites.join(', '))} la navigazione è stata intercettata da un sistema anti-bot: le sessioni coinvolte non sono valide e non sono state usate per le criticità.</p>` : ''}
+${unreachable.length ? `<p class="warn"><strong>Attenzione — pagine non caricate.</strong> ${unreachable.length} sessioni non hanno potuto caricare il sito (${esc(unreachableSites.join(', '))}), per esempio per connessione assente o computer in stop: non sono valide e non sono state usate per le criticità.${allUnreachable.length ? ` Per ${esc(allUnreachable.join(', '))} non c'è nessun dato: il report non dice nulla su ${allUnreachable.length === 1 ? 'questo sito' : 'questi siti'} e l'audit va ripetuto.` : ''}</p>` : ''}`);
 
   // 1. Perimetro e metodo
   parts.push(`<h2>1. Perimetro e metodo</h2><table class="kv">
@@ -216,7 +220,7 @@ ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.
   const declaredStatus = new Map(r.comparison.map((c) => [`${c.site}|${c.name}|${c.domain}`, c]));
   for (const site of sites) {
     // L'inventario usa solo le sessioni valide (non intercettate da sistemi anti-bot).
-    const ss = sessions.filter((s) => s.site === site && !s.blocked);
+    const ss = sessions.filter((s) => s.site === site && !s.blocked && !s.unreachable);
     const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: '' | 'al caricamento' | 'dopo scroll'; afterReject: boolean }>();
     for (const s of ss) {
       for (const c of s.cookies) {

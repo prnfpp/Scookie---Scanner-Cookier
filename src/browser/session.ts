@@ -95,12 +95,27 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     try {
       response = await page.goto(url, { waitUntil: 'load', timeout: p.timeoutNavigazione });
     } catch (e) {
-      errors.push(`navigazione non riuscita su ${url}: ${(e as Error).message.split('\n')[0]}`);
+      const msg = (e as Error).message.split('\n')[0];
+      const hint = /ERR_NETWORK_IO_SUSPENDED/.test(msg) ? ' — il computer è andato in stop durante l\'audit' : /ERR_INTERNET_DISCONNECTED/.test(msg) ? ' — connessione a internet assente' : '';
+      errors.push(`navigazione non riuscita su ${url}: ${msg}${hint}`);
       return false;
     }
     collector.currentUrl = page.url();
     await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(p.attesaDopoCaricamento);
+    // Pagina che rimanda altrove, anche dopo il caricamento (es. passo del preventivo aperto direttamente che porta alla pagina di errore)
+    const strip = (u: string) => {
+      try {
+        const x = new URL(u);
+        return x.origin + x.pathname.replace(/\/+$/, '');
+      } catch {
+        return u;
+      }
+    };
+    if (strip(page.url()) !== strip(url)) {
+      collector.currentUrl = page.url();
+      errors.push(`la pagina ${url} ha portato a ${page.url()} (reindirizzamento)`);
+    }
     // Una pagina di verifica anti-bot non è il sito: la sessione non è valida e non si prosegue.
     blocked ??= await detectBotChallenge(page, response);
     if (blocked) {
@@ -136,9 +151,11 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let bannerAnalysis: BannerAnalysis | undefined;
   let revocation: SessionResult['revocation'];
   let manual: SessionResult['manual'];
+  let unreachable: string | undefined;
   const runManual = async () => {
     env.log?.(`    NAVIGAZIONE MANUALE: nella finestra del browser segui le istruzioni e premi "Ho finito" (massimo ${Math.round(plan.manual!.maxMs / 60000)} minuti).`);
     manual = await manualJourney(page, collector, plan.manual!, env.manualDriver);
+    env.log?.(`    navigazione manuale conclusa (${manual.endedBy === 'operatore' ? 'premuto "Ho finito"' : manual.endedBy === 'tempo' ? 'tempo scaduto' : 'finestra chiusa'})`);
     await shot('3-fine');
   };
   const banner = plan.siteConfig.banner;
@@ -147,6 +164,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   const flow = async () => {
     const [first, ...rest] = plan.pages;
     const firstOk = await visit(first);
+    // Prima pagina non caricata (e non per un blocco anti-bot): nessun dato sul sito, la sessione non è valida
+    if (!firstOk && !blocked) unreachable = errors[errors.length - 1] ?? 'prima pagina non raggiungibile';
     if (blocked) {
       await shot('1-banner');
       interaction = { ...interaction, outcome: 'non-applicabile', detail: `accesso bloccato da ${blocked.provider}: ${blocked.signal}` };
@@ -269,5 +288,6 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     ...(bannerAnalysis ? { bannerAnalysis } : {}),
     ...(revocation ? { revocation } : {}),
     ...(manual ? { manual } : {}),
+    ...(unreachable ? { unreachable } : {}),
   };
 }

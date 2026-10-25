@@ -60,6 +60,28 @@ export async function resolveUserAgent(browser: Browser, cfg: AuditConfig): Prom
 }
 
 /** Costruisce le sessioni da eseguire per un sito a partire dal campione. */
+/** Errori di Chromium dovuti alla connessione del computer (non al sito): computer in stop, rete caduta. */
+const NETWORK_ERROR = /net::ERR_(INTERNET_DISCONNECTED|NETWORK_IO_SUSPENDED|NETWORK_CHANGED|NETWORK_ACCESS_DENIED|ADDRESS_UNREACHABLE)/;
+
+/** Attende che il sito torni raggiungibile (fino a 5 minuti). */
+async function waitOnline(browser: Browser, url: string, log: (m: string) => void): Promise<boolean> {
+  const ctx = await browser.newContext();
+  try {
+    for (let k = 0; k < 30; k++) {
+      const ok = await ctx.request
+        .get(url, { timeout: 10000, maxRedirects: 5 })
+        .then(() => true)
+        .catch(() => false);
+      if (ok) return true;
+      await sleep(10000);
+    }
+    log('  connessione non ripristinata entro 5 minuti: le sessioni restano non valide');
+    return false;
+  } finally {
+    await closeSafely(ctx, 10000);
+  }
+}
+
 export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteIndex: number, startId: number): SessionPlan[] {
   const site = cfg.siti[siteIndex];
   const sample = discovery.sample;
@@ -210,11 +232,20 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       }
     }
 
+    // Fase 1: scoperta delle pagine e piano delle sessioni per tutti i siti.
+    // Fase 2: navigazioni manuali di tutti i siti, subito, così l'operatore serve solo all'inizio.
+    // Fase 3: sessioni automatiche, che possono proseguire senza nessuno al computer.
     let nextId = 1;
+    const jobs: { i: number; site: AuditConfig['siti'][number]; d: DiscoveryResult; decl: DeclaredSet; plans: SessionPlan[]; manual: SessionResult[] }[] = [];
     for (let i = 0; i < config.siti.length; i++) {
       const site = config.siti[i];
       log(`\n[${site.url}] scoperta pagine…`);
-      const d = await discoverSite(browser, site, config, userAgent);
+      let d = await discoverSite(browser, site, config, userAgent);
+      if (d.notes.some((n) => NETWORK_ERROR.test(n))) {
+        // Connessione caduta durante la scoperta (es. computer in stop): si aspetta che torni e si ripete una volta
+        log('  connessione assente durante la scoperta: attesa del ripristino…');
+        if (await waitOnline(browser, site.url, log)) d = await discoverSite(browser, site, config, userAgent);
+      }
       discovery.push(d);
       log(`  ${d.found} URL trovate, campione di ${d.sample.length} pagine`);
 
@@ -226,33 +257,63 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
         decl.note = 'Elenco fornito nella configurazione (prevale sulla lettura dal CMP).';
       }
       declared.push(decl);
-
       const plans = planSessions(config, d, i, nextId);
       nextId += plans.length;
-      const exec = async (plan: SessionPlan) => {
-        log(`  ${plan.id} (${plan.pages.length} pagine)…`);
-        const res = await runSession(browser, plan, {
-          config,
-          runDir,
-          classifier,
-          userAgent,
-          manualDriver: opts.manualDriver,
-          log,
-          onDeclared: decl.source
-            ? undefined
-            : (items, cmp) => {
-                if (decl.source) return;
-                decl.items = items;
-                decl.source = `CMP ${cmp}`;
-              },
-        });
-        const i2 = res.interaction;
-        log(`    banner: ${i2.bannerVisibleBefore ? 'sì' : 'no'}; metodo: ${i2.method}; esito: ${i2.outcome}; verifica: ${i2.verification}; cookie: ${res.cookies.length}; richieste: ${res.requests.length}`);
-        await sleep(config.protocollo.pausaTraSessioni);
-        return res;
-      };
+      jobs.push({ i, site, d, decl, plans, manual: [] });
+    }
+
+    const exec = async (job: (typeof jobs)[number], plan: SessionPlan) => {
+      const { decl } = job;
+      log(`  ${plan.id} (${plan.pages.length} pagine)…`);
+      const res = await runSession(browser, plan, {
+        config,
+        runDir,
+        classifier,
+        userAgent,
+        manualDriver: opts.manualDriver,
+        log,
+        onDeclared: decl.source
+          ? undefined
+          : (items, cmp) => {
+              if (decl.source) return;
+              decl.items = items;
+              decl.source = `CMP ${cmp}`;
+            },
+      });
+      const i2 = res.interaction;
+      log(`    banner: ${i2.bannerVisibleBefore ? 'sì' : 'no'}; metodo: ${i2.method}; esito: ${i2.outcome}; verifica: ${i2.verification}; cookie: ${res.cookies.length}; richieste: ${res.requests.length}`);
+      await sleep(config.protocollo.pausaTraSessioni);
+      return res;
+    };
+
+    const manualPlans = jobs.flatMap((j) => j.plans.filter((p) => p.manual).map((p) => ({ j, p })));
+    if (manualPlans.length) {
+      log(`\nNavigazioni manuali (${manualPlans.length}): si fanno adesso, poi l'audit prosegue da solo.`);
+      for (const { j, p } of manualPlans) j.manual.push(await exec(j, p));
+      log('\nNavigazioni manuali concluse: da qui l\'audit prosegue da solo. Il computer deve restare acceso, sveglio e collegato a internet.');
+    }
+
+    for (const job of jobs) {
+      const { site, d, decl } = job;
+      const plans = job.plans.filter((p) => !p.manual);
+      log(`\n[${site.url}] sessioni automatiche…`);
       const siteResults: SessionResult[] = [];
-      for (const plan of plans) siteResults.push(await exec(plan));
+      for (const plan of plans) siteResults.push(await exec(job, plan));
+
+      // Sessioni fallite per mancanza di connessione (es. computer in stop): si aspetta il ripristino e si ripetono una volta.
+      // La sessione fallita resta tra i dati scartati.
+      for (let k = 0; k < siteResults.length; k++) {
+        const first = siteResults[k];
+        if (!first.unreachable || !NETWORK_ERROR.test(first.unreachable)) continue;
+        log(`    ${first.id}: connessione assente, attesa del ripristino…`);
+        if (!(await waitOnline(browser, site.url, log))) break;
+        const plan = plans.find((p) => p.id === first.id)!;
+        const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta` });
+        retry.retryOf = first.id;
+        retry.errors.unshift(`Ripetizione di ${first.id}: sessione fallita per mancanza di connessione (${first.unreachable}).`);
+        discarded.push(first);
+        siteResults[k] = retry;
+      }
 
       // Se il sito mostra il banner in alcune sessioni e non in altre, le sessioni senza banner
       // si ripetono una volta: spesso lo script del CMP non è stato scaricato (errore di rete).
@@ -261,15 +322,15 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       // e le ripetizioni si fermano se una ripetizione non mostra il banner o dopo MAX_RETRIES tentativi.
       const MAX_RETRIES = 3;
       let retries = 0;
-      const valid = (s: SessionResult) => !s.blocked;
+      const valid = (s: SessionResult) => !s.blocked && !s.unreachable;
       if (siteResults.some((s) => valid(s) && s.interaction.bannerVisibleBefore)) {
         for (let k = 0; k < siteResults.length && retries < MAX_RETRIES; k++) {
           const first = siteResults[k];
-          if (first.interaction.bannerVisibleBefore || !valid(first) || first.manual) continue;
+          if (first.interaction.bannerVisibleBefore || !valid(first)) continue;
           retries++;
-          const plan = plans.find((p) => p.id === first.id)!;
+          const plan = plans.find((p) => p.id === first.id.replace(/_ripetuta$/, ''))!;
           log(`    banner assente solo in questa sessione: ripetizione di ${first.id}`);
-          const retry = await exec({ ...plan, id: `${plan.id}_ripetuta` });
+          const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta${first.retryOf ? '2' : ''}` });
           retry.retryOf = first.id;
           const failed = failedHosts(first);
           retry.errors.unshift(
@@ -280,8 +341,11 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
           if (!retry.interaction.bannerVisibleBefore || retry.blocked) break;
         }
       }
+      siteResults.push(...job.manual);
       const blockedCount = siteResults.filter((s) => s.blocked).length;
       if (blockedCount) log(`    ${blockedCount} sessioni su ${siteResults.length} bloccate da un sistema anti-bot: escluse dalle regole`);
+      const unreachableCount = siteResults.filter((s) => s.unreachable).length;
+      if (unreachableCount) log(`    ${unreachableCount} sessioni su ${siteResults.length} senza accesso al sito: escluse dalle regole`);
       sessions.push(...siteResults);
       if (!decl.source) {
         // Ultima fonte: le tabelle della cookie policy (indirizzo configurato, link nel banner, pagina "cookie" scoperta).
@@ -307,8 +371,9 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
     await browser.close();
   }
 
-  // Le sessioni bloccate da un sistema anti-bot non descrivono il sito: restano nei dati ma non entrano nelle regole.
-  const validSessions = sessions.filter((s) => !s.blocked);
+  // Le sessioni bloccate da un sistema anti-bot o senza accesso al sito non descrivono il sito:
+  // restano nei dati ma non entrano nelle regole.
+  const validSessions = sessions.filter((s) => !s.blocked && !s.unreachable);
   const blockedSessions = sessions.filter((s) => s.blocked);
   const comparison: ComparisonRow[] = declared.flatMap((d) =>
     compareDeclared(d.site, validSessions.filter((s) => s.site === d.site), d),

@@ -41,6 +41,7 @@ export function requestExcerpt(r: RequestRecord, s: SessionResult): Record<strin
     tipo: r.resourceType,
     stato: r.status,
     pagina: r.pageUrl,
+    ...(r.fromServiceWorker ? { daServiceWorker: true } : {}),
     ...(r.consentParams ? { parametriConsenso: r.consentParams } : {}),
     ...(describeGoogleConsent(r.consentParams) ? { consensoGoogle: describeGoogleConsent(r.consentParams) } : {}),
   };
@@ -124,7 +125,7 @@ export function requestEvidenceLevel(reqs: RequestRecord[]): EvidenceLevel {
  */
 export function strongestRequest(reqs: RequestRecord[]): RequestRecord {
   const score = (r: RequestRecord) =>
-    (requestEvidenceLevel([r]) === 'raccolta' ? 10 : 0) + (r.method === 'POST' ? 3 : 0) + (r.consentParams ? 1 : 0) - (/^metrics\./.test(r.host) ? 6 : 0);
+    (requestEvidenceLevel([r]) === 'raccolta' ? 10 : 0) + (r.method === 'POST' ? 3 : 0) + (r.consentParams ? 1 : 0) - (/^metrics\./.test(r.host) ? 6 : 0) - (r.fromServiceWorker ? 2 : 0);
   return reqs.reduce((best, r) => (score(r) > score(best) ? r : best), reqs[0]);
 }
 
@@ -132,6 +133,29 @@ export function strongestRequest(reqs: RequestRecord[]): RequestRecord {
  * Stato del consenso Google in poche parole, per i titoli della sintesi:
  * "con ad_storage negato (senza cookie pubblicitari)" oppure "senza alcun segnale di consenso (Consent Mode assente)".
  */
+/**
+ * Segnali di consenso Google in un gruppo di richieste: la frase per il titolo vale solo se tutte le richieste
+ * con parametri di consenso dicono la stessa cosa; altrimenti lo si dichiara. Più il dettaglio con i conteggi.
+ */
+export function googleConsentSummary(reqs: RequestRecord[]): { short: string | null; detail: string | null } {
+  const withParams = reqs.filter((r) => r.consentParams?.gcs || r.consentParams?.gcd);
+  if (!withParams.length) return { short: null, detail: null };
+  const counts = new Map<string, { n: number; sw: number }>();
+  for (const r of withParams) {
+    const k = googleConsentShort(r.consentParams) ?? `gcs=${r.consentParams!.gcs ?? '—'}, gcd=${r.consentParams!.gcd ?? '—'}`;
+    const c = counts.get(k) ?? { n: 0, sw: 0 };
+    c.n++;
+    if (r.fromServiceWorker) c.sw++;
+    counts.set(k, c);
+  }
+  const detail = `Segnali di consenso Google nelle richieste: ${[...counts]
+    .map(([k, c]) => `${k} (${c.n === 1 ? '1 richiesta' : `${c.n} richieste`}${c.sw ? `, di cui ${c.sw} da service worker` : ''})`)
+    .join('; ')}`;
+  const shorts = [...new Set(withParams.map((r) => googleConsentShort(r.consentParams)))];
+  const short = shorts.length === 1 && shorts[0] ? shorts[0] : counts.size > 1 ? 'con segnali di consenso diversi tra le richieste' : null;
+  return { short, detail };
+}
+
 export function googleConsentShort(params: Record<string, string> | undefined): string | null {
   if (!params) return null;
   const gcs = params.gcs;

@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { describeGoogleConsent, googleConsentShort, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
+import { describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Richieste verso tracker (pubblicità, statistica, registrazione sessioni, social) prima della scelta. */
@@ -27,7 +27,8 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
       const best = strongestRequest(atLoad.length && requestEvidenceLevel(atLoad) === level ? atLoad : reqs);
       const firstAtLoad = best ?? r;
       const consent = describeGoogleConsent(firstAtLoad.consentParams);
-      const consentShort = googleConsentShort(firstAtLoad.consentParams);
+      const summary = googleConsentSummary(reqs);
+      const consentShort = summary.short;
       out.push({
         site: s.site,
         scenario: s.scenario,
@@ -46,7 +47,8 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
             : `Il sito scarica risorse di ${r.tracker!.company} (${CATEGORY_LABEL[r.tracker!.category]}) prima di qualsiasi scelta sul banner`,
         details: [
           `Richiesta di esempio: ${firstAtLoad.method} ${firstAtLoad.url.slice(0, 200)}`,
-          ...(consent ? [`Consenso Google dichiarato nella richiesta: ${consent}`] : []),
+          ...(consent ? [`Consenso Google dichiarato nella richiesta di esempio: ${consent}${firstAtLoad.fromServiceWorker ? ' (richiesta inviata da un service worker del sito)' : ''}`] : []),
+          ...(summary.detail ? [summary.detail] : []),
           `Al caricamento: ${reqs.filter((x) => x.stage === 'caricamento').length}; solo dopo lo scroll: ${reqs.filter((x) => x.stage === 'scroll').length}`,
           `Pagine: ${pages.slice(0, 10).join(', ')}`,
           `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`,

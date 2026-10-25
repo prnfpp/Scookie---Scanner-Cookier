@@ -140,6 +140,7 @@ export class Collector {
       const hit = SERVER_SIDE_PATHS.find((s) => s.re.test(parsed.pathname + parsed.search));
       if (hit) rec.serverSide = hit.label;
     }
+    if (r.serviceWorker()) rec.fromServiceWorker = true;
     this.byRequest.set(r, rec);
     this.requests.push(rec);
   }
