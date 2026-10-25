@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { choiceHow, describeGoogleConsent, googleConsentShort, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
+import { choiceHow, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo "Rifiuta": nuovi cookie non tecnici o richieste a tracker, anche nelle pagine successive. */
@@ -30,7 +30,8 @@ export const attivazioneDopoRifiuto: Rule = {
         const level = cs.length ? 'identificativo' : requestEvidenceLevel(rs);
         const sample = rs.length ? strongestRequest(rs) : undefined;
         const consent = sample ? describeGoogleConsent(sample.consentParams) : null;
-        const consentShort = sample ? googleConsentShort(sample.consentParams) : null;
+        const summary = googleConsentSummary(rs);
+        const consentShort = summary.short;
         out.push({
           site: s.site,
           scenario: s.scenario,
@@ -45,7 +46,8 @@ export const attivazioneDopoRifiuto: Rule = {
             `Metodo di interazione: ${s.interaction.method}; verifica stato consenso: ${s.interaction.verification} ${s.interaction.verificationDetail}`,
             ...cs.map((c) => `cookie ${c.name} — ${c.domain}, prima volta su ${c.firstSeenUrl}`),
             ...(sample ? [`Richiesta di esempio: ${sample.msFromChoice} ms dopo la scelta — ${sample.url.slice(0, 200)}`] : []),
-            ...(consent ? [`Consenso Google dichiarato nella richiesta: ${consent}`] : []),
+            ...(consent ? [`Consenso Google dichiarato nella richiesta di esempio: ${consent}${sample?.fromServiceWorker ? ' (richiesta inviata da un service worker del sito)' : ''}`] : []),
+            ...(summary.detail ? [summary.detail] : []),
           ],
           evidence: sessionEvidence(s, ['2-dopo-scelta', '3-fine']),
           requestExcerpt: sample ? requestExcerpt(sample, s) : undefined,

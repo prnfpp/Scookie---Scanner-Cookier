@@ -47,6 +47,8 @@ export const sottodominiDisomogenei: Rule = {
     // Lo stesso sito descritto in due elenchi dichiarati diversi (es. il CMP di www elenca cookie di un sottodominio
     // che ha un proprio banner e una propria informativa).
     for (const target of declared) {
+      // senza un elenco proprio non ci sono "due dichiarazioni": c'è solo quella dell'altro sito
+      if (!target.source) continue;
       const host = new URL(target.site).hostname;
       const about = (i: { domain?: string }) => !!i.domain && (i.domain.replace(/^\./, '') === host || i.domain.endsWith(`.${host}`));
       // altri elenchi (con fonte diversa) che contengono voci di questo sito; elenchi identici contano una volta
@@ -54,7 +56,7 @@ export const sottodominiDisomogenei: Rule = {
       const bySource = groupBy(others, (o) => o.source!);
       if (!bySource.size) continue;
       for (const [source, sites] of bySource) {
-        const items = sites[0].items.filter(about);
+        const items = [...new Map(sites[0].items.filter(about).map((i) => [`${i.name}|${i.domain}`, i])).values()];
         out.push({
           site: target.site,
           scenario: null,

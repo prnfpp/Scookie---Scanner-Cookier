@@ -367,6 +367,9 @@ export async function discoverSite(
     }
   }
 
+  if (candidates.length < ex.sePaginaMeno && !site.navigazioneManuale && !site.soloPagineExtra) {
+    notes.push('Poche pagine raggiungibili in automatico: se il sito ha percorsi con moduli (es. preventivo), usare la navigazione manuale.');
+  }
   if (robotsExcluded) notes.push(`URL escluse perché vietate da robots.txt: ${robotsExcluded}`);
   if (!candidates.length && !site.soloPagineExtra && !extras.length) {
     notes.push('Nessuna pagina scoperta automaticamente (es. applicazione web o pagina di accesso): indicare le pagine chiave in "Pagine da includere sempre" (pagineExtra).');
