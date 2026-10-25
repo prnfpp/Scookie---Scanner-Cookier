@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { choiceHow, describeGoogleConsent, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
+import { choiceHow, describeGoogleConsent, googleConsentShort, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo "Rifiuta": nuovi cookie non tecnici o richieste a tracker, anche nelle pagine successive. */
@@ -28,8 +28,9 @@ export const attivazioneDopoRifiuto: Rule = {
         if (rs.length) parts.push(`${rs.length === 1 ? 'parte' : 'partono'} ${nReq(rs.length)} a ${hostsSummary(rs)}`);
         const pages = [...new Set([...cs.map((c) => c.firstSeenUrl), ...rs.map((r) => r.pageUrl)])];
         const level = cs.length ? 'identificativo' : requestEvidenceLevel(rs);
-        const sample = rs.find((r) => requestEvidenceLevel([r]) === 'raccolta') ?? rs[0];
+        const sample = rs.length ? strongestRequest(rs) : undefined;
         const consent = sample ? describeGoogleConsent(sample.consentParams) : null;
+        const consentShort = sample ? googleConsentShort(sample.consentParams) : null;
         out.push({
           site: s.site,
           scenario: s.scenario,
@@ -37,7 +38,7 @@ export const attivazioneDopoRifiuto: Rule = {
           severity: level === 'risorsa' ? 'media' : undefined,
           evidenceLevel: level,
           groupKey: `${key}|${cat}`,
-          headline: `Dopo il rifiuto, ${key} continua a ${cs.length ? 'scrivere identificativi nel browser' : level === 'raccolta' ? 'ricevere dati di navigazione' : 'essere caricato dal sito'}`,
+          headline: `Dopo il rifiuto, ${key} continua a ${cs.length ? 'scrivere identificativi nel browser' : level === 'raccolta' ? 'ricevere dati di navigazione' : 'essere caricato dal sito'}${!cs.length && consentShort ? `, ${consentShort}` : ''}`,
           description: `Dopo il rifiuto (eseguito ${choiceHow(s.interaction)}), per ${key} (${CATEGORY_LABEL[cat!]}) ${parts.join(' e ')}.`,
           details: [
             `Pagine in cui si osserva: ${pages.join(', ')}`,

@@ -47,6 +47,21 @@ const siteSchema = z
     dichiarati: z.string().optional(),
     /** Selettori manuali del banner: hanno la precedenza su adattatori ed euristica. */
     banner: bannerSchema.optional(),
+    /**
+     * Navigazione manuale assistita, per i flussi che il tool non sa percorrere (es. preventivo con moduli):
+     * il browser si apre visibile, il tool esegue la scelta sul banner e poi l'operatore naviga a mano
+     * seguendo le istruzioni, fino al pulsante "Ho finito". Tutto viene registrato come nelle altre sessioni.
+     */
+    navigazioneManuale: z
+      .object({
+        istruzioni: z.string().min(1),
+        /** Pagina da cui partire (percorso o URL); predefinita: la prima del campione. */
+        partenza: z.string().optional(),
+        scenari: z.array(z.enum(['nessuna-azione', 'rifiuta', 'accetta'])).min(1).default(['rifiuta', 'accetta']),
+        maxMinuti: z.number().positive().max(60).default(10),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -67,6 +82,12 @@ export const configSchema = z
         userAgentSuffix: z.string().default('ScookieAudit/0.1'),
         /** User agent completo (sostituisce quello standard). */
         userAgent: z.string().optional(),
+        /**
+         * Esecuzione di controllo: user agent come quello di un browser normale (senza "HeadlessChrome" e senza
+         * la dichiarazione dell'audit). Serve a verificare se sistemi anti-bot o verifiche alterano i risultati;
+         * il report lo indica. Da usare insieme a headless: false.
+         */
+        uaNormale: z.boolean().default(false),
         /** Paese da cui deve partire la navigazione (codice ISO a 2 lettere). Viene verificato all'avvio. */
         paeseUscita: z.string().length(2).default('IT'),
         /**
@@ -93,6 +114,7 @@ export const configSchema = z
       .default({
         headless: true,
         canale: 'chromium',
+        uaNormale: false,
         locale: 'it-IT',
         timezone: 'Europe/Rome',
         viewport: { width: 1366, height: 900 },

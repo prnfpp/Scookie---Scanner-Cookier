@@ -1,5 +1,5 @@
 import { NON_TECHNICAL, type Category } from '../../types.js';
-import { CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence } from '../helpers.js';
+import { CATEGORY_LABEL, googleConsentShort, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo la revoca del consenso: nuovi cookie non tecnici o richieste a tracker. */
@@ -10,6 +10,14 @@ export const attivazioneDopoRevoca: Rule = {
   defaultNorms: ['gdpr7', 'art122', 'eprivacy53', 'garante2021'],
   evaluate({ sessions }) {
     const out: RawFinding[] = [];
+    // Fornitori ancora attivi dopo il rifiuto, per sito: se dopo la revoca succede lo stesso, non è un fatto nuovo.
+    const afterReject = new Map<string, Set<string>>();
+    for (const s of sessions.filter((x) => x.scenario === 'rifiuta' && x.interaction.outcome === 'eseguito')) {
+      const set = afterReject.get(s.site) ?? new Set<string>();
+      for (const c of s.cookies) if (c.phase === 'dopo' && NON_TECHNICAL.has(c.classification.category)) set.add(c.classification.platform ?? c.domain);
+      for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r)) set.add(r.tracker.company);
+      afterReject.set(s.site, set);
+    }
     for (const s of sessions.filter((x) => x.scenario === 'revoca' && x.revocation?.outcome === 'eseguita')) {
       const cookies = s.cookies.filter((c) => c.stage === 'revoca' && NON_TECHNICAL.has(c.classification.category));
       const reqs = s.requests.filter((r) => r.stage === 'revoca' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r));
@@ -18,7 +26,10 @@ export const attivazioneDopoRevoca: Rule = {
         const cs = cookies.filter((c) => (c.classification.platform ?? c.domain) === key);
         const rs = reqs.filter((r) => r.tracker!.company === key);
         const level = cs.length ? 'identificativo' : requestEvidenceLevel(rs);
-        const sample = rs.find((r) => requestEvidenceLevel([r]) === 'raccolta') ?? rs[0];
+        const sample = rs.length ? strongestRequest(rs) : undefined;
+        const viaApi = s.revocation!.via === 'api';
+        const sameAsReject = afterReject.get(s.site)?.has(key) ?? false;
+        const consentShort = sample ? googleConsentShort(sample.consentParams) : null;
         const parts: string[] = [];
         if (cs.length) parts.push(`${cs.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${cs.length} cookie`} (${cs.map((c) => c.name).join(', ')})`);
         if (rs.length) parts.push(`${rs.length === 1 ? 'parte' : 'partono'} ${nReq(rs.length)} a ${hostsSummary(rs)}`);
@@ -26,15 +37,21 @@ export const attivazioneDopoRevoca: Rule = {
           site: s.site,
           scenario: s.scenario,
           pageUrl: sample?.pageUrl ?? cs[0]?.firstSeenUrl ?? null,
-          severity: level === 'risorsa' ? 'media' : undefined,
+          // Comportamento uguale a quello dopo il rifiuto: già nelle schede del rifiuto, qui solo come conferma.
+          // Revoca simulata via API (un utente non può farla): prova più debole.
+          severity: sameAsReject ? 'bassa' : level === 'risorsa' || viaApi ? 'media' : undefined,
           evidenceLevel: level,
           // revoca dal link della pagina o solo via API: casi diversi, schede diverse
-          groupKey: `${key}|${/via API/.test(s.revocation!.how) ? 'api' : 'link'}`,
-          headline: `Dopo la revoca del consenso, ${key} continua a ${cs.length ? 'scrivere identificativi' : level === 'raccolta' ? 'ricevere dati' : 'essere caricato'}`,
-          description: `Dopo aver accettato e poi revocato il consenso (${s.revocation!.how}), per ${key} ${parts.join(' e ')}.`,
+          groupKey: `${key}|${s.revocation!.via ?? 'link'}|${sameAsReject}`,
+          headline: sameAsReject
+            ? `Dopo la revoca, ${key} si comporta come dopo il rifiuto`
+            : `Dopo la revoca del consenso${viaApi ? ' (simulata via API)' : ''}, ${key} continua a ${cs.length ? 'scrivere identificativi' : level === 'raccolta' ? 'ricevere dati' : 'essere caricato'}${!cs.length && consentShort ? `, ${consentShort}` : ''}`,
+          description:
+            `Dopo aver accettato e poi revocato il consenso (${s.revocation!.how}), per ${key} ${parts.join(' e ')}.` +
+            (sameAsReject ? ' Lo stesso fornitore risulta attivo anche dopo il rifiuto (vedi le schede "Tracciamenti attivi dopo il rifiuto"): non è un comportamento diverso.' : ''),
           details: [
             ...(s.revocation!.remaining.length ? [`Cookie non tecnici ancora presenti subito dopo la revoca: ${s.revocation!.remaining.join(', ')}`] : []),
-            ...(sample ? [`Richiesta di esempio: ${sample.url.slice(0, 200)}`] : []),
+            ...(sample ? [`Richiesta di esempio: ${sample.msFromRevoke != null ? `${sample.msFromRevoke} ms dopo la revoca — ` : ''}${sample.url.slice(0, 200)}`] : []),
           ],
           evidence: sessionEvidence(s, ['4-dopo-revoca', '5-fine-revoca']),
           requestExcerpt: sample ? requestExcerpt(sample, s) : undefined,
@@ -72,7 +89,7 @@ export const esitoRevoca: Rule = {
           scenario: s.scenario,
           pageUrl: s.pages[0],
           severity: 'informativa',
-          groupKey: `cookie-rimasti|${/via API/.test(r.how) ? 'api' : 'link'}`,
+          groupKey: `cookie-rimasti|${r.via ?? 'link'}`,
           description: `Dopo la revoca (${r.how}) restano nel browser ${r.remaining.length} cookie non tecnici scritti durante il consenso. La revoca impedisce nuovi trattamenti; la rimozione dei cookie già scritti dipende dal gestore del consenso.`,
           details: r.remaining,
           evidence: sessionEvidence(s, ['4-dopo-revoca']).filter((e) => !e.file.endsWith('.har')),

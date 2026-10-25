@@ -1,8 +1,8 @@
 import type { Page } from 'playwright';
-import type { BannerAnalysis } from '../types.js';
+import type { BannerAnalysis, CommandLook } from '../types.js';
 import { frames, waitFor } from './dom.js';
 import { TEXTS, clickCandidate, scan, type Candidate } from './heuristic.js';
-import { REVOKE_SELECTORS, REVOKE_TEXT } from './revoke.js';
+import { REVOKE_HREF, REVOKE_SELECTORS, REVOKE_TEXT } from './revoke.js';
 import type { CmpAdapter } from './types.js';
 
 const POLICY_TEXT = /cookie|privacy|informativa|policy|trattamento dei dati/i;
@@ -35,7 +35,7 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
   for (const f of frames(page)) {
     const found = await f
       .evaluate(
-        ({ selectors, source }) => {
+        ({ selectors, source, hrefSource }) => {
           const re = new RegExp(source, 'i');
           const inBanner = (el: Element) => !!el.closest('[data-scookie-c]') || el.hasAttribute('data-scookie-c');
           for (const sel of selectors) {
@@ -46,9 +46,18 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
             const t = ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
             if (t && t.length < 80 && re.test(t) && !inBanner(el)) return { text: t, how: 'testo del link' };
           }
+          // Link a una pagina dedicata (es. /preferenze-cookies), anche con un testo generico
+          const hrefRe = new RegExp(hrefSource, 'i');
+          for (const a of Array.from(document.querySelectorAll('a[href]'))) {
+            const href = (a as HTMLAnchorElement).href;
+            if (hrefRe.test(href) && !inBanner(a)) {
+              const t = ((a as HTMLElement).innerText || a.getAttribute('aria-label') || href).replace(/\s+/g, ' ').trim().slice(0, 80);
+              return { text: t, how: `link alla pagina ${href}` };
+            }
+          }
           return null;
         },
-        { selectors: REVOKE_SELECTORS, source: REVOKE_TEXT.source },
+        { selectors: REVOKE_SELECTORS, source: REVOKE_TEXT.source, hrefSource: REVOKE_HREF.source },
       )
       .catch(() => null);
     if (found) {
@@ -56,6 +65,19 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
       break;
     }
   }
+
+  // Evidenza visiva dei comandi di accettazione e rifiuto (prima di toccare altro)
+  const lookOf = async (c: Candidate | undefined) => (c ? measure(c).catch(() => null) : null);
+  const prominence = {
+    accept: await lookOf(candidates.find((c) => TEXTS.accept.test(c.text))),
+    reject: await lookOf(candidates.find((c) => TEXTS.reject.test(c.text))),
+  };
+
+  // Fondo della pagina (di solito il footer, dove sta il link per rivedere la scelta): fotografato come prova.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)).catch(() => {});
+  await page.waitForTimeout(800);
+  await shot('3-footer');
+  await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
 
   // Secondo livello: si apre "Preferenze/Personalizza" e si leggono gli interruttori delle categorie, senza salvare.
   let preferences: BannerAnalysis['preferences'] = null;
@@ -90,7 +112,53 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
     policyLink: policy ? { text: policy.text, href: policy.href ?? '' } : null,
     revokeLink: revoke,
     preferences,
+    prominence,
   };
+}
+
+/** Misure oggettive di un comando: dimensioni, testo, sfondo e contrasto (formula WCAG 2.x). */
+async function measure(c: Candidate): Promise<CommandLook | null> {
+  return c.frame
+    .locator(`[data-scookie-c="${c.index}"]`)
+    .first()
+    .evaluate((el, text) => {
+      const parse = (v: string) => {
+        const m = v.match(/rgba?\(([^)]+)\)/);
+        if (!m) return null;
+        const [r, g, b, a = '1'] = m[1].split(/[\s,/]+/).filter(Boolean);
+        return { r: +r, g: +g, b: +b, a: +a };
+      };
+      const lum = (c: { r: number; g: number; b: number }) => {
+        const f = (x: number) => ((x /= 255) <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+      };
+      const hex = (c: { r: number; g: number; b: number }) => `#${[c.r, c.g, c.b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('')}`;
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const own = parse(s.backgroundColor);
+      const hasBg = !!own && own.a > 0.1;
+      const hasBorder = parseFloat(s.borderTopWidth) > 0 && s.borderTopStyle !== 'none' && (parse(s.borderTopColor)?.a ?? 0) > 0.1;
+      // sfondo effettivo: il primo antenato con uno sfondo non trasparente
+      let bg: { r: number; g: number; b: number } | null = null;
+      for (let n: Element | null = el; n && !bg; n = n.parentElement) {
+        const c = parse(getComputedStyle(n).backgroundColor);
+        if (c && c.a > 0.5) bg = c;
+      }
+      bg ??= { r: 255, g: 255, b: 255 };
+      const fg = parse(s.color);
+      const contrast = fg ? (Math.max(lum(fg), lum(bg)) + 0.05) / (Math.min(lum(fg), lum(bg)) + 0.05) : null;
+      return {
+        text,
+        kind: hasBg || hasBorder ? ('pulsante' as const) : ('link' as const),
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+        fontSize: Math.round(parseFloat(s.fontSize)),
+        fontWeight: parseInt(s.fontWeight, 10) || 400,
+        color: fg ? hex(fg) : s.color,
+        background: hasBg && own ? hex(own) : null,
+        contrast: contrast ? Math.round(contrast * 10) / 10 : null,
+      };
+    }, c.text);
 }
 
 /**
@@ -98,7 +166,7 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
  * Nella pagina principale solo quelli dentro l'interfaccia del gestore del consenso: le altre caselle
  * (es. moduli del sito) non c'entrano. Nei frame si leggono tutti: un frame del CMP è tutto interfaccia di consenso.
  */
-async function readToggles(frame: import('playwright').Frame, isMain: boolean) {
+export async function readToggles(frame: import('playwright').Frame, isMain: boolean): Promise<{ label: string; checked: boolean; disabled: boolean; index?: number }[]> {
   return frame.evaluate((isMain) => {
     const CONSENT_UI = /cookie|consent|onetrust|optanon|\bot-|\bcmp|privacy|gdpr|hs-eu|hs-banner|hs-modal|cky|cmplz|didomi|usercentrics|\buc-|iubenda|cc_div|cc-main|cybot|klaro|tarteaucitron/i;
     const inConsentUi = (el: Element): boolean => {
@@ -145,11 +213,24 @@ async function readToggles(frame: import('playwright').Frame, isMain: boolean) {
       }
       return '(senza etichetta)';
     };
-    return all.filter((el) => visible(el) && (!isMain || inConsentUi(el))).map((el) => {
-      const input = el as HTMLInputElement;
-      const checked = input.type === 'checkbox' ? input.checked : el.getAttribute('aria-checked') === 'true';
-      const disabled = input.disabled || el.getAttribute('aria-disabled') === 'true';
-      return { label: labelOf(el).replace(/\s+/g, ' ').slice(0, 80), checked, disabled };
-    });
+    // Gli interruttori sono marcati (data-scookie-t) per poterli poi impostare nello scenario "personalizza"
+    const toggles: { label: string; checked: boolean; disabled: boolean; index?: number }[] = all
+      .filter((el) => visible(el) && (!isMain || inConsentUi(el)))
+      .map((el, index) => {
+        const input = el as HTMLInputElement;
+        const checked = input.type === 'checkbox' ? input.checked : el.getAttribute('aria-checked') === 'true';
+        const disabled = input.disabled || el.getAttribute('aria-disabled') === 'true';
+        el.setAttribute('data-scookie-t', String(index));
+        return { label: labelOf(el).replace(/\s+/g, ' ').slice(0, 80), checked, disabled, index };
+      });
+    // Categorie senza interruttore ma con la dicitura "Sempre attivi" (es. OneTrust): attive e non modificabili
+    for (const el of Array.from(document.querySelectorAll('span, div, p, strong, em, label'))) {
+      const t = ((el as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+      if (!/^(sempre attiv[aeio]|always active)$/i.test(t) || !visible(el) || (isMain && !inConsentUi(el))) continue;
+      const label = labelOf(el).replace(/\s+/g, ' ').slice(0, 80);
+      if (!toggles.some((x) => x.label === label)) toggles.push({ label, checked: true, disabled: true });
+    }
+    // Interruttori senza etichetta (es. legittimo interesse) solo se non ce ne sono di etichettati
+    return toggles.some((x) => x.label !== '(senza etichetta)') ? toggles.filter((x) => x.label !== '(senza etichetta)') : toggles;
   }, isMain);
 }

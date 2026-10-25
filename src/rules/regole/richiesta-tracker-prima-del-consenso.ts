@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { describeGoogleConsent, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
+import { describeGoogleConsent, googleConsentShort, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Richieste verso tracker (pubblicità, statistica, registrazione sessioni, social) prima della scelta. */
@@ -23,9 +23,11 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
       // Come estratto si mostra la richiesta più significativa: una raccolta di dati, se c'è.
       const level = requestEvidenceLevel(reqs);
       const atLoad = reqs.filter((x) => x.stage === 'caricamento');
-      const pool = atLoad.length ? atLoad : reqs;
-      const firstAtLoad = (level === 'raccolta' ? pool.find((x) => requestEvidenceLevel([x]) === 'raccolta') : undefined) ?? pool[0] ?? r;
+      // la più forte tra quelle al caricamento, se una raccolta c'è; altrimenti la più forte in assoluto
+      const best = strongestRequest(atLoad.length && requestEvidenceLevel(atLoad) === level ? atLoad : reqs);
+      const firstAtLoad = best ?? r;
       const consent = describeGoogleConsent(firstAtLoad.consentParams);
+      const consentShort = googleConsentShort(firstAtLoad.consentParams);
       out.push({
         site: s.site,
         scenario: s.scenario,
@@ -40,7 +42,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         groupKey: `${r.tracker!.company}|${r.tracker!.category}`,
         headline:
           level === 'raccolta'
-            ? `${r.tracker!.company} (${CATEGORY_LABEL[r.tracker!.category]}) riceve dati di navigazione prima di qualsiasi scelta sul banner`
+            ? `${r.tracker!.company} (${CATEGORY_LABEL[r.tracker!.category]}) riceve dati di navigazione prima di qualsiasi scelta sul banner${consentShort ? `, ${consentShort}` : ''}`
             : `Il sito scarica risorse di ${r.tracker!.company} (${CATEGORY_LABEL[r.tracker!.category]}) prima di qualsiasi scelta sul banner`,
         details: [
           `Richiesta di esempio: ${firstAtLoad.method} ${firstAtLoad.url.slice(0, 200)}`,

@@ -1,6 +1,9 @@
-import type { ScenarioName } from '../../types.js';
+import type { Classification, ScenarioName } from '../../types.js';
 import { groupBy, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+
+/** Fornitore del dominio come indizio, quando il nome non è riconosciuto. */
+const hint = (c: Classification) => (c.source === 'dominio-del-fornitore' && c.platform ? ` — dominio di ${c.platform}` : '');
 
 /**
  * Cookie, storage e terze parti che il tool non sa classificare, osservati prima della scelta o dopo il rifiuto.
@@ -17,10 +20,10 @@ export const elementiNonClassificati: Rule = {
     const rows = sessions.flatMap((s) => [
       ...s.cookies
         .filter((c) => c.classification.category === 'sconosciuta' && relevant(c.phase, s.scenario))
-        .map((c) => ({ s, key: `cookie "${c.name}" (${c.domain}, ${c.party} parte, scadenza ${c.expires ? c.expires.slice(0, 10) : 'sessione'})`, kind: 'cookie' })),
+        .map((c) => ({ s, key: `cookie "${c.name}" (${c.domain}, ${c.party} parte, scadenza ${c.expires ? c.expires.slice(0, 10) : 'sessione'})${hint(c.classification)}`, kind: 'cookie' })),
       ...s.storage
         .filter((st) => st.classification.category === 'sconosciuta' && st.party === 'terza' && relevant(st.phase, s.scenario))
-        .map((st) => ({ s, key: `${st.kind} "${st.key}" (${st.origin})`, kind: 'storage' })),
+        .map((st) => ({ s, key: `${st.kind} "${st.key}" (${st.origin})${hint(st.classification)}`, kind: 'storage' })),
       ...s.requests
         .filter((r) => r.party === 'terza' && !r.tracker && relevant(r.phase, s.scenario))
         .map((r) => ({ s, key: `terza parte ${r.host}`, kind: r.phase === 'prima' ? 'host-prima' : 'host' })),

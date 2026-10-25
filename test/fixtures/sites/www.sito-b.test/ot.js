@@ -8,10 +8,12 @@
     GetDomainData: function () {
       return { Groups: [
         { GroupName: 'Cookie strettamente necessari', OptanonGroupId: 'C0001', Status: 'always active',
-          Cookies: [{ Name: 'OptanonConsent', Host: 'www.sito-b.test' }, { Name: '_hjSessionUser_xxxxxxx', Host: 'sito-b.test' }], Hosts: [] },
+          Cookies: [{ Name: 'OptanonConsent', Host: 'www.sito-b.test' }, { Name: '_hjSessionUser_xxxxxxx', Host: 'sito-b.test' }, { Name: 'dtCookie', Host: 'sito-b.test' }], Hosts: [] },
         { GroupName: 'Cookie di prestazione', OptanonGroupId: 'C0002', Status: 'inactive',
           Cookies: [{ Name: '_ga', Host: 'sito-b.test' }, { Name: '_ga_xxxxxxxxxx', Host: 'sito-b.test' }, { Name: '_vecchio_cookie', Host: 'sito-b.test' }], Hosts: [] },
-        { GroupName: 'Cookie di targeting', OptanonGroupId: 'C0004', Status: 'inactive', Cookies: [], Hosts: [] }
+        { GroupName: 'Cookie di targeting', OptanonGroupId: 'C0004', Status: 'inactive', Cookies: [], Hosts: [] },
+        // Categoria configurata ma senza interruttore nel centro preferenze: l'utente non la vede
+        { GroupName: 'Cookie funzionali', OptanonGroupId: 'C0003', Status: 'inactive', Cookies: [{ Name: 'lang_pref', Host: 'sito-b.test' }], Hosts: [] }
       ] };
     },
     RejectAll: function () { setConsent(false); },
@@ -28,7 +30,14 @@
   var foot = document.createElement('footer');
   foot.innerHTML = '<a href="#" class="ot-sdk-show-settings">Impostazioni cookie</a>';
   document.body.appendChild(foot);
-  foot.querySelector('a').onclick = function (e) { e.preventDefault(); if (!document.getElementById('onetrust-consent-sdk')) showBanner(); };
+  foot.querySelector('a').onclick = function (e) {
+    e.preventDefault();
+    var sdk = document.getElementById('onetrust-consent-sdk');
+    if (!sdk) return showBanner();
+    sdk.style.display = '';
+    document.getElementById('onetrust-banner-sdk').style.display = 'block';
+    document.getElementById('onetrust-pc-sdk').style.display = 'none';
+  };
 
   function apply(g) {
     if (g.indexOf('C0002') >= 0) {
@@ -39,6 +48,8 @@
       fetch('http://analytics.stattest.example:' + P + '/g/collect?v=2&gcs=G111', { mode: 'no-cors' });
     }
     if (g.indexOf('C0004') >= 0) {
+      // Dynatrace dichiarato tra i necessari ma attivato solo con il consenso pieno
+      document.cookie = 'dtCookie=v_4_srv_1; path=/';
       document.cookie = '_fbp=fb.1; max-age=7776000; path=/';
       new Image().src = 'http://pixel.adtest.example:' + P + '/tr?id=b';
     }
@@ -50,8 +61,9 @@
     document.cookie = 'OptanonConsent=' + encodeURIComponent('groups=' + g) + '; max-age=31536000; path=/';
     document.cookie = 'OptanonAlertBoxClosed=1; max-age=31536000; path=/';
     window.OnetrustActiveGroups = g;
+    // Come in OneTrust, il banner si nasconde ma resta nella pagina (con il centro preferenze)
     var sdk = document.getElementById('onetrust-consent-sdk');
-    if (sdk) sdk.remove();
+    if (sdk) sdk.style.display = 'none';
     apply(g);
   }
   function showBanner() {
