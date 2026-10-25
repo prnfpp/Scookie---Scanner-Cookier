@@ -212,9 +212,11 @@ export class Collector {
 
   results() {
     const choice = this.choiceEpoch;
+    const revoke = this.revokeEpoch;
     const requests: RequestRecord[] = this.requests.map(({ epoch, ...r }) => ({
       ...r,
       msFromChoice: choice === null ? null : epoch - choice,
+      ...(revoke !== null && epoch >= revoke ? { msFromRevoke: epoch - revoke } : {}),
     }));
     return { cookies: [...this.cookies.values()], storage: [...this.storage.values()], requests };
   }

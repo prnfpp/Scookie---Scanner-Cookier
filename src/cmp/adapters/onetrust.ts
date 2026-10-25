@@ -6,11 +6,18 @@ import { selectorAdapter } from './base.js';
 // C0004 targeting, C0005 social. I siti possono definire gruppi propri.
 const NON_ESSENTIAL = ['C0002', 'C0003', 'C0004', 'C0005'];
 
-interface OtGroup {
+export interface OtGroup {
   id: string;
   nome: string;
-  stato: string;
+  /** Stato predefinito nella configurazione (es. "always active", "inactive"): non lo stato dopo la scelta. */
+  statoPredefinito?: string;
+  /** Nome usato prima della versione che distingue predefinito e attuale. */
+  stato?: string;
+  /** Attivo dopo la scelta (da OnetrustActiveGroups). */
+  attivo?: boolean;
   elementi: number;
+  /** Il gruppo ha un interruttore nel centro preferenze (null se il centro preferenze non è nella pagina). */
+  inPc?: boolean | null;
 }
 
 interface OtRawItem {
@@ -45,12 +52,17 @@ export const onetrust = selectorAdapter({
       const d = window.OneTrust && OneTrust.GetDomainData ? OneTrust.GetDomainData() : null;
       if (d && Array.isArray(d.Groups)) {
         gruppi = [];
+        const pc = document.getElementById('onetrust-pc-sdk');
         const walk = (g) => {
           const n = (g.Cookies || []).length + (g.FirstPartyCookies || []).length + (g.Hosts || []).length;
-          gruppi.push({ id: String(g.OptanonGroupId ?? g.CustomGroupId ?? ''), nome: g.GroupName || '', stato: String(g.Status || '').toLowerCase(), elementi: n });
+          const id = String(g.OptanonGroupId ?? g.CustomGroupId ?? '');
+          const inPc = pc ? !!pc.querySelector('[id="ot-group-id-' + id + '"], [data-optanongroupid="' + id + '"]') : null;
+          gruppi.push({ id, nome: g.GroupName || '', statoPredefinito: String(g.Status || '').toLowerCase(), attivo: null, elementi: n, inPc });
           (g.SubGroups || []).forEach(walk);
         };
         d.Groups.forEach(walk);
+        const act = String(window.OnetrustActiveGroups || window.OptanonActiveGroups || '').split(',');
+        gruppi.forEach((x) => { x.attivo = act.includes(x.id); });
       }
     } catch (e) {}
     return {
@@ -64,7 +76,7 @@ export const onetrust = selectorAdapter({
     const s = state as { activeGroups?: string | null; gruppi?: OtGroup[] | null } | null;
     if (!s?.activeGroups) return { consistent: null, detail: 'OnetrustActiveGroups non disponibile' };
     const active = s.activeGroups.split(',').filter(Boolean);
-    const groups = (s.gruppi ?? []).filter((g) => g.id);
+    const groups = (s.gruppi ?? []).filter((g) => g.id).map((g) => ({ ...g, stato: g.statoPredefinito ?? g.stato ?? '' }));
     const label = (id: string) => {
       const g = groups.find((x) => x.id === id);
       return g?.nome ? `${id} "${g.nome}"` : id;
@@ -94,9 +106,18 @@ export const onetrust = selectorAdapter({
     }
     const missing = nonEssential.filter((g) => !active.includes(g));
     if (!nonEssential.length) return { consistent: null, detail: `nessun gruppo non essenziale configurato (${summary})` };
-    return missing.length
-      ? { consistent: false, detail: `dopo l'accettazione non risultano attivi: ${missing.map(label).join(', ')} (${summary})` }
-      : { consistent: true, detail: summary };
+    // Gruppi che l'utente non vede nel centro preferenze: "Accetta" può non riguardarli (es. configurazione per paese).
+    const hidden = missing.filter((id) => groups.find((g) => g.id === id)?.inPc === false);
+    const shown = missing.filter((id) => !hidden.includes(id));
+    if (shown.length) return { consistent: false, detail: `dopo l'accettazione non risultano attivi: ${shown.map(label).join(', ')} (${summary})` };
+    if (hidden.length) {
+      // Coerente con ciò che l'utente ha potuto scegliere; i gruppi nascosti sono un fatto documentale a parte
+      return {
+        consistent: true,
+        detail: `attivi tutti i gruppi presentati all'utente; non attivi ${hidden.map(label).join(', ')}, che non compaiono nel centro preferenze (vedi la scheda sulle categorie non presentate) (${summary})`,
+      };
+    }
+    return { consistent: true, detail: summary };
   },
   async declared(page) {
     const raw = await page

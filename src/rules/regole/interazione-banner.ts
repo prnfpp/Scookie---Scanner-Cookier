@@ -1,5 +1,5 @@
 import type { Severity } from '../../types.js';
-import { choiceHow, sessionEvidence } from '../helpers.js';
+import { choiceHow, sessionEvidence, withArticle } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Rifiuto non disponibile al primo livello o non trovato. */
@@ -17,7 +17,7 @@ export const rifiutoNonAlPrimoLivello: Rule = {
       if (i.outcome === 'eseguito' && i.layer === 'chiusura-x') {
         // Fatto da riportare, non necessariamente un problema: la chiusura con la X può valere come rifiuto.
         severity = 'bassa';
-        description = `Al primo livello del banner non è stato trovato un pulsante o link di rifiuto esplicito: il rifiuto è stato eseguito chiudendo il banner con la ${i.clicked?.[0] ?? 'X di chiusura'}.`;
+        description = `Al primo livello del banner non è stato trovato un pulsante o link di rifiuto esplicito: il rifiuto è stato eseguito chiudendo il banner con ${withArticle(i.clicked?.[0] ?? 'X di chiusura')}.`;
       } else if (i.outcome === 'eseguito' && i.layer === 'secondo-livello') {
         description = `Il banner non offre un comando di rifiuto al primo livello: il rifiuto è stato possibile solo aprendo le preferenze, ${choiceHow(i)}.`;
       } else if (i.outcome === 'eseguito' && i.via === 'api') {

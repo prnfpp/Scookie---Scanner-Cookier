@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { DeclaredItem } from '../../types.js';
 import { anyVisible, clickFirst, waitFor, type ClickedElement } from '../dom.js';
+import { TEXTS } from '../heuristic.js';
 import type { CmpAdapter, Choice, ChoiceResult, ConsentCheck } from '../types.js';
 
 /**
@@ -79,7 +80,8 @@ export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
       const first = await clickFirst(page, spec.reject.firstLayer);
       if (first) return clicked('primo-livello', first);
       const close = spec.reject.close && (await clickFirst(page, spec.reject.close));
-      if (close) return clicked('chiusura-x', close);
+      // Un pulsante di chiusura con un testo di rifiuto (es. OneTrust "Continua senza accettare") è un rifiuto al primo livello.
+      if (close) return clicked(TEXTS.reject.test(/"([^"]+)"/.exec(close.label)?.[1]?.trim() ?? '') ? 'primo-livello' : 'chiusura-x', close);
       if (spec.reject.openPreferences && spec.reject.preferencesReject) {
         const open = await clickFirst(page, spec.reject.openPreferences);
         if (open) {

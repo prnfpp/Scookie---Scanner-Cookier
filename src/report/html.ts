@@ -20,7 +20,18 @@ export interface ReportInput {
   files: { path: string; sha256: string; bytes: number }[];
   normsPath: string;
   exit: ExitInfo;
+  /** Revisione manuale (revisione.csv compilato): esito e nota per scheda, per chiave stabile. */
+  review?: Map<string, ReviewEntry>;
 }
+
+export type ReviewOutcome = 'confermato' | 'falso positivo' | 'da verificare' | '';
+export interface ReviewEntry {
+  esito: ReviewOutcome;
+  nota: string;
+}
+
+/** Chiave stabile di una scheda (anche per esecuzioni precedenti all'introduzione di "key"). */
+export const findingKey = (f: Finding) => f.key ?? `${f.ruleId}|${f.site}|${f.scenario ?? ''}|${f.headline ?? f.description.slice(0, 160)}`;
 
 export const esc = (v: unknown) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -50,8 +61,31 @@ pre{background:var(--alt);padding:8px;font-size:11.5px;white-space:pre-wrap;word
 ul{margin:4px 0;padding-left:20px}.kv td:first-child{width:28%;font-weight:600;background:var(--alt)}
 @page{size:A4;margin:14mm 12mm}@media print{body{padding:0 2px;max-width:none;width:auto}a{color:inherit}table{table-layout:fixed}}`;
 
+/**
+ * Righe della tabella delle interazioni: le sessioni consecutive "nessuna azione" dello stesso sito con lo stesso esito
+ * (una per pagina del campione) diventano una riga sola; l'elenco completo resta in sessioni.csv.
+ */
+function compactSessions(sessions: SessionResult[]): { s: SessionResult; ids: string[] }[] {
+  const sig = (s: SessionResult) =>
+    s.scenario === 'nessuna-azione'
+      ? [s.site, s.interaction.detectedCmps.join(','), s.interaction.bannerVisibleBefore, s.interaction.method, s.interaction.outcome, s.interaction.verification, s.errors.length].join('|')
+      : null;
+  const out: { s: SessionResult; ids: string[] }[] = [];
+  for (const s of sessions) {
+    const last = out[out.length - 1];
+    const k = sig(s);
+    if (k && last && sig(last.s) === k) last.ids.push(s.id);
+    else out.push({ s, ids: [s.id] });
+  }
+  return out;
+}
+
 export function renderHtml(r: ReportInput): string {
-  const { config, sessions, findings } = r;
+  const { config, sessions } = r;
+  // Con la revisione manuale, le schede segnate come falso positivo escono dal corpo del report e vanno in coda
+  const reviewOf = (f: Finding) => r.review?.get(findingKey(f));
+  const findings = r.findings.filter((f) => reviewOf(f)?.esito !== 'falso positivo');
+  const excluded = r.findings.filter((f) => reviewOf(f)?.esito === 'falso positivo');
   const sites = [...new Set(sessions.map((s) => s.site))];
   const parts: string[] = [];
 
@@ -59,6 +93,7 @@ export function renderHtml(r: ReportInput): string {
 <title>Audit cookie – ${esc(config.cliente)}</title><style>${CSS}</style></head><body>
 <h1>Audit tecnico cookie e tracciamenti</h1>
 <p class="muted">${esc(config.cliente)} · esecuzione del ${esc(fmt(r.startedAt))} · Scookie ${esc(r.toolVersion)}</p>
+${r.review ? `<p class="warn"><strong>Report rivisto.</strong> È stata applicata la revisione manuale delle schede (file <code>revisione.csv</code>): ${r.findings.filter((f) => reviewOf(f)?.esito === 'confermato').length} confermate, ${excluded.length} escluse come falso positivo (elencate in fondo alla sezione 3), ${r.findings.filter((f) => !reviewOf(f)?.esito).length} non revisionate. I dati raccolti e le prove non cambiano.</p>` : ''}
 ${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</strong> ${esc(r.exit.note)}</p>` : ''}
 <p>Questo documento descrive cosa avviene nel browser dell'utente rispetto alle scelte sul banner di consenso, con le relative prove. Non contiene valutazioni di conformità né indicazioni correttive.</p>`);
 
@@ -71,7 +106,7 @@ ${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</st
   <li><em>media</em>: aspetti del banner o dell'informativa che possono incidere sulla validità del consenso;</li>
   <li><em>bassa</em>: incoerenze documentali o elementi da classificare;</li>
   <li><em>informativa</em>: contesto utile alla lettura (es. tracciamento lato server, banner assente senza tracciamenti).</li></ul></li>
-<li><strong>Le prove</strong> sono nella cartella <code>evidenze/</code>; i nomi dei file richiamano il numero della criticità. L'impronta SHA-256 di ogni file è in fondo al report e in <code>manifest.json</code>, insieme alla configurazione usata: permette di verificare che i file non siano stati modificati dopo la raccolta.</li>
+<li><strong>Le prove</strong> sono nella cartella <code>evidenze/</code>; i nomi dei file richiamano il numero della criticità. L'impronta SHA-256 di ogni file è in <code>manifest.json</code>, insieme alla configurazione usata: permette di verificare che i file non siano stati modificati dopo la raccolta.</li>
 <li><strong>Il perimetro</strong> è un campione di pagine visitate in una certa data, da un certo paese e con un certo browser (sezione 1): pagine non visitate, aree riservate e momenti diversi possono dare risultati diversi.</li>
 </ul>`);
 
@@ -96,7 +131,7 @@ ${blockedSites.length ? `<p class="warn"><strong>Attenzione.</strong> Su ${esc(b
 <tr><td>Cliente</td><td>${esc(config.cliente)}</td></tr>
 <tr><td>Inizio / fine</td><td>${esc(fmt(r.startedAt))} — ${esc(fmt(r.endedAt))}</td></tr>
 <tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}; browser ${esc(r.browserVersion)} (${config.browser.canale === 'chromium' ? 'Chromium incluso nel tool' : `${esc(config.browser.canale)} installato sul computer`}, ${config.browser.headless ? 'senza finestra (headless)' : 'con finestra visibile'})</td></tr>
-<tr><td>User agent</td><td><code>${esc(r.userAgent)}</code></td></tr>
+<tr><td>User agent</td><td><code>${esc(r.userAgent)}</code>${config.browser.uaNormale ? '<br><span class="muted">Esecuzione di controllo: user agent di un browser normale, senza la dichiarazione dell\'audit.</span>' : ''}</td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
 <tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (IP ${esc(r.exit.ip)}, fonte ${esc(r.exit.source)})` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
 <tr><td>Scenari</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta</td></tr>
@@ -110,13 +145,20 @@ ${blockedSites.length ? `<p class="warn"><strong>Attenzione.</strong> Su ${esc(b
     parts.push(`<p><strong>${esc(d.site)}</strong> — ${d.found} URL scoperte; tipi: ${esc(Object.entries(d.byType).map(([k, v]) => `${k} (${v})`).join(', ') || '—')}</p>
 <table><tr><th>#</th><th>Tipo</th><th>Origine</th><th>URL</th></tr>${d.sample.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.type)}</td><td>${esc(p.source)}</td><td>${esc(p.url)}</td></tr>`).join('')}</table>
 ${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`);
+    // Navigazione manuale dell'operatore: istruzioni, pagine percorse e come si è conclusa
+    for (const s of sessions.filter((x) => x.site === d.site && x.manual)) {
+      const m = s.manual!;
+      const end = m.endedBy === 'operatore' ? "conclusa dall'operatore" : m.endedBy === 'tempo' ? 'interrotta allo scadere del tempo massimo' : 'interrotta: finestra chiusa';
+      parts.push(`<p><strong>Navigazione manuale</strong> — sessione ${esc(s.id)}, scenario "${esc(s.scenario)}", ${end} dopo ${m.seconds} s. Istruzioni date all'operatore: "${esc(m.instructions)}".</p>
+<ol class="muted">${m.pages.map((u) => `<li>${esc(u)}</li>`).join('')}</ol>`);
+    }
   }
 
   parts.push(`<h3>Interazione con il banner</h3><p>Per ogni sessione: CMP riconosciuti, metodo che ha eseguito la scelta (selettori manuali, adattatore del CMP, euristica sui testi, API del CMP) e verifica dello stato del consenso registrato dopo la scelta.</p>
 <table><tr><th style="width:17%">Sessione</th><th style="width:9%">Scenario</th><th style="width:12%">CMP / banner</th><th style="width:14%">Metodo</th><th>Esito</th><th style="width:22%">Verifica</th></tr>
-${sessions
+${compactSessions(sessions)
   .map(
-    (s) => `<tr><td>${esc(s.id)}<br><span class="muted">${s.pages.length} pag.</span></td><td>${esc(s.scenario)}</td><td>${esc(s.interaction.detectedCmps.join(', ') || 'nessun CMP')}<br><span class="muted">banner ${s.interaction.bannerVisibleBefore ? 'visibile' : 'non rilevato'}</span></td>
+    ({ s, ids }) => `<tr><td>${ids.length > 1 ? `${esc(ids[0])} … ${esc(ids[ids.length - 1])}<br><span class="muted">${ids.length} sessioni, ${s.pages.length} pag. ciascuna</span>` : `${esc(s.id)}<br><span class="muted">${s.pages.length} pag.</span>`}</td><td>${esc(s.scenario)}</td><td>${esc(s.interaction.detectedCmps.join(', ') || 'nessun CMP')}<br><span class="muted">banner ${s.interaction.bannerVisibleBefore ? 'visibile' : 'non rilevato'}</span></td>
 <td>${esc(s.interaction.method)}${s.interaction.layer ? `<br><span class="muted">${esc(s.interaction.layer)}</span>` : ''}</td><td>${esc(s.interaction.outcome)}<br><span class="muted">${esc(s.interaction.detail)}</span></td><td>${esc(s.interaction.verification)}<br><span class="muted">${esc(s.interaction.verificationDetail)}</span></td></tr>`,
   )
   .join('')}</table>`);
@@ -155,12 +197,18 @@ ${[...bySite].map(([site, fs]) => `<tr><td>${esc(site)}</td>${SEV.map((s) => `<t
     parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · ${esc(f.ruleTitle)} ${sevBadge(f.severity)}</h3>
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 ${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}.</p>` : ''}
+${reviewOf(f)?.esito ? `<p><strong>Revisione manuale.</strong> ${esc(reviewOf(f)!.esito)}${reviewOf(f)!.nota ? ` — ${esc(reviewOf(f)!.nota)}` : ''}</p>` : ''}
 <p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
-${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (vedi dati.csv)</li>` : ''}</ul>` : ''}
+${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo negli allegati: dati.json e CSV)</li>` : ''}</ul>` : ''}
 ${images.length ? `<p><strong>Prova.</strong></p><div class="shots">${images.map((e) => `<figure><img src="${esc(e.file)}" alt="${esc(e.label)}"><figcaption>${esc(e.label)} — ${esc(e.file)}</figcaption></figure>`).join('')}</div>` : ''}
 ${f.requestExcerpt ? `<p><strong>Estratto della richiesta</strong> (completa nel file HAR):</p><pre>${esc(JSON.stringify(f.requestExcerpt, null, 2))}</pre>` : ''}
 ${others.length ? `<p class="muted">File: ${others.map((e) => esc(e.file)).join(', ')}</p>` : ''}
 ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.map((n) => `<li>${n.url ? `<a href="${esc(n.url)}">${esc(n.title)}</a>` : esc(n.title)} — ${esc(n.reference)}</li>`).join('')}</ul>` : ''}</div>`);
+  }
+
+  if (excluded.length) {
+    parts.push(`<h3>Schede escluse dopo la revisione manuale</h3><p class="muted">Segnalate dalle regole ma giudicate falsi positivi da chi ha revisionato il report; restano nei dati (dati.json, criticita.csv).</p>
+<table><tr><th>Scheda</th><th>Regola</th><th>Sito</th><th>Motivo</th></tr>${excluded.map((f) => `<tr><td>${esc(f.id)}</td><td>${esc(f.ruleTitle)}</td><td>${esc(f.site)}</td><td>${esc(reviewOf(f)!.nota || '—')}</td></tr>`).join('')}</table>`);
   }
 
   // 4. Inventario
@@ -205,8 +253,14 @@ ${[...third]
   }
 
   // 5. Allegati
-  parts.push(`<h2>5. Allegati</h2><p>File di evidenza con impronta SHA-256. L'elenco completo, inclusi questo report e la configurazione usata, è in <code>manifest.json</code>.</p>
-<table><tr><th>File</th><th>Byte</th><th>SHA-256</th></tr>${r.files.map((f) => `<tr><td>${esc(f.path)}</td><td>${f.bytes}</td><td><code>${esc(f.sha256)}</code></td></tr>`).join('')}</table>
+  // L'elenco delle impronte di ogni file sta in manifest.json (e l'impronta del manifest in manifest.json.sha256):
+  // nel report basta il riepilogo, per non occupare decine di pagine.
+  const kinds = groupBy(r.files, (f) => (f.path.endsWith('.har') ? 'registrazioni del traffico (HAR)' : f.path.endsWith('.png') ? 'screenshot' : f.path.endsWith('.json') ? 'estratti delle richieste (JSON)' : 'altri file'));
+  const mb = (n: number) => `${(n / 1048576).toLocaleString('it-IT', { maximumFractionDigits: 1 })} MB`;
+  parts.push(`<h2>5. Allegati</h2>
+<p>Le prove sono nella cartella <code>evidenze/</code>. L'impronta SHA-256 di <strong>ogni file</strong> della cartella dell'esecuzione (compresi questo report, i CSV e la configurazione usata) è in <code>manifest.json</code>; l'impronta di <code>manifest.json</code> è nel file <code>manifest.json.sha256</code>. Per verificare l'integrità basta ricalcolare l'impronta del manifest e confrontarla.</p>
+<table><tr><th>Tipo di evidenza</th><th>File</th><th>Dimensione</th></tr>${[...kinds].map(([k, fs]) => `<tr><td>${esc(k)}</td><td>${fs.length}</td><td>${mb(fs.reduce((a, f) => a + f.bytes, 0))}</td></tr>`).join('')}</table>
+<p>Dati grezzi allegati: <code>cookie.csv</code>, <code>storage.csv</code>, <code>richieste.csv</code>, <code>sessioni.csv</code>, <code>criticita.csv</code>, <code>confronto-dichiarati.csv</code>, <code>dati.json</code>.</p>
 </body></html>`);
   return parts.join('\n');
 }

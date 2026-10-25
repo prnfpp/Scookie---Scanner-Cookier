@@ -1,5 +1,6 @@
 import type { ExitInfo } from '../browser/exit.js';
 import type { AuditConfig } from '../config/schema.js';
+import type { DiscoveryResult } from '../discovery/discover.js';
 import type { ComparisonRow, DeclaredSet, Evidence, ScenarioName, SessionResult, Severity } from '../types.js';
 
 export interface RuleContext {
@@ -12,6 +13,8 @@ export interface RuleContext {
   comparison: ComparisonRow[];
   /** IP e paese di uscita rilevati all'avvio. */
   exit: ExitInfo;
+  /** Pagine scoperte per sito (facoltativo nei test delle singole regole). */
+  discovery?: DiscoveryResult[];
 }
 
 /** Criticità prodotta da una regola, prima della numerazione e del collegamento alle norme. */

@@ -2,6 +2,7 @@ import type { Browser, Page } from 'playwright';
 import type { AuditConfig, SiteConfig } from '../config/schema.js';
 import { closeSafely, withTimeout } from '../util/misc.js';
 import { registrableDomain } from '../util/domains.js';
+import { isRevokeUrl } from '../cmp/revoke.js';
 import { exploreByClicks } from './explore.js';
 
 export interface SampledPage {
@@ -17,6 +18,8 @@ export interface DiscoveryResult {
   byType: Record<string, number>;
   sample: SampledPage[];
   notes: string[];
+  /** Pagine dedicate alla gestione dei cookie trovate tra le URL scoperte (es. /preferenze-cookies). */
+  revokePages?: string[];
 }
 
 const LOC_RE = /<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/gi;
@@ -374,5 +377,7 @@ export async function discoverSite(
     const t = pageType(c.url, cfg.campionamento.tipi, sectionsOf(candidates.map((x) => x.url)));
     byType[t] = (byType[t] ?? 0) + 1;
   }
-  return { site: origin, sitemapUrls, found: candidates.length, byType, sample: s, notes };
+  const revokePages = candidates.map((c) => c.url).filter(isRevokeUrl).slice(0, 5);
+  if (revokePages.length) notes.push(`Pagina di gestione dei cookie trovata: ${revokePages[0]}`);
+  return { site: origin, sitemapUrls, found: candidates.length, byType, sample: s, notes, revokePages };
 }

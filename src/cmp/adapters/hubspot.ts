@@ -9,6 +9,8 @@ export const hubspot = selectorAdapter({
   reject: {
     firstLayer: ['#hs-eu-decline-button', '#hs-banner-decline-button'],
     close: ['#hs-eu-close-button', '#hs-banner-close-button'],
+    // API di HubSpot per revocare il consenso (rimuove anche i cookie di HubSpot).
+    api: "(window._hsp = window._hsp || []).push(['revokeCookieConsent'])",
   },
   accept: { firstLayer: ['#hs-eu-confirmation-button', '#hs-banner-accept-button'] },
   stateExpr: `(() => { const m = ${COOKIE_MAP_EXPR}; return { optOut: m.__hs_opt_out || null, catPref: m.__hs_cookie_cat_pref || null }; })()`,

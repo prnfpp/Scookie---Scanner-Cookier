@@ -186,12 +186,27 @@ test('analisi del banner: comandi, categorie pre-attivate, informativa, revoca',
   const pre = result.findings.find((f) => f.ruleId === 'categorie-preattivate' && f.site.includes('sito-e.test'))!;
   assert.match(pre.description, /"Statistiche"/);
   assert.doesNotMatch(pre.description, /Necessari/);
+  // OneTrust: categoria configurata ma senza interruttore nel centro preferenze
+  const np = result.findings.find((f) => f.ruleId === 'categorie-non-presentate' && f.site.includes('www.sito-b.test'))!;
+  assert.match(np.description, /"Cookie funzionali" \(1 elemento\)/);
+  assert.equal(session('www.sito-b.test', 'accetta').interaction.verification === 'incoerente', false, 'categoria non presentata: non è un consenso incoerente');
+  // Dynatrace dichiarato tecnico ma attivo solo dopo l'accettazione
+  const dt = result.findings.find((f) => f.ruleId === 'tecnico-solo-dopo-consenso' && f.site.includes('www.sito-b.test'))!;
+  assert.match(dt.headline ?? '', /^Dynatrace: elementi dichiarati tecnici/);
   // OneTrust: link "Impostazioni cookie" nel footer
   const b = result.sessions.find((s) => s.site.includes('www.sito-b.test') && s.bannerAnalysis)!.bannerAnalysis!;
   assert.ok(b.revokeLink);
   assert.ok(!rules('www.sito-b.test').includes('revoca-non-trovata'));
   // sito-a: nessun link all'informativa nel banner
   assert.ok(rules('sito-a.test').includes('link-informativa-assente'));
+  // sito-a: evidenza dei comandi misurata (pulsante verde contro link piccolo)
+  const pa = result.sessions.find((s) => s.site.includes('sito-a.test') && s.bannerAnalysis)!.bannerAnalysis!.prominence!;
+  assert.equal(pa.accept?.kind, 'pulsante');
+  assert.equal(pa.accept?.background, '#2e7d32');
+  assert.equal(pa.reject?.kind, 'link');
+  assert.ok((pa.accept!.width * pa.accept!.height) > 3 * (pa.reject!.width * pa.reject!.height));
+  const sa = result.findings.find((f) => f.ruleId === 'struttura-banner' && f.site.includes('sito-a.test'))!;
+  assert.match(sa.description, /"Accetta tutti" è un pulsante con sfondo #2e7d32, "Rifiuta" è un link senza sfondo/);
 });
 
 test('sito-e: elenco dichiarato ricavato dalle tabelle della cookie policy', () => {
@@ -213,7 +228,13 @@ test('scenario personalizza: rispettato su vanilla-cookieconsent, violato su One
   assert.ok(f, 'pixel pubblicitario con la sola statistica');
   assert.match(f.description, /AdTest/);
   // CMP senza supporto affidabile: scenario dichiarato non eseguibile
-  assert.match(session('sito-a.test', 'personalizza').interaction.detail, /non eseguibile/);
+  // banner senza preferenze: la scelta per categoria non è possibile
+  assert.match(session('sito-a.test', 'personalizza').interaction.detail, /preferenze non trovato/);
+  // banner sconosciuto con preferenze: scelta eseguita dall'interfaccia
+  const e = session('sito-e.test', 'personalizza').interaction;
+  assert.equal(e.method, 'euristica');
+  assert.equal(e.outcome, 'eseguito');
+  assert.match(e.detail, /"Personalizza".*"Salva preferenze"/);
 });
 
 test('scenario revoca: link nel footer e cookie rimasti; sito senza modo di revocare', () => {

@@ -150,6 +150,13 @@ export class Classifier {
 
   /** Categoria di un host (e opzionalmente di un path) secondo l'elenco tracker. */
   classifyHost(host: string, path = '/'): TrackerEntry | undefined {
+    // Percorsi dell'infrastruttura Cloudflare, su qualsiasi sito: verifica anti-bot, protezione email, analytics di rete.
+    if (path.startsWith('/cdn-cgi/challenge-platform/')) {
+      return { dominio: host, azienda: 'Cloudflare', categoria: 'tecnico', nota: 'Verifica anti-bot Cloudflare (si attiva soprattutto con browser automatici)' };
+    }
+    if (path.startsWith('/cdn-cgi/') && !path.startsWith('/cdn-cgi/zaraz/')) {
+      return { dominio: host, azienda: 'Cloudflare', categoria: 'tecnico', nota: 'Infrastruttura Cloudflare (/cdn-cgi/)' };
+    }
     const candidates = this.trackers.filter(
       (t) => hostMatches(host, t.dominio) && (!t.percorsi || t.percorsi.some((p) => new RegExp(p).test(path))),
     );
@@ -172,9 +179,17 @@ export class Classifier {
     if (ocd && ocd.category !== 'sconosciuta') {
       return { category: ocd.category, source: 'open-cookie-database', platform: ocd.platform };
     }
-    // Nome sconosciuto ma dominio di un fornitore noto: si attribuisce al fornitore del dominio, dichiarandolo.
+    // Nome sconosciuto su un dominio di un fornitore noto: il fornitore è un indizio, non una classificazione.
+    // L'elemento resta "da valutare" (es. una chiave di Cloudflare scritta dentro il lettore Vimeo non è di Vimeo).
     const t = this.classifyHost(d);
-    if (t) return { category: t.categoria, source: 'dominio-del-fornitore', platform: t.azienda, note: 'nome non presente nelle fonti: categoria dedotta dal dominio' };
+    if (t) {
+      return {
+        category: 'sconosciuta',
+        source: 'dominio-del-fornitore',
+        platform: t.azienda,
+        note: `nome non presente nelle fonti; scritto sul dominio di ${t.azienda} (categoria del dominio: ${t.categoria}): da valutare`,
+      };
+    }
     return { category: 'sconosciuta', source: 'nessuna' };
   }
 }
