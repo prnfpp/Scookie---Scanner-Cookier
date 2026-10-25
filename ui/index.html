@@ -242,6 +242,17 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
           <label class="f">Browser <span class="hint">Quello incluso va bene quasi sempre.</span>
             <select id="f-canale"><option value="chromium">Browser incluso nel tool</option><option value="chrome">Google Chrome installato</option><option value="msedge">Microsoft Edge installato</option></select></label>
         </div>
+        <div class="stack" style="gap:8px">
+          <h3>Dati di prova delle navigazioni manuali</h3>
+          <p class="small muted">I dati che inserirai nei moduli (es. il preventivo). Usa dati palesemente fittizi o concordati col cliente. Il report li riconosce come prova certa e li mostra in chiaro.</p>
+          <div class="grid2">
+            <label class="f">Targa<input type="text" id="f-dp-targa" placeholder="AA123BB"></label>
+            <label class="f">Data di nascita<input type="text" id="f-dp-dataNascita" placeholder="01/01/1990"></label>
+            <label class="f">Email<input type="text" id="f-dp-email" placeholder="test.audit@esempio.it"></label>
+            <label class="f">Codice fiscale<input type="text" id="f-dp-codiceFiscale"></label>
+            <label class="f">Telefono<input type="text" id="f-dp-telefono"></label>
+          </div>
+        </div>
         <details class="adv" id="adv-general"><summary>Opzioni avanzate</summary>
           <div class="stack">
             <div class="grid2">
@@ -284,7 +295,7 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
       <textarea id="f-yaml" class="yaml" spellcheck="false"></textarea>
     </div>
 
-    <div class="savebar"><div id="save-msg"><span class="muted small">Le modifiche si salvano con "Salva" e prima di ogni avvio.</span></div><button class="btn primary" id="save">Salva</button></div>
+    <div class="savebar"><div id="save-msg"><span class="muted small">Le modifiche si salvano con "Salva" e prima di ogni avvio.</span></div><div class="row"><button class="btn" id="save-copy" title="Una nuova configurazione con lo stesso cliente, per esempio per una versione successiva">Salva una copia…</button><button class="btn primary" id="save">Salva</button></div></div>
   </section>
 
   <!-- AUDIT IN CORSO -->
@@ -519,6 +530,7 @@ $$('[data-go-step]').forEach((b) => (b.onclick = () => step(Number(b.dataset.goS
 const SCENARI = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta'], ['personalizza', '#f-sc-personalizza'], ['revoca', '#f-sc-revoca']];
 const lines = (t) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
+const DATI_PROVA = ['targa', 'dataNascita', 'email', 'codiceFiscale', 'telefono'];
 function setOrDelete(obj, key, value) {
   if (value === undefined || value === '' || (Array.isArray(value) && !value.length)) delete obj[key];
   else obj[key] = value;
@@ -598,6 +610,7 @@ function fillForm(d) {
   $('#f-visibile').checked = br.headless === false;
   $('#f-controllo').checked = br.uaNormale === true;
   $('#f-paese').value = br.paeseUscita || '';
+  for (const k of DATI_PROVA) $('#f-dp-' + k).value = d.datiDiProva?.[k] || '';
   $('#f-verifica').value = br.verificaUscita || 'avvisa';
   $('#f-har').value = rp.harContenuti || 'testo';
   $('#f-pdf').checked = rp.pdf !== false;
@@ -651,7 +664,8 @@ function readForm() {
   setOrDelete(group('browser'), 'verificaUscita', $('#f-verifica').value);
   setOrDelete(group('report'), 'harContenuti', $('#f-har').value === 'testo' ? undefined : $('#f-har').value);
   setOrDelete(group('report'), 'pdf', $('#f-pdf').checked ? undefined : false);
-  for (const k of ['campionamento', 'scenari', 'browser', 'report']) if (d[k] && !Object.keys(d[k]).length) delete d[k];
+  for (const k of DATI_PROVA) setOrDelete(group('datiDiProva'), k, $('#f-dp-' + k).value.trim());
+  for (const k of ['campionamento', 'scenari', 'browser', 'report', 'datiDiProva']) if (d[k] && !Object.keys(d[k]).length) delete d[k];
   return d;
 }
 
@@ -689,6 +703,7 @@ function refreshSummary() {
     p.attivi.length ? ['ok', 'Scenari', `${p.attivi.join(', ')}${p.reps > 1 ? ` · ripetuti ${p.reps} volte` : ''}`] : ['bad', 'Nessuno scenario', 'Scegli almeno uno scenario al passo 2.'],
     [($('#f-verifica').value === 'no') ? 'warn' : 'ok', `Paese di uscita: ${$('#f-paese').value || 'IT'}`, $('#f-verifica').value === 'blocca' ? "Verificato all'avvio: se non corrisponde l'audit si ferma." : $('#f-verifica').value === 'avvisa' ? 'Verificato all\'avvio: se non corrisponde lo segnala il report.' : 'Non verificato.'],
     state.discovery ? (few.length ? ['warn', 'Poche pagine su ' + few.map((r) => host(r.site)).join(', '), 'Per percorsi con moduli usa la navigazione manuale (passo 1).'] : ['ok', 'Pagine trovate su tutti i siti', `Campione di ${p.rows.reduce((a, r) => a + r.pages, 0)} pagine in tutto.`]) : ['warn', 'Anteprima non ancora fatta', 'Premi "Anteprima pagine" per vedere quali pagine verranno visitate.'],
+    ...(p.manual && !DATI_PROVA.some((k) => $('#f-dp-' + k).value.trim()) ? [['warn', 'Dati di prova non indicati', 'Indica al passo 2 i dati che inserirai nei moduli: il report li riconoscerà come prova certa.']] : []),
     ...(p.manual ? [['warn', 'Serve la tua presenza all\'inizio', `${p.manual} ${p.manual === 1 ? 'navigazione manuale' : 'navigazioni manuali'} nei primi minuti, poi puoi lasciare il computer.`]] : []),
     ['warn', 'Computer acceso e collegato alla corrente', 'Se va in stop l\'audit si interrompe. Su Mac avvia l\'interfaccia con: caffeinate -i npm run interfaccia'],
   ];
@@ -740,6 +755,17 @@ async function save() {
   }
 }
 $('#save').onclick = save;
+$('#save-copy').onclick = () => {
+  // Stesso cliente, file diverso: la versione della configurazione sta nel nome del file, non nel nome del cliente
+  const base = (state.file || $('#f-cliente').value || 'cliente').replace(/\.ya?ml$/i, '');
+  state.isNew = true;
+  $('#file-box').classList.remove('hidden');
+  step(1);
+  $('#f-file').value = base + '-v2';
+  $('#editor-title').textContent = 'Copia di ' + ($('#f-cliente').value || base);
+  setMsg('Scegli il nome del file della copia e premi "Salva". Il nome del cliente resta lo stesso.', 'warn');
+  $('#f-file').focus();
+};
 
 /* ---------- Anteprima e audit ---------- */
 async function startJob(kind, extra = {}) {

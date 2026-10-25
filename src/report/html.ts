@@ -4,9 +4,13 @@ import type { DiscoveryResult } from '../discovery/discover.js';
 import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy } from '../rules/helpers.js';
 import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } from '../types.js';
 import { NON_TECHNICAL } from '../types.js';
+import { repeatsText } from './repeats.js';
+import { summaryItems } from './summary.js';
 
 export interface ReportInput {
   config: AuditConfig;
+  /** Nome del file di configurazione usato (distinto dal nome del cliente). */
+  configFile?: string;
   toolVersion: string;
   browserVersion: string;
   userAgent: string;
@@ -65,19 +69,29 @@ ul{margin:4px 0;padding-left:20px}.kv td:first-child{width:28%;font-weight:600;b
  * Righe della tabella delle interazioni: le sessioni consecutive "nessuna azione" dello stesso sito con lo stesso esito
  * (una per pagina del campione) diventano una riga sola; l'elenco completo resta in sessioni.csv.
  */
-function compactSessions(sessions: SessionResult[]): { s: SessionResult; ids: string[] }[] {
-  const sig = (s: SessionResult) =>
-    s.scenario === 'nessuna-azione'
-      ? [s.site, s.interaction.detectedCmps.join(','), s.interaction.bannerVisibleBefore, s.interaction.method, s.interaction.outcome, s.interaction.verification, s.errors.length].join('|')
-      : null;
-  const out: { s: SessionResult; ids: string[] }[] = [];
+/** Una riga per sito e scenario (sessioni manuali a parte): il dettaglio di ogni sessione è in sessioni.csv. */
+function sessionRows(sessions: SessionResult[]) {
+  const groups = new Map<string, SessionResult[]>();
   for (const s of sessions) {
-    const last = out[out.length - 1];
-    const k = sig(s);
-    if (k && last && sig(last.s) === k) last.ids.push(s.id);
-    else out.push({ s, ids: [s.id] });
+    const k = `${s.site}|${s.scenario}|${s.manual ? 'manuale' : ''}`;
+    groups.set(k, [...(groups.get(k) ?? []), s]);
   }
-  return out;
+  /** Valori distinti con il conteggio, il più frequente per primo: "eseguito (3)". */
+  const tally = (xs: string[]) => {
+    const m = new Map<string, number>();
+    for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1);
+    return [...m].sort((a, b) => b[1] - a[1]).map(([v, n]) => (m.size > 1 || xs.length > 1 ? `${v} (${n})` : v));
+  };
+  return [...groups.values()].map((list) => ({
+    s: list[0],
+    n: list.length,
+    pages: [...new Set(list.map((x) => x.pages.length))].join('/'),
+    cmps: tally(list.map((x) => x.interaction.detectedCmps.join(', ') || 'nessun CMP')),
+    banner: tally(list.map((x) => (x.interaction.bannerVisibleBefore ? 'visibile' : 'non rilevato'))),
+    method: tally(list.map((x) => x.interaction.method)),
+    outcome: tally(list.map((x) => x.interaction.outcome)),
+    verification: tally(list.map((x) => x.interaction.verification)),
+  }));
 }
 
 export function renderHtml(r: ReportInput): string {
@@ -118,29 +132,36 @@ ${!r.exit.matches ? `<p class="warn"><strong>Attenzione — paese di uscita.</st
       return s;
     }
   };
-  const top = findings.filter((f) => f.headline && (f.severity === 'alta' || f.severity === 'media')).slice(0, 10);
+  const top = summaryItems(findings).slice(0, 10);
+  const inTop = new Set(top.flatMap((i) => i.findings.map((f) => f.id)));
   const blockedSites = [...new Set(sessions.filter((s) => s.blocked).map((s) => host(s.site)))];
   const unreachable = sessions.filter((s) => s.unreachable);
   const unreachableSites = [...new Set(unreachable.map((s) => host(s.site)))];
   const allUnreachable = unreachableSites.filter((h) => sessions.filter((s) => host(s.site) === h).every((s) => s.unreachable || s.blocked));
   parts.push(`<h2>Sintesi per il legale</h2>
-${top.length ? `<p>I fatti principali osservati, in ordine di priorità di verifica. Il dettaglio e le prove sono nelle schede indicate.</p>
-<ol>${top.map((f) => `<li>${esc(f.headline)}${f.sites.length === 1 ? ` <span class="muted">(${esc(host(f.sites[0]))})</span>` : ''}${f.repeats ? ` <span class="muted">· ${f.repeats.manual ? 'navigazione manuale' : `${f.repeats.seen} su ${f.repeats.of}`}</span>` : ''} — ${sevBadge(f.severity)} <a href="#${f.id}">${f.id}</a></li>`).join('')}</ol>` : '<p>Non sono emersi fatti con priorità alta o media.</p>'}
-${findings.length > top.length ? `<p class="muted">Altre ${findings.length - top.length} schede, di priorità minore o di contesto, sono elencate nella sezione 3.</p>` : ''}
+${top.length ? `<p>I fatti principali, raggruppati per causa e in ordine di priorità di verifica (gravità, forza della prova e ripetibilità). Le schede che derivano dallo stesso fatto sono riunite in un punto solo; il dettaglio e le prove sono nelle schede indicate.</p>
+<ol>${top.map((i) => `<li>${esc(i.title)} <span class="muted">(${esc(i.hosts.join(', '))}${i.repeats ? ` · ${esc(i.repeats)}` : ''})</span> — ${sevBadge(i.severity)} ${i.findings.map((f) => `<a href="#${f.id}">${f.id}</a>`).join(', ')}</li>`).join('')}</ol>` : '<p>Non sono emersi fatti con priorità alta o media.</p>'}
+${findings.length > inTop.size ? `<p class="muted">Altre ${findings.length - inTop.size} schede, di priorità minore o di contesto, sono elencate nella sezione 3.</p>` : ''}
 ${blockedSites.length ? `<p class="warn"><strong>Attenzione.</strong> Su ${esc(blockedSites.join(', '))} la navigazione è stata intercettata da un sistema anti-bot: le sessioni coinvolte non sono valide e non sono state usate per le criticità.</p>` : ''}
 ${unreachable.length ? `<p class="warn"><strong>Attenzione — pagine non caricate.</strong> ${unreachable.length} sessioni non hanno potuto caricare il sito (${esc(unreachableSites.join(', '))}), per esempio per connessione assente o computer in stop: non sono valide e non sono state usate per le criticità.${allUnreachable.length ? ` Per ${esc(allUnreachable.join(', '))} non c'è nessun dato: il report non dice nulla su ${allUnreachable.length === 1 ? 'questo sito' : 'questi siti'} e l'audit va ripetuto.` : ''}</p>` : ''}`);
 
   // 1. Perimetro e metodo
   parts.push(`<h2>1. Perimetro e metodo</h2><table class="kv">
 <tr><td>Cliente</td><td>${esc(config.cliente)}</td></tr>
+${r.configFile ? `<tr><td>Configurazione</td><td><code>${esc(r.configFile)}</code></td></tr>` : ''}
 <tr><td>Inizio / fine</td><td>${esc(fmt(r.startedAt))} — ${esc(fmt(r.endedAt))}</td></tr>
 <tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}; browser ${esc(r.browserVersion)} (${config.browser.canale === 'chromium' ? 'Chromium incluso nel tool' : `${esc(config.browser.canale)} installato sul computer`}, ${config.browser.headless ? 'senza finestra (headless)' : 'con finestra visibile'}${config.browser.headless && r.sessions.some((s) => s.manual) ? '; navigazioni manuali con finestra visibile' : ''})</td></tr>
 <tr><td>User agent</td><td><code>${esc(r.userAgent)}</code>${config.browser.uaNormale ? '<br><span class="muted">Esecuzione di controllo: user agent di un browser normale, senza la dichiarazione dell\'audit.</span>' : ''}</td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
 <tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (IP ${esc(r.exit.ip)}, fonte ${esc(r.exit.source)})` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
 <tr><td>Scenari</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta${config.scenari.ripetizioni > 1 ? `; ogni scenario ripetuto ${config.scenari.ripetizioni} volte con un profilo browser nuovo` : ''}</td></tr>
+${(() => {
+  const t = Object.entries(config.datiDiProva ?? {}).filter(([, v]) => v);
+  const label: Record<string, string> = { targa: 'targa', dataNascita: 'data di nascita', email: 'email', codiceFiscale: 'codice fiscale', telefono: 'telefono' };
+  return t.length ? `<tr><td>Dati di prova</td><td>Inseriti dall'operatore nelle navigazioni manuali, fittizi o concordati col cliente: ${t.map(([k, v]) => `${esc(label[k] ?? k)} <code>${esc(String(v))}</code>`).join('; ')}. Nelle schede sono riportati in chiaro; gli altri valori che somigliano a dati personali sono mascherati.</td></tr>` : '';
+})()}
 <tr><td>Protocollo di osservazione</td><td>Per ogni pagina: caricamento completo, attesa della rete inattiva (max 5 s), attesa fissa di ${config.protocollo.attesaDopoCaricamento} ms${config.protocollo.scroll ? `, scroll fino a fondo pagina e attesa di ${config.protocollo.attesaDopoScroll} ms` : ''}. Sulla prima pagina il banner viene fotografato e l'eventuale scelta avviene <em>prima</em> dello scroll; dopo la scelta si attendono ${config.protocollo.attesaDopoScelta} ms. In tutti gli scenari con scelta il percorso dopo la scelta è lo stesso: si ricarica la pagina di partenza e si visitano le stesse pagine nello stesso ordine; nello scenario di revoca lo stesso percorso si ripete dopo la revoca. Pausa tra sessioni: ${config.protocollo.pausaTraSessioni} ms. Ogni sessione usa un profilo browser nuovo.</td></tr>
-<tr><td>File HAR</td><td>Uno per sessione, con URL, intestazioni, cookie, tempi e corpi delle richieste. Corpi delle risposte: ${config.report.harContenuti === 'tutti' ? 'tutti' : config.report.harContenuti === 'testo' ? 'solo testuali fino a 512 KB (immagini, font e video omessi)' : 'omessi'}.</td></tr>
+<tr><td>File HAR</td><td>Uno per sessione, con URL, intestazioni, cookie, tempi e corpi delle richieste. Corpi delle risposte: ${config.report.harContenuti === 'tutti' ? 'tutti' : config.report.harContenuti === 'testo' ? 'solo testuali fino a 512 KB (immagini, font e video omessi)' : 'omessi'}${config.report.harCompressi ? ', e solo per le sessioni citate nelle schede. File compressi (.har.gz): su Mac un doppio clic restituisce il .har, che si apre negli strumenti per sviluppatori del browser' : ''}.</td></tr>
 <tr><td>Tabella norme</td><td>${esc(r.normsPath)}</td></tr>
 </table>`);
 
@@ -153,17 +174,18 @@ ${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`)
     for (const s of sessions.filter((x) => x.site === d.site && x.manual)) {
       const m = s.manual!;
       const end = m.endedBy === 'operatore' ? "conclusa dall'operatore" : m.endedBy === 'tempo' ? 'interrotta allo scadere del tempo massimo' : 'interrotta: finestra chiusa';
-      parts.push(`<p><strong>Navigazione manuale</strong> — sessione ${esc(s.id)}, scenario "${esc(s.scenario)}", ${end} dopo ${m.seconds} s. Istruzioni date all'operatore: "${esc(m.instructions)}".</p>
+      parts.push(`<p><strong>Navigazione manuale</strong> — sessione ${esc(s.id)}, scenario "${esc(s.scenario)}", ${end} dopo ${m.seconds} s. Istruzioni date all'operatore: "${esc(m.instructions)}".${m.pages.length <= 1 || m.seconds < 60 ? ' <strong>Probabilmente incompleta</strong> (troppo breve o una sola pagina): i fatti che ne derivano vanno confermati rifacendola.' : ''}</p>
 <ol class="muted">${m.pages.map((u) => `<li>${esc(u)}</li>`).join('')}</ol>`);
     }
   }
 
-  parts.push(`<h3>Interazione con il banner</h3><p>Per ogni sessione: CMP riconosciuti, metodo che ha eseguito la scelta (selettori manuali, adattatore del CMP, euristica sui testi, API del CMP) e verifica dello stato del consenso registrato dopo la scelta.</p>
-<table><tr><th style="width:17%">Sessione</th><th style="width:9%">Scenario</th><th style="width:12%">CMP / banner</th><th style="width:14%">Metodo</th><th>Esito</th><th style="width:22%">Verifica</th></tr>
-${compactSessions(sessions)
+  parts.push(`<h3>Interazione con il banner</h3><p>Per ogni sito e scenario: CMP riconosciuti, metodo che ha eseguito la scelta (selettori manuali, adattatore del CMP, euristica sui testi, API del CMP) e verifica dello stato del consenso registrato dopo la scelta.</p>
+<p class="muted">Una riga per sito e scenario; tra parentesi il numero di sessioni con quel valore. Il dettaglio di ogni sessione (pagine, clic, verifica) è in <code>sessioni.csv</code>.</p>
+<table><tr><th style="width:24%">Sito · scenario</th><th style="width:10%">Sessioni</th><th style="width:16%">CMP / banner</th><th style="width:16%">Metodo</th><th>Esito (esempio)</th><th style="width:14%">Verifica</th></tr>
+${sessionRows(sessions)
   .map(
-    ({ s, ids }) => `<tr><td>${ids.length > 1 ? `${esc(ids[0])} … ${esc(ids[ids.length - 1])}<br><span class="muted">${ids.length} sessioni, ${s.pages.length} pag. ciascuna</span>` : `${esc(s.id)}<br><span class="muted">${s.pages.length} pag.</span>`}</td><td>${esc(s.scenario)}</td><td>${esc(s.interaction.detectedCmps.join(', ') || 'nessun CMP')}<br><span class="muted">banner ${s.interaction.bannerVisibleBefore ? 'visibile' : 'non rilevato'}</span></td>
-<td>${esc(s.interaction.method)}${s.interaction.layer ? `<br><span class="muted">${esc(s.interaction.layer)}</span>` : ''}</td><td>${esc(s.interaction.outcome)}<br><span class="muted">${esc(s.interaction.detail)}</span></td><td>${esc(s.interaction.verification)}<br><span class="muted">${esc(s.interaction.verificationDetail)}</span></td></tr>`,
+    (g) => `<tr><td>${esc(new URL(g.s.site).hostname)}<br><span class="muted">${esc(g.s.scenario)}${g.s.manual ? ' · navigazione manuale' : ''}</span></td><td>${g.n}<br><span class="muted">${esc(g.pages)} pag.</span></td><td>${esc(g.cmps.join('; '))}<br><span class="muted">banner ${esc(g.banner.join('; '))}</span></td>
+<td>${esc(g.method.join('; '))}</td><td>${esc(g.outcome.join('; '))}<br><span class="muted">${esc(g.s.interaction.detail)}</span></td><td>${esc(g.verification.join('; '))}</td></tr>`,
   )
   .join('')}</table>`);
 
@@ -205,7 +227,7 @@ ${findings.some((f) => (f.sites?.length ?? 1) > 1) ? `<p class="muted">Le schede
     parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · ${esc(f.ruleTitle)} ${sevBadge(f.severity)}</h3>
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 ${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}.</p>` : ''}
-${f.repeats ? `<p><strong>Ripetibilità.</strong> ${f.repeats.manual ? 'Osservato nella navigazione manuale, eseguita una volta per scenario: non nelle sessioni automatiche ripetute.' : `Osservato in ${f.repeats.seen} su ${f.repeats.of} esecuzioni di ciascuno scenario.`}</p>` : ''}
+${f.repeats ? `<p><strong>Ripetibilità.</strong> ${esc(repeatsText(f.repeats))}</p>` : ''}
 ${reviewOf(f)?.esito ? `<p><strong>Revisione manuale.</strong> ${esc(reviewOf(f)!.esito)}${reviewOf(f)!.nota ? ` — ${esc(reviewOf(f)!.nota)}` : ''}</p>` : ''}
 <p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
 ${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo negli allegati: dati.json e CSV)</li>` : ''}</ul>` : ''}
@@ -264,7 +286,7 @@ ${[...third]
   // 5. Allegati
   // L'elenco delle impronte di ogni file sta in manifest.json (e l'impronta del manifest in manifest.json.sha256):
   // nel report basta il riepilogo, per non occupare decine di pagine.
-  const kinds = groupBy(r.files, (f) => (f.path.endsWith('.har') ? 'registrazioni del traffico (HAR)' : f.path.endsWith('.png') ? 'screenshot' : f.path.endsWith('.json') ? 'estratti delle richieste (JSON)' : 'altri file'));
+  const kinds = groupBy(r.files, (f) => (/\.har(\.gz)?$/.test(f.path) ? 'registrazioni del traffico (HAR)' : f.path.endsWith('.png') ? 'screenshot' : f.path.endsWith('.json') ? 'estratti delle richieste (JSON)' : 'altri file'));
   const mb = (n: number) => `${(n / 1048576).toLocaleString('it-IT', { maximumFractionDigits: 1 })} MB`;
   parts.push(`<h2>5. Allegati</h2>
 <p>Le prove sono nella cartella <code>evidenze/</code>. L'impronta SHA-256 di <strong>ogni file</strong> della cartella dell'esecuzione (compresi questo report, i CSV e la configurazione usata) è in <code>manifest.json</code>; l'impronta di <code>manifest.json</code> è nel file <code>manifest.json.sha256</code>. Per verificare l'integrità basta ricalcolare l'impronta del manifest e confrontarla.</p>

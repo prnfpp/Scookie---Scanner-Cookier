@@ -167,6 +167,11 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     env.log?.(`    NAVIGAZIONE MANUALE: nella finestra del browser segui le istruzioni e premi "Ho finito" (massimo ${Math.round(plan.manual!.maxMs / 60000)} minuti).`);
     manual = await manualJourney(page, collector, plan.manual!, env.manualDriver, env.onManualFinisher);
     env.log?.(`    navigazione manuale conclusa (${manual.endedBy === 'operatore' ? 'premuto "Ho finito"' : manual.endedBy === 'tempo' ? 'tempo scaduto' : 'finestra chiusa'})`);
+    if (manual.pages.length <= 1 || manual.seconds < 60) {
+      const note = `navigazione manuale probabilmente incompleta: conclusa dopo ${manual.seconds} s con ${manual.pages.length === 1 ? 'una sola pagina' : `${manual.pages.length} pagine`} visitate; va rifatta`;
+      errors.push(note);
+      env.log?.(`    ATTENZIONE: ${note}`);
+    }
     await shot('3-fine');
   };
   const banner = plan.siteConfig.banner;

@@ -25,8 +25,10 @@ export function loadNorms(path = DEFAULT_NORMS_FILE): NormsTable {
 }
 
 const ORDER: Severity[] = ['alta', 'media', 'bassa', 'informativa'];
+const STRENGTH = ['', 'risorsa', 'raccolta', 'identificativo'];
 
-export function evaluateRules(ctx: RuleContext, norms: NormsTable): Finding[] {
+/** `merge: false`: schede per singolo sito, senza raggruppare tra sottodomini (per contare la ripetibilità per sito). */
+export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge?: boolean } = {}): Finding[] {
   const all: Omit<Finding, 'id'>[] = [];
   for (const rule of RULES) {
     const override = norms.file.regole?.[rule.id];
@@ -50,6 +52,7 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable): Finding[] {
         requestExcerpt: raw.requestExcerpt,
         evidenceLevel: raw.evidenceLevel,
         headline: raw.headline,
+        ...(raw.subjects?.length ? { subjects: raw.subjects } : {}),
         sites: [raw.site],
         key: raw.groupKey
           ? `${rule.id}|${raw.groupKey}|${registrableDomain(shortHost(raw.site))}`
@@ -59,7 +62,7 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable): Finding[] {
       } as Omit<Finding, 'id'> & { groupKey?: string });
     }
   }
-  const merged = mergeAcrossSites(all as (Omit<Finding, 'id'> & { groupKey?: string })[]);
+  const merged = opts.merge === false ? all.map(({ groupKey: _g, ...f }: Omit<Finding, 'id'> & { groupKey?: string }) => f) : mergeAcrossSites(all as (Omit<Finding, 'id'> & { groupKey?: string })[]);
   merged.sort((a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity) || a.site.localeCompare(b.site));
   return merged.map((f, i) => ({ id: `C-${String(i + 1).padStart(3, '0')}`, ...f }));
 }
@@ -89,7 +92,9 @@ function mergeAcrossSites(list: (Omit<Finding, 'id'> & { groupKey?: string })[])
     const k = `${f.ruleId}|${f.groupKey}|${registrableDomain(shortHost(f.site))}`;
     groups.set(k, [...(groups.get(k) ?? []), f]);
   }
-  for (const g of groups.values()) {
+  for (const g0 of groups.values()) {
+    // la scheda prende titolo e descrizione dal caso con la prova più forte (es. cookie scritto, non solo script)
+    const g = [...g0].sort((a, b) => STRENGTH.indexOf(b.evidenceLevel ?? '') - STRENGTH.indexOf(a.evidenceLevel ?? ''));
     const { groupKey: _g, ...first } = g[0];
     if (g.length === 1) {
       out.push(first);
@@ -114,6 +119,7 @@ function mergeAcrossSites(list: (Omit<Finding, 'id'> & { groupKey?: string })[])
         return multi ? [`— ${h}:`, ...lines.map((d) => `   ${d}`)] : lines;
       }),
       evidence: g.slice(0, 3).flatMap((f) => f.evidence),
+      subjects: [...new Set(g.flatMap((f) => f.subjects ?? []))],
       headline: first.headline && multi ? `${first.headline} (${hosts.join(', ')})` : first.headline,
     });
   }

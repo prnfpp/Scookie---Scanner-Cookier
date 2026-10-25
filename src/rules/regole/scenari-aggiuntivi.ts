@@ -56,6 +56,7 @@ export const attivazioneDopoRevoca: Rule = {
           severity: sameAsReject || onlyResidual ? 'bassa' : level === 'risorsa' || viaApi ? 'media' : undefined,
           evidenceLevel: level,
           // revoca dal link della pagina o solo via API: casi diversi, schede diverse
+          subjects: [key],
           groupKey: `${key}|${s.revocation!.via ?? 'link'}|${sameAsReject}|${onlyResidual}`,
           headline: onlyResidual
             ? `Dopo la revoca, ${key} invia solo dati residui dalla pagina in cui si è revocato`

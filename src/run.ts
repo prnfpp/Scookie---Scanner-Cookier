@@ -1,4 +1,6 @@
-import { copyFileSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
+import { trimHar } from './browser/har.js';
 import { basename, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, type Browser, type LaunchOptions, type Page } from 'playwright';
@@ -19,6 +21,10 @@ import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult }
 import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
 import { TOOL_VERSION } from './version.js';
 import { ProgressTracker, type Progress } from './progress.js';
+import { setTestData } from './util/pii.js';
+import { findingScore } from './report/summary.js';
+
+const SEV_ORDER = ['alta', 'media', 'bassa', 'informativa'];
 
 export interface RunOptions {
   outDir?: string;
@@ -193,6 +199,34 @@ function linkEvidenceToFindings(runDir: string, findings: Finding[]) {
   }
 }
 
+/**
+ * HAR più leggeri da consegnare: le sessioni non citate in nessuna scheda perdono i corpi delle risposte (restano
+ * richieste, intestazioni, cookie, tempi e dati inviati ai terzi), poi tutti i HAR si comprimono in .har.gz.
+ */
+function compressHars(runDir: string, sessions: SessionResult[], findings: Finding[], mode: 'tutti' | 'testo' | 'nessuno') {
+  const cited = new Set(findings.flatMap((f) => [...f.evidence.map((e) => e.file), String(f.requestExcerpt?.har ?? '')]).filter((x) => x.endsWith('.har')));
+  const renamed = new Map<string, string>();
+  for (const s of sessions) {
+    if (!s.har?.endsWith('.har')) continue;
+    const path = join(runDir, s.har);
+    if (!existsSync(path)) continue;
+    try {
+      if (!cited.has(s.har) && mode !== 'nessuno') trimHar(path, 'nessuno');
+      writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
+      rmSync(path);
+      renamed.set(s.har, `${s.har}.gz`);
+      s.har = `${s.har}.gz`;
+    } catch (e) {
+      s.errors.push(`compressione del file HAR non riuscita: ${(e as Error).message.split('\n')[0]}`);
+    }
+  }
+  for (const f of findings) {
+    f.evidence = f.evidence.map((e) => (renamed.has(e.file) ? { ...e, file: renamed.get(e.file)! } : e));
+    const har = f.requestExcerpt?.har;
+    if (typeof har === 'string' && renamed.has(har)) f.requestExcerpt!.har = renamed.get(har);
+  }
+}
+
 /** Host delle richieste senza risposta in una sessione, per spiegare un banner mancante. */
 function failedHosts(s: SessionResult): string {
   const hosts = [...new Set(s.requests.filter((r) => r.failure).map((r) => r.host))];
@@ -204,6 +238,8 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
     ? { ...loaded.config, siti: loaded.config.siti.filter((s) => opts.onlySites!.some((u) => new URL(u).hostname === new URL(s.url).hostname)) }
     : loaded.config;
   if (!config.siti.length) throw new Error('Nessuno dei siti indicati è nella configurazione');
+  // dati inseriti dall'operatore: riconosciuti come prova certa e riportati in chiaro
+  setTestData(config.datiDiProva);
   const progress = new ProgressTracker(opts.onProgress ?? (() => {}), 30 + (opts.pdf ?? config.report.pdf ? 20 : 0) + 5 * config.siti.length);
   const log = opts.log ?? ((m: string) => console.log(m));
   const startedAt = new Date().toISOString();
@@ -431,22 +467,41 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   // Ripetizioni: le regole si valutano anche su ogni ripetizione da sola; per ogni scheda si conta in quante compare.
   // Le navigazioni manuali non si ripetono e non entrano nel conteggio.
   const reps = config.scenari.ripetizioni;
-  if (reps > 1) {
-    const seen = new Map<string, number>();
-    for (let r = 1; r <= reps; r++) {
-      const subset = validSessions.filter((s) => s.repeat === r);
+  // Ripetibilità, sito per sito: lo stesso fatto può essere ripetuto su un sito e venire da una sessione manuale
+  // (fatta una volta) su un altro.
+  const manualSessions = validSessions.filter((s) => s.manual);
+  if (reps > 1 || manualSessions.length) {
+    const hostOf = (u: string) => new URL(u).hostname;
+    const rawKeys = (subset: SessionResult[]) => {
       const comp = declared.flatMap((d) => compareDeclared(d.site, subset.filter((s) => s.site === d.site), d));
-      const keys = new Set(evaluateRules({ config, sessions: subset, blocked: blockedSessions, declared, comparison: comp, exit, discovery }, norms).map((f) => f.key));
-      for (const k of keys) if (k) seen.set(k, (seen.get(k) ?? 0) + 1);
+      const ctx = { config, sessions: subset, blocked: blockedSessions, declared, comparison: comp, exit, discovery };
+      return new Set(evaluateRules(ctx, norms, { merge: false }).map((f) => `${f.key}@${hostOf(f.site)}`));
+    };
+    const seen = new Map<string, number>();
+    if (reps > 1) {
+      for (let r = 1; r <= reps; r++) for (const k of rawKeys(validSessions.filter((s) => s.repeat === r))) seen.set(k, (seen.get(k) ?? 0) + 1);
+    } else {
+      for (const k of rawKeys(validSessions.filter((s) => !s.manual))) seen.set(k, 1);
     }
-    const hasManual = validSessions.some((s) => s.manual);
+    const manualKeys = manualSessions.length ? rawKeys(manualSessions) : new Set<string>();
     for (const f of findings) {
       if (!f.key) continue;
-      const n = seen.get(f.key) ?? 0;
-      // non vista in nessuna ripetizione automatica: viene dalla navigazione manuale, fatta una volta sola
-      f.repeats = n === 0 && hasManual ? { seen: 1, of: 1, manual: true } : { seen: Math.max(1, n), of: reps };
+      const perSite = [...new Set(f.sites.map(hostOf))].map((host) => {
+        const n = seen.get(`${f.key}@${host}`) ?? 0;
+        // non visto nelle sessioni automatiche: viene da una sessione manuale, fatta una volta sola
+        return n === 0 && manualKeys.has(`${f.key}@${host}`) ? { host, seen: 1, of: 1, manual: true } : { host, seen: Math.max(1, n), of: reps };
+      });
+      const best = perSite.filter((p) => !p.manual).sort((a, b) => b.seen - a.seen)[0];
+      if (!best && perSite.length) f.repeats = { seen: 1, of: 1, manual: true, perSite };
+      else if (best && reps > 1) f.repeats = { seen: best.seen, of: reps, perSite };
+      else if (best && perSite.some((p) => p.manual)) f.repeats = { seen: 1, of: 1, perSite };
     }
   }
+  if (config.report.harCompressi) compressHars(runDir, [...sessions, ...discarded], findings, config.report.harContenuti);
+
+  // Ordine delle schede: gravità, poi forza della prova e ripetibilità
+  findings.sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || findingScore(b) - findingScore(a));
+  findings.forEach((f, i) => (f.id = `C-${String(i + 1).padStart(3, '0')}`));
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
@@ -479,6 +534,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const rev = writeReviewTemplate(runDir, findings, config.cliente);
   if (rev.prefilled) log(`Revisione: ${rev.prefilled} schede precompilate dalla revisione di ${rev.from}`);
   const html = renderHtml({
+    configFile: basename(loaded.path),
     config,
     toolVersion: TOOL_VERSION,
     browserVersion,
