@@ -98,7 +98,7 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
 }
 
 /** Pannelli delle preferenze dei gestori noti (secondo livello), distinti dal banner di primo livello. */
-const PREFERENCE_PANELS = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '.didomi-consent-popup-preferences', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#hs-modal', '.iubenda-cs-preferences'];
+const PREFERENCE_PANELS = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '.didomi-consent-popup-preferences', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#hs-modal', '[id^="hs-"][id*="modal"]', '.iubenda-cs-preferences'];
 
 async function inPreferencePanel(c: Candidate): Promise<boolean> {
   return c.frame
@@ -174,7 +174,7 @@ async function measure(c: Candidate): Promise<CommandLook | null> {
 export async function readToggles(frame: import('playwright').Frame, isMain: boolean): Promise<{ label: string; checked: boolean; disabled: boolean; index?: number }[]> {
   return frame.evaluate((isMain) => {
     // Contenitori dei CMP noti: se uno è visibile, si leggono solo i suoi interruttori (non il resto della pagina)
-    const KNOWN = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '#didomi-host', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#cmplz-cookiebanner-container', '#hs-modal', '#hs-eu-cookie-confirmation', '.iubenda-cs-preferences', '#iubenda-cs-banner'];
+    const KNOWN = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '#didomi-host', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#cmplz-cookiebanner-container', '#hs-modal', '#hs-eu-cookie-confirmation', '#hs-banner-parent', '[id^="hs-"][id*="modal"]', '.iubenda-cs-preferences', '#iubenda-cs-banner'];
     const shown = (el: Element) => {
       const r = el.getBoundingClientRect();
       return r.width > 1 && r.height > 1 && getComputedStyle(el).visibility !== 'hidden';
@@ -203,7 +203,8 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
     };
     const all: Element[] = [];
     const walk = (root: Document | ShadowRoot) => {
-      for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"]'))) {
+      // anche interruttori fatti con pulsanti (aria-pressed), come in alcuni banner HubSpot
+      for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"], button[aria-pressed], button[aria-checked]'))) {
         // marcature di una lettura precedente: andrebbero a confondersi con quelle nuove
         el.removeAttribute('data-scookie-t');
         all.push(el);
@@ -241,7 +242,7 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
       .filter((el) => visible(el) && (!isMain || inConsentUi(el)))
       .map((el, index) => {
         const input = el as HTMLInputElement;
-        const checked = input.type === 'checkbox' ? input.checked : el.getAttribute('aria-checked') === 'true';
+        const checked = input.type === 'checkbox' ? input.checked : el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-pressed') === 'true';
         const disabled = input.disabled || el.getAttribute('aria-disabled') === 'true';
         el.setAttribute('data-scookie-t', String(index));
         return { label: labelOf(el).replace(/\s+/g, ' ').slice(0, 80), checked, disabled, index };

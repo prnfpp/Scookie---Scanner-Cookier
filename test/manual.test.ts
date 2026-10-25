@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -8,11 +8,12 @@ import { stringify } from 'yaml';
 import type { Collector } from '../src/browser/collector.js';
 import { manualJourney } from '../src/browser/manual.js';
 import { loadConfig } from '../src/config/load.js';
-import { runAudit, type RunResult } from '../src/run.js';
+import { recordingFile, runAudit, type RunResult } from '../src/run.js';
 import { FIXTURES, startFixtureServer } from './fixtures/server.js';
 
 let srv: Awaited<ReturnType<typeof startFixtureServer>>;
 let result: RunResult;
+let cfgPath: string;
 const logs: string[] = [];
 const url = (host: string, path = '/') => `http://${host}:${srv.port}${path}`;
 
@@ -37,14 +38,19 @@ before(async () => {
       },
     ],
   };
-  const cfgPath = join(dir, 'config.yaml');
+  cfgPath = join(dir, 'config.yaml');
   writeFileSync(cfgPath, stringify(config));
   // L'operatore simulato: controlla il riquadro, naviga e preme "Ho finito"
   result = await runAudit(loadConfig(cfgPath), {
     log: (m) => logs.push(m),
     manualDriver: async (page) => {
       await page.locator('#scookie-operatore').waitFor({ state: 'attached', timeout: 10000 });
-      await page.goto(url('sito-a.test', '/prodotti/alfa.html'));
+      // azioni vere (clic e campo compilato): vengono registrate per rigiocarle nelle esecuzioni successive
+      await page.click('nav >> text=Alfa');
+      await page.fill('input[name="targa"]', 'AA123BB');
+      await page.locator('input[name="targa"]').blur();
+      await page.click('#calcola');
+      await page.waitForURL(/beta\.html/);
       await page.waitForTimeout(1500);
       await page.locator('#scookie-operatore >> text=Ho finito').click();
     },
@@ -85,7 +91,9 @@ test('ripetizioni: ogni scenario due volte, le schede dicono in quante è stato 
   const a = result.sessions.filter((x) => x.site.includes('sito-a.test') && x.scenario === 'nessuna-azione');
   assert.deepEqual(a.map((x) => x.repeat).sort(), [1, 2]);
   const f = result.findings.find((x) => x.ruleId === 'cookie-prima-del-consenso' && x.site.includes('sito-a.test'))!;
-  assert.deepEqual(f.repeats, { seen: 2, of: 2 });
+  assert.equal(f.repeats?.seen, 2);
+  assert.equal(f.repeats?.of, 2);
+  assert.ok(!f.repeats?.manual);
   assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Osservato in 2 su 2 esecuzioni/);
 });
 
@@ -115,4 +123,22 @@ test('riquadro "Ho finito": formattato e cliccabile con CSP restrittiva e finest
   } finally {
     await browser.close();
   }
+});
+
+test('percorso manuale registrato e rigiocato in automatico nella prova successiva', async () => {
+  const rec = recordingFile(cfgPath, url('sito-a.test'));
+  assert.ok(existsSync(rec), 'percorso salvato accanto alla configurazione');
+  const path = JSON.parse(readFileSync(rec, 'utf8')) as { steps: { type: string; value?: string }[] };
+  assert.deepEqual(path.steps.map((s) => s.type), ['click', 'fill', 'click']);
+  assert.equal(path.steps[1].value, 'AA123BB');
+  // seconda esecuzione: nessun operatore, il percorso si rigioca in ogni ripetizione
+  const second = await runAudit(loadConfig(cfgPath), { log: () => {} });
+  const replays = second.sessions.filter((s) => s.replay);
+  assert.equal(replays.length, 2);
+  assert.ok(!second.sessions.some((s) => s.manual), 'nessuna sessione manuale');
+  for (const s of replays) {
+    assert.equal(s.replay!.stepsDone, 3, s.replay!.stoppedAt);
+    assert.ok(s.pages.some((p) => /beta\.html\?targa=/.test(p)), s.pages.join(', '));
+  }
+  assert.match(readFileSync(join(second.runDir, 'report.html'), 'utf8'), /Percorso registrato<\/strong>/);
 });

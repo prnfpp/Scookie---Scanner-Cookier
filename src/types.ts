@@ -208,7 +208,9 @@ export interface SessionResult {
   /** Prima pagina non raggiungibile (es. connessione assente, computer in stop): la sessione non descrive il sito. */
   unreachable?: string;
   /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
-  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number };
+  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; steps?: import('./browser/replay.js').RecordedStep[] };
+  /** Sessione automatica che ha rigiocato un percorso registrato in una navigazione manuale. */
+  replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string };
   /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */
   bannerAnalysis?: BannerAnalysis;
   /** Se presente, la navigazione è stata intercettata da un sistema anti-bot: sessione non valida. */

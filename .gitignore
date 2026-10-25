@@ -9,3 +9,6 @@ clienti/
 /config/*.local.yaml
 
 .DS_Store
+
+# Percorso di node registrato dall'installazione dell'icona
+.scookie-env

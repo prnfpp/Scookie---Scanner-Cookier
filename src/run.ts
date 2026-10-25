@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { trimHar } from './browser/har.js';
-import { basename, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, type Browser, type LaunchOptions, type Page } from 'playwright';
 import { Classifier, type TrackerEntry } from './classify/classifier.js';
@@ -22,6 +22,8 @@ import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from '
 import { TOOL_VERSION } from './version.js';
 import { ProgressTracker, type Progress } from './progress.js';
 import { setTestData } from './util/pii.js';
+import { keepAwake } from './util/awake.js';
+import type { RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
 
 const SEV_ORDER = ['alta', 'media', 'bassa', 'informativa'];
@@ -95,7 +97,7 @@ async function waitOnline(browser: Browser, url: string, log: (m: string) => voi
   }
 }
 
-export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteIndex: number, startId: number): SessionPlan[] {
+export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteIndex: number, startId: number, recording?: RecordedPath | null): SessionPlan[] {
   const site = cfg.siti[siteIndex];
   const sample = discovery.sample;
   const host = new URL(discovery.site).hostname;
@@ -145,6 +147,24 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
     // "www.esempio.it/preventivo" senza https:// è un indirizzo, non un percorso del sito
     const partenza = m.partenza && /^[\w-]+(\.[\w-]+)+(\/|$)/.test(m.partenza) ? `https://${m.partenza}` : m.partenza;
     const start = partenza ? new URL(partenza, discovery.site).toString() : sample[0].url;
+    // Percorso già registrato in un audit precedente: si rigioca in automatico, in ogni ripetizione
+    if (recording?.steps.length) {
+      for (let r = 1; r <= reps; r++) {
+        for (const scenario of m.scenari) {
+          plans.push({
+            id: `${id(scenario)}-percorso${reps > 1 ? `-r${r}` : ''}`,
+            site: discovery.site,
+            siteConfig: site,
+            scenario,
+            pageType: 'percorso registrato',
+            pages: [recording.start],
+            replay: recording,
+            repeat: reps > 1 ? r : undefined,
+          });
+        }
+      }
+      return plans;
+    }
     for (const scenario of m.scenari) {
       plans.push({
         id: `${id(scenario)}-manuale`,
@@ -158,6 +178,21 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
     }
   }
   return plans;
+}
+
+/** File del percorso registrato di un sito, accanto alla configurazione (cartella percorsi/). */
+export function recordingFile(configPath: string, siteUrl: string): string {
+  const name = basename(configPath).replace(/\.ya?ml$/i, '');
+  return join(dirname(configPath), 'percorsi', `${name}_${new URL(siteUrl).hostname}.json`);
+}
+const recordingPath = (loaded: LoadedConfig, siteUrl: string) => recordingFile(loaded.path, siteUrl);
+
+function readRecording(path: string): RecordedPath | null {
+  try {
+    return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as RecordedPath) : null;
+  } catch {
+    return null;
+  }
 }
 
 function listFiles(dir: string, base = dir): string[] {
@@ -240,6 +275,15 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   if (!config.siti.length) throw new Error('Nessuno dei siti indicati è nella configurazione');
   // dati inseriti dall'operatore: riconosciuti come prova certa e riportati in chiaro
   setTestData(config.datiDiProva);
+  const releaseAwake = keepAwake(opts.log ?? ((m: string) => console.log(m)));
+  try {
+    return await runAuditInner(loaded, opts, config);
+  } finally {
+    releaseAwake();
+  }
+}
+
+async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: AuditConfig): Promise<RunResult> {
   const progress = new ProgressTracker(opts.onProgress ?? (() => {}), 30 + (opts.pdf ?? config.report.pdf ? 20 : 0) + 5 * config.siti.length);
   const log = opts.log ?? ((m: string) => console.log(m));
   const startedAt = new Date().toISOString();
@@ -320,7 +364,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
         decl.note = 'Elenco fornito nella configurazione (prevale sulla lettura dal CMP).';
       }
       declared.push(decl);
-      const plans = planSessions(config, d, i, nextId);
+      const plans = planSessions(config, d, i, nextId, site.navigazioneManuale ? readRecording(recordingPath(loaded, site.url)) : null);
       nextId += plans.length;
       jobs.push({ i, site, d, decl, plans, manual: [] });
     }
@@ -369,6 +413,17 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
         manualBrowser = null;
       }
       log('\nNavigazioni manuali concluse: da qui l\'audit prosegue da solo. Il computer deve restare acceso, sveglio e collegato a internet.');
+      // La navigazione più completa di ogni sito diventa il percorso registrato: dalla prossima esecuzione si
+      // rigioca in automatico, in ogni ripetizione, senza operatore.
+      for (const j of jobs) {
+        const best = j.manual.filter((r) => r.manual?.endedBy === 'operatore' && r.manual.steps?.length).sort((a, b) => b.manual!.steps!.length - a.manual!.steps!.length)[0];
+        if (!best) continue;
+        const rec: RecordedPath = { site: j.site.url, start: j.plans.find((p) => p.manual)!.pages[0], savedAt: new Date().toISOString(), fromSession: best.id, steps: best.manual!.steps! };
+        const path = recordingPath(loaded, j.site.url);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, JSON.stringify(rec, null, 2));
+        log(`Percorso registrato (${rec.steps.length} passi) salvato in ${path}: dalla prossima esecuzione si rigioca in automatico.`);
+      }
     }
 
     progress.phase('automatiche');
@@ -438,14 +493,16 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
         const policyUrl = site.cookiePolicy ?? (fromBanner && /cookie/i.test(fromBanner) ? fromBanner : undefined) ?? fromSample ?? fromBanner;
         if (policyUrl) {
           log(`  lettura dell'elenco dichiarato dalla cookie policy: ${policyUrl}`);
-          const items = await readPolicyDeclared(browser, new URL(policyUrl, site.url).toString(), userAgent, config.browser.locale).catch((e: Error) => {
+          const { items, skipped } = await readPolicyDeclared(browser, new URL(policyUrl, site.url).toString(), userAgent, config.browser.locale).catch((e: Error) => {
             log(`    non riuscita: ${e.message.split('\n')[0]}`);
-            return [];
+            return { items: [], skipped: [] as string[] };
           });
           if (items.length) {
             decl.items = items;
             decl.source = `cookie policy (${policyUrl})`;
-            decl.note = 'Elenco ricavato dalle tabelle della cookie policy: va verificato a vista, la struttura delle pagine varia.';
+            decl.note =
+              'Elenco ricavato dalle tabelle della cookie policy: va verificato a vista, la struttura delle pagine varia.' +
+              (skipped.length ? ` ${skipped.length} righe non lette perché la prima colonna non contiene un nome di cookie (es. "${skipped.slice(0, 3).join('", "')}"): per un confronto completo fornire l'elenco a mano (file dei dichiarati).` : '');
           }
         }
       }
