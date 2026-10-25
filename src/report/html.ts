@@ -134,7 +134,7 @@ ${unreachable.length ? `<p class="warn"><strong>Attenzione — pagine non carica
   parts.push(`<h2>1. Perimetro e metodo</h2><table class="kv">
 <tr><td>Cliente</td><td>${esc(config.cliente)}</td></tr>
 <tr><td>Inizio / fine</td><td>${esc(fmt(r.startedAt))} — ${esc(fmt(r.endedAt))}</td></tr>
-<tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}; browser ${esc(r.browserVersion)} (${config.browser.canale === 'chromium' ? 'Chromium incluso nel tool' : `${esc(config.browser.canale)} installato sul computer`}, ${config.browser.headless ? 'senza finestra (headless)' : 'con finestra visibile'})</td></tr>
+<tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}; browser ${esc(r.browserVersion)} (${config.browser.canale === 'chromium' ? 'Chromium incluso nel tool' : `${esc(config.browser.canale)} installato sul computer`}, ${config.browser.headless ? 'senza finestra (headless)' : 'con finestra visibile'}${config.browser.headless && r.sessions.some((s) => s.manual) ? '; navigazioni manuali con finestra visibile' : ''})</td></tr>
 <tr><td>User agent</td><td><code>${esc(r.userAgent)}</code>${config.browser.uaNormale ? '<br><span class="muted">Esecuzione di controllo: user agent di un browser normale, senza la dichiarazione dell\'audit.</span>' : ''}</td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
 <tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (IP ${esc(r.exit.ip)}, fonte ${esc(r.exit.source)})` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>

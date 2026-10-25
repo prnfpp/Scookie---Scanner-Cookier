@@ -39,6 +39,8 @@ export interface SessionEnv {
   onDeclared?: (items: DeclaredItem[], cmp: string) => void;
   /** Solo test: simula l'operatore nelle sessioni con navigazione manuale. */
   manualDriver?: (page: Page) => Promise<void>;
+  /** Riceve la funzione che chiude la navigazione manuale in corso (null quando non ce n'è una). */
+  onManualFinisher?: (finish: (() => void) | null) => void;
   /** Avvisa l'operatore che una sessione manuale sta per iniziare. */
   log?: (msg: string) => void;
 }
@@ -157,7 +159,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let unreachable: string | undefined;
   const runManual = async () => {
     env.log?.(`    NAVIGAZIONE MANUALE: nella finestra del browser segui le istruzioni e premi "Ho finito" (massimo ${Math.round(plan.manual!.maxMs / 60000)} minuti).`);
-    manual = await manualJourney(page, collector, plan.manual!, env.manualDriver);
+    manual = await manualJourney(page, collector, plan.manual!, env.manualDriver, env.onManualFinisher);
     env.log?.(`    navigazione manuale conclusa (${manual.endedBy === 'operatore' ? 'premuto "Ho finito"' : manual.endedBy === 'tempo' ? 'tempo scaduto' : 'finestra chiusa'})`);
     await shot('3-fine');
   };
