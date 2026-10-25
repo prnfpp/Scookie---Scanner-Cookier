@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ComparisonRow, Finding, SessionResult } from '../types.js';
 import { toCsv } from '../util/csv.js';
+import { repeatsShort } from './repeats.js';
 
 /** Scrive i dati grezzi in CSV (separatore ";", UTF-8 con BOM per Excel). Ritorna i nomi dei file. */
 export function writeCsvs(dir: string, sessions: SessionResult[], comparison: ComparisonRow[], findings: Finding[]): string[] {
@@ -65,7 +66,7 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
       toCsv(
         ['id', 'regola', 'titolo', 'gravita', 'sito', 'scenario', 'pagina', 'osservato', 'descrizione', 'dettagli', 'evidenze', 'norme'],
         findings.map((f) => [
-          f.id, f.ruleId, f.ruleTitle, f.severity, f.site, f.scenario, f.pageUrl, f.repeats ? `${f.repeats.seen} su ${f.repeats.of}` : '', f.description, f.details.join(' | '),
+          f.id, f.ruleId, f.ruleTitle, f.severity, f.site, f.scenario, f.pageUrl, f.repeats ? repeatsShort(f.repeats) : '', f.description, f.details.join(' | '),
           f.evidence.map((e) => e.file), f.norms.map((n) => n.title),
         ]),
       ),

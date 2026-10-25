@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -152,7 +153,9 @@ test('sito-f: tracciamento attivato dallo scroll distinto dal caricamento', () =
 
 test('sito-a: dati personali verso terzi, mascherati nel report e nei dati', () => {
   const f = result.findings.find((x) => x.ruleId === 'dati-personali-a-terzi' && x.site.includes('sito-a.test'))!;
-  assert.equal(f.severity, 'alta');
+  // dati di prova non dichiarati nella configurazione: trovati per nome del parametro, certezza media
+  assert.equal(f.severity, 'media');
+  assert.ok(f.details.some((d) => /^Certezza: media/.test(d)));
   assert.ok(f.details.some((d) => /targa: ZZ•••ZZ/.test(d)), f.details.join(' | '));
   for (const file of ['report.html', 'dati.json', 'richieste.csv']) {
     const text = readFileSync(join(result.runDir, file), 'utf8');
@@ -225,7 +228,8 @@ test('sito-e: elenco dichiarato ricavato dalle tabelle della cookie policy', () 
   const dati = JSON.parse(readFileSync(join(result.runDir, 'dati.json'), 'utf8')) as { declared: { site: string; source: string; items: { name: string; category: string }[] }[] };
   const d = dati.declared.find((x) => x.site.includes('sito-e.test'))!;
   assert.match(d.source, /cookie policy/);
-  assert.deepEqual(d.items.map((i) => [i.name, i.category]), [['pref', 'tecnico'], ['_ga', 'statistica']]);
+  // la tabella con celle unite (rowspan) non fa slittare le colonne: niente durate lette come nomi
+  assert.deepEqual(d.items.map((i) => [i.name, i.category]), [['pref', 'tecnico'], ['_ga', 'statistica'], ['_fbp', 'marketing']]);
 });
 
 test('scenario personalizza: rispettato su vanilla-cookieconsent, violato su OneTrust di prova', () => {
@@ -283,7 +287,13 @@ test('output: report, dati, evidenze con hash verificabili', () => {
     assert.ok(existsSync(join(result.runDir, f)), f);
   }
   const manifest = JSON.parse(readFileSync(join(result.runDir, 'manifest.json'), 'utf8')) as { file: { path: string; sha256: string }[] };
-  assert.ok(manifest.file.some((f) => f.path.endsWith('.har')));
+  // HAR compressi; quelli delle sessioni non citate nelle schede senza corpi delle risposte
+  const hars = manifest.file.filter((f) => f.path.endsWith('.har.gz'));
+  assert.ok(hars.length && !manifest.file.some((f) => f.path.endsWith('.har')));
+  const cited = new Set(result.findings.flatMap((f) => f.evidence.map((e) => e.file)));
+  const uncited = hars.find((f) => !cited.has(f.path))!;
+  const log = JSON.parse(gunzipSync(readFileSync(join(result.runDir, uncited.path))).toString('utf8')) as { log: { entries: { response: { content: { text?: string } } }[] } };
+  assert.ok(log.log.entries.length && log.log.entries.every((e) => e.response.content.text === undefined));
   for (const f of manifest.file) {
     const h = createHash('sha256').update(readFileSync(join(result.runDir, f.path))).digest('hex');
     assert.equal(h, f.sha256, f.path);

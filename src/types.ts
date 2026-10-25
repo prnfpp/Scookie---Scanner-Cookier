@@ -92,7 +92,7 @@ export interface RequestRecord {
   /** Richiesta inviata da un service worker del sito (non dalla pagina): può riferirsi a eventi precedenti. */
   fromServiceWorker?: boolean;
   /** Dati personali trovati nell'indirizzo o nel corpo (valori mascherati). */
-  pii?: { kind: string; param: string | null; masked: string }[];
+  pii?: import('./util/pii.js').PiiHit[];
   /** Scenario "revoca": richiesta partita dopo il primo caricamento di pagina successivo alla revoca. */
   afterRevokeNav?: boolean;
   /** Scenario "revoca": millisecondi dalla revoca (msFromChoice è misurato dall'accettazione). */
@@ -208,7 +208,9 @@ export interface SessionResult {
   /** Prima pagina non raggiungibile (es. connessione assente, computer in stop): la sessione non descrive il sito. */
   unreachable?: string;
   /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
-  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number };
+  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; steps?: import('./browser/replay.js').RecordedStep[] };
+  /** Sessione automatica che ha rigiocato un percorso registrato in una navigazione manuale. */
+  replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string };
   /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */
   bannerAnalysis?: BannerAnalysis;
   /** Se presente, la navigazione è stata intercettata da un sistema anti-bot: sessione non valida. */
@@ -256,6 +258,13 @@ export interface NormRef {
   url?: string;
 }
 
+/** In quante ripetizioni automatiche è stato osservato; `manual`: solo in una sessione manuale, fatta una volta. */
+export interface Repeats {
+  seen: number;
+  of: number;
+  manual?: boolean;
+}
+
 export interface Finding {
   id: string; // C-001
   ruleId: string;
@@ -274,11 +283,13 @@ export interface Finding {
   evidenceLevel?: 'risorsa' | 'raccolta' | 'identificativo';
   /** Frase breve e in linguaggio semplice per la sintesi iniziale. */
   headline?: string;
+  /** Fornitori o piattaforme di cui parla la scheda. */
+  subjects?: string[];
   /** Siti a cui si riferisce la scheda (più di uno se raggruppata tra sottodomini). */
   sites: string[];
   /** Chiave stabile tra esecuzioni (regola, oggetto, dominio): serve al confronto tra due esecuzioni. */
   key?: string;
   /** Con ripetizioni: in quante esecuzioni dello scenario il fatto si è osservato, su quante. */
-  repeats?: { seen: number; of: number };
+  repeats?: Repeats & { perSite?: (Repeats & { host: string })[] };
   norms: NormRef[];
 }

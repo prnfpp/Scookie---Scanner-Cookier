@@ -40,6 +40,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         // Solo script o contenuti scaricati: prova più debole di una raccolta di dati
         severity: level === 'risorsa' ? 'media' : undefined,
         evidenceLevel: level,
+        subjects: [r.tracker!.company],
         groupKey: `${r.tracker!.company}|${r.tracker!.category}`,
         headline:
           level === 'raccolta'

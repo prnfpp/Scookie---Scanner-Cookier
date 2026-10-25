@@ -75,6 +75,7 @@ export const cookiePrimaDelConsenso: Rule = {
           `Osservato negli scenari: ${scen.join(', ')} (fase precedente alla scelta)`,
         ],
         evidenceLevel: 'identificativo',
+        subjects: [first.cls.platform ?? first.where],
         groupKey: `${first.cls.platform ?? first.where}|${first.cls.category}`,
         headline: `${first.cls.platform ?? `Un fornitore (${first.where})`} scrive ${names.length === 1 ? 'un identificativo' : 'identificativi'} nel browser ${onlyAfterScroll ? 'dopo lo scroll, ' : ''}prima di qualsiasi scelta sul banner${declNote}`,
         evidence: sessionEvidence(first.s, onlyAfterScroll ? ['1-banner', '3-fine'] : ['1-banner']),

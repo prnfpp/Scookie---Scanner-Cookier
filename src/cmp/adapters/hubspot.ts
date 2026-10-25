@@ -3,7 +3,8 @@ import { selectorAdapter, COOKIE_MAP_EXPR } from './base.js';
 export const hubspot = selectorAdapter({
   id: 'hubspot',
   name: 'HubSpot',
-  detectExpr: `window._hsp && document.getElementById('hs-eu-cookie-confirmation')`,
+  // dopo la scelta il banner può sparire dal DOM: bastano l'API e i cookie di consenso di HubSpot
+  detectExpr: `window._hsp && (document.getElementById('hs-eu-cookie-confirmation') || document.getElementById('hs-banner-parent') || /(^|; )(__hs_cookie_cat_pref|__hs_opt_out)=/.test(document.cookie))`,
   detectSelectors: ['#hs-eu-cookie-confirmation', '#hs-banner-parent'],
   bannerSelectors: ['#hs-eu-cookie-confirmation', '#hs-banner-parent'],
   reject: {
@@ -13,6 +14,8 @@ export const hubspot = selectorAdapter({
     api: "(window._hsp = window._hsp || []).push(['revokeCookieConsent'])",
   },
   accept: { firstLayer: ['#hs-eu-confirmation-button', '#hs-banner-accept-button'] },
+  // il link "Impostazioni cookie" di HubSpot chiama questa API: riapre il banner
+  reopenExpr: "(window._hsp = window._hsp || []).push(['showBanner'])",
   stateExpr: `(() => { const m = ${COOKIE_MAP_EXPR}; return { optOut: m.__hs_opt_out || null, catPref: m.__hs_cookie_cat_pref || null }; })()`,
   check(state, choice) {
     const s = state as { optOut: string | null; catPref: string | null } | null;

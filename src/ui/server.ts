@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { extname, join, resolve, sep } from 'node:path';
@@ -13,9 +13,10 @@ import { discoverSite, type DiscoveryResult } from '../discovery/discover.js';
 import { writeComparison } from '../report/compare.js';
 import { applyReview, readReview, readReviewRows, REVIEW_FILE, writeReviewRows } from '../report/review.js';
 import type { Progress } from '../progress.js';
-import { launchOptions, resolveUserAgent, runAudit } from '../run.js';
+import { launchOptions, recordingFile, resolveUserAgent, runAudit } from '../run.js';
 import { closeSafely } from '../util/misc.js';
 import { TOOL_VERSION } from '../version.js';
+import { checkUpdates, restartWithUpdate } from './update.js';
 
 const PAGE_FILE = fileURLToPath(new URL('../../../ui/index.html', import.meta.url));
 const EXAMPLE_FILE = fileURLToPath(new URL('../../../config/esempio.yaml', import.meta.url));
@@ -29,6 +30,7 @@ const TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.pdf': 'application/pdf',
   '.har': 'application/json; charset=utf-8',
+  '.gz': 'application/gzip',
   '.sha256': 'text/plain; charset=utf-8',
 };
 
@@ -39,6 +41,8 @@ export interface UiOptions {
   runsDir: string;
   port: number;
   log?: (msg: string) => void;
+  /** Chiusura del programma dall'interfaccia ("Chiudi Scookie"); senza, i pulsanti di chiusura e riavvio sono disattivi. */
+  onQuit?: () => void;
 }
 
 interface Job {
@@ -151,6 +155,8 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
   const token = randomBytes(24).toString('hex');
   let job: Job | null = null;
   let jobSeq = 0;
+  /** Chiude la navigazione manuale in corso (pulsante "Ho finito" dell'interfaccia). */
+  let manualFinish: (() => void) | null = null;
   let port = opts.port;
 
   const allowedHosts = () => new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
@@ -247,6 +253,35 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
     if (path === '/api/esempio' && method === 'GET') {
       return json(res, 200, { yaml: readFileSync(EXAMPLE_FILE, 'utf8'), data: parse(readFileSync(EXAMPLE_FILE, 'utf8')) });
     }
+    // Percorsi registrati nelle navigazioni manuali (si rigiocano in automatico); "Registra di nuovo" li elimina
+    const rec = /^\/api\/percorsi\/([^/]+)$/.exec(path);
+    if (rec) {
+      const p = clientPath(decodeURIComponent(rec[1]));
+      const d = existsSync(p) ? (readClient(clientsDir, decodeURIComponent(rec[1])).data as { siti?: { url?: string }[] } | null) : null;
+      const sites = (d?.siti ?? []).map((s) => s?.url).filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u));
+      if (method === 'GET') {
+        return json(
+          res,
+          200,
+          sites.flatMap((site) => {
+            const f = recordingFile(p, site);
+            if (!existsSync(f)) return [];
+            try {
+              const r = JSON.parse(readFileSync(f, 'utf8')) as { savedAt: string; steps: unknown[] };
+              return [{ sito: site, passi: r.steps.length, registrato: r.savedAt }];
+            } catch {
+              return [];
+            }
+          }),
+        );
+      }
+      if (method === 'POST') {
+        const body = (await readBody(req)) as { sito?: string };
+        if (!body.sito || !sites.includes(body.sito)) throw new HttpError(400, 'Sito non presente nella configurazione');
+        rmSync(recordingFile(p, body.sito), { force: true });
+        return json(res, 200, { ok: true });
+      }
+    }
     const one = /^\/api\/clienti\/([^/]+)$/.exec(path);
     if (one && method === 'GET') {
       const p = clientPath(decodeURIComponent(one[1]));
@@ -299,6 +334,9 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
       }
       const j = startJob('audit', body.file!, async (jj) => {
         const result = await runAudit(loaded, {
+          onManualFinisher: (f) => {
+            manualFinish = f;
+          },
           outDir: runsDir,
           pdf: body.pdf === false ? false : undefined,
           onlySites,
@@ -313,6 +351,27 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
         jj.runName = result.runDir.split(sep).pop() ?? null;
       });
       return json(res, 202, { id: j.id });
+    }
+    if (path === '/api/aggiornamenti' && method === 'GET') {
+      return json(res, 200, { ...(await checkUpdates()), canQuit: !!opts.onQuit });
+    }
+    if ((path === '/api/esci' || path === '/api/aggiorna') && method === 'POST') {
+      if (!opts.onQuit) throw new HttpError(404, 'Chiusura dall\'interfaccia non disponibile');
+      if (job?.status === 'in-corso') throw new HttpError(409, 'Un audit è in corso: aspetta la fine prima di chiudere Scookie.');
+      if (path === '/api/aggiorna') {
+        if (!(await checkUpdates()).canRestart) throw new HttpError(409, 'Aggiornamento automatico disponibile solo avviando Scookie dall\'icona su Mac.');
+        restartWithUpdate();
+      }
+      json(res, 200, { ok: true });
+      setTimeout(() => opts.onQuit!(), 300);
+      return;
+    }
+    // "Ho finito" dall'interfaccia, se il riquadro nella finestra del browser non è raggiungibile
+    if (path === '/api/manuale/fatto' && method === 'POST') {
+      if (!manualFinish) throw new HttpError(409, 'Nessuna navigazione manuale in corso');
+      manualFinish();
+      manualFinish = null;
+      return json(res, 200, { ok: true });
     }
     if (path === '/api/lavoro' && method === 'GET') {
       return json(res, 200, job);
@@ -371,7 +430,7 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
     const abs = resolve(runsDir, ...parts);
     if (!abs.startsWith(runsDir + sep) || !existsSync(abs) || !statSync(abs).isFile()) throw new HttpError(404, 'File non trovato');
     const ext = extname(abs).toLowerCase();
-    const download = ['.har', '.csv', '.json', '.sha256'].includes(ext);
+    const download = ['.har', '.gz', '.csv', '.json', '.sha256'].includes(ext);
     send(res, 200, readFileSync(abs), TYPES[ext] ?? 'application/octet-stream', download ? { 'content-disposition': `attachment; filename="${parts[parts.length - 1]}"` } : {});
   }
 

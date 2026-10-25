@@ -29,6 +29,8 @@ export interface RawFinding {
   evidenceLevel?: 'risorsa' | 'raccolta' | 'identificativo';
   /** Frase breve in linguaggio semplice per la sintesi iniziale. */
   headline?: string;
+  /** Fornitori o piattaforme di cui parla la scheda (per raggruppare la sintesi per causa). */
+  subjects?: string[];
   /**
    * Chiave di raggruppamento: schede della stessa regola con la stessa chiave, su siti dello stesso
    * dominio, diventano una sola scheda con l'elenco dei siti (es. stessa configurazione su www e app).

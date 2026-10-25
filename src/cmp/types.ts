@@ -41,6 +41,8 @@ export interface CmpAdapter {
   checkConsent(state: unknown, choice: Choice): ConsentCheck;
   /** Elenco dichiarato letto dal CMP, se disponibile. */
   declared?(page: Page): Promise<DeclaredItem[] | null>;
+  /** Riapre il banner con l'API del CMP (es. HubSpot showBanner), per poi rifiutare con un click. */
+  reopen?(page: Page): Promise<boolean>;
 }
 
 export type FrameLike = Page | Frame;

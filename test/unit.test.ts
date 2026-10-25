@@ -6,7 +6,9 @@ import { pageType, parseSitemap, robotsDisallows, sample, sectionsOf } from '../
 import { TEXTS } from '../src/cmp/heuristic.js';
 import { describeGoogleConsent, googleConsentShort, googleConsentSummary, isConsentModeDeniedPing, requestEvidenceLevel, strongestRequest } from '../src/rules/helpers.js';
 import { isRevokeUrl } from '../src/cmp/revoke.js';
-import { detectPii, maskPii } from '../src/util/pii.js';
+import { detectPii, maskPii, setTestData } from '../src/util/pii.js';
+import { mergeDetails } from '../src/rules/engine.js';
+import { summaryItems } from '../src/report/summary.js';
 import { PartyResolver, registrableDomain } from '../src/util/domains.js';
 import { parseCsv, toCsv } from '../src/util/csv.js';
 import type { RequestRecord } from '../src/types.js';
@@ -318,4 +320,58 @@ test('dati personali negli indirizzi inviati a terzi: trovati e mascherati', () 
   assert.ok(detectPii('cf=RSSMRA80A01H501U').some((h) => h.kind === 'codice fiscale'));
   // niente falsi positivi su identificativi comuni
   assert.deepEqual(detectPii('https://region1.google-analytics.com/g/collect?v=2&tid=G-ABC123&cid=123.456&tel=0'), []);
+});
+
+test('dati personali: niente falsi positivi da nomi di file e codici casuali; targa nel percorso', () => {
+  // "logo@2x.png" non è un'email; una sequenza con la forma del codice fiscale ma senza carattere di controllo valido non lo è
+  assert.deepEqual(detectPii('{"src":"/img/logo@2x.png","id":"SRABCD12E34F567W"}'), []);
+  // targa e data nel percorso della pagina, anche dentro un parametro codificato
+  const u = 'https://ads.example/collect?dl=' + encodeURIComponent('https://app.esempio.it/preventivo/quotazione/auto/AB123CD/1990-01-01');
+  assert.deepEqual(detectPii(u).map((h) => `${h.kind}:${h.masked}`).sort(), ['data di nascita:19••••••01', 'targa:AB•••CD']);
+  const m = maskPii(u);
+  assert.ok(!decodeURIComponent(m).includes('AB123CD') && !decodeURIComponent(m).includes('1990-01-01'), m);
+});
+
+test('dati di prova dichiarati: riconosciuti in ogni forma e lasciati in chiaro', () => {
+  setTestData({ targa: 'AA123BB', dataNascita: '01/01/1990' });
+  try {
+    const u = 'https://ads.example/c?dl=' + encodeURIComponent('https://app.esempio.it/inizio?dataNascita=01/01/1990&targa=AA123BB') + '&p=' + encodeURIComponent('/quotazione/auto/AA123BB/1990-01-01');
+    const hits = detectPii(u);
+    assert.deepEqual(hits.filter((h) => h.test).map((h) => `${h.kind}:${h.masked}`).sort(), ['data di nascita:01/01/1990', 'targa:AA123BB']);
+    assert.ok(maskPii(u).includes('AA123BB'), 'i dati di prova restano in chiaro');
+    // un valore diverso resta un dato non di prova, mascherato
+    assert.ok(detectPii('targa=BB456CC').every((h) => !h.test && h.masked === 'BB•••CC'));
+  } finally {
+    setTestData(undefined);
+  }
+});
+
+test('schede raggruppate: dettagli dello stesso sito uniti senza ripetizioni', () => {
+  const merged = mergeDetails([
+    ['Pagine in cui si osserva: a, b', 'Richiesta di esempio: 1', 'cookie X'],
+    ['Pagine in cui si osserva: b, c', 'Richiesta di esempio: 2', 'cookie X', 'cookie Y'],
+  ]);
+  assert.deepEqual(merged, ['Pagine in cui si osserva: a, b, c', 'Richiesta di esempio: 1', 'cookie X', 'cookie Y']);
+});
+
+test('sintesi per causa: un punto per fatto, ordinata per gravità, prova e ripetibilità', () => {
+  const mk = (id: string, ruleId: string, severity: Finding['severity'], subjects: string[], extra: Partial<Finding> = {}): Finding => ({
+    id, ruleId, ruleTitle: ruleId, severity, site: 'https://www.a.test/', sites: ['https://www.a.test/'], scenario: null, pageUrl: null,
+    description: '', details: [], evidence: [], norms: [], subjects, headline: `${ruleId} ${subjects.join(',')}`, ...extra,
+  });
+  const items = summaryItems([
+    mk('C-001', 'cookie-prima-del-consenso', 'alta', ['Hotjar'], { evidenceLevel: 'identificativo', repeats: { seen: 3, of: 3 } }),
+    mk('C-002', 'attivazione-dopo-rifiuto', 'alta', ['Hotjar'], { evidenceLevel: 'identificativo', repeats: { seen: 3, of: 3 } }),
+    mk('C-003', 'categoria-incoerente', 'media', ['Hotjar']),
+    mk('C-004', 'attivazione-dopo-rifiuto', 'alta', ['TikTok'], { evidenceLevel: 'identificativo', repeats: { seen: 1, of: 1, manual: true } }),
+    mk('C-005', 'dati-personali-a-terzi', 'alta', ['Meta'], { headline: 'I dati inseriti nel modulo (targa) arrivano a Meta, anche dopo il rifiuto', repeats: { seen: 1, of: 1, manual: true } }),
+    mk('C-006', 'evidenza-asimmetrica', 'media', []),
+  ]);
+  assert.equal(items.length, 4);
+  assert.match(items[0].title, /^Dati inseriti nei moduli arrivano a Meta, anche dopo il rifiuto/);
+  assert.match(items[1].title, /dichiarati tecnici .*\(Hotjar\): attivi prima della scelta e dopo il rifiuto/);
+  assert.deepEqual(items[1].findings.map((f) => f.id), ['C-001', 'C-002', 'C-003']);
+  // TikTok visto in una sola sessione manuale: dopo Hotjar (3 su 3), prima del banner (media)
+  assert.match(items[2].title, /^TikTok: attivo dopo il rifiuto/);
+  assert.match(items[3].title, /^Banner/);
 });

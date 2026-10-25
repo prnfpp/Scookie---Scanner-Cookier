@@ -1,5 +1,7 @@
-import { copyFileSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
+import { trimHar } from './browser/har.js';
+import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, type Browser, type LaunchOptions, type Page } from 'playwright';
 import { Classifier, type TrackerEntry } from './classify/classifier.js';
@@ -19,6 +21,12 @@ import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult }
 import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
 import { TOOL_VERSION } from './version.js';
 import { ProgressTracker, type Progress } from './progress.js';
+import { setTestData } from './util/pii.js';
+import { keepAwake } from './util/awake.js';
+import type { RecordedPath } from './browser/replay.js';
+import { findingScore } from './report/summary.js';
+
+const SEV_ORDER = ['alta', 'media', 'bassa', 'informativa'];
 
 export interface RunOptions {
   outDir?: string;
@@ -26,6 +34,8 @@ export interface RunOptions {
   log?: (msg: string) => void;
   /** Solo test: simula l'operatore nelle sessioni con navigazione manuale (il browser resta senza finestra). */
   manualDriver?: (page: Page) => Promise<void>;
+  /** Riceve la funzione che chiude la navigazione manuale in corso (null quando non ce n'è una). */
+  onManualFinisher?: (finish: (() => void) | null) => void;
   /** Avanzamento per l'interfaccia (fase, sessioni, tempo stimato). */
   onProgress?: (p: Progress) => void;
   /** Esegue solo questi siti della configurazione (indirizzi), es. per ripetere quelli non raggiunti. */
@@ -87,7 +97,7 @@ async function waitOnline(browser: Browser, url: string, log: (m: string) => voi
   }
 }
 
-export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteIndex: number, startId: number): SessionPlan[] {
+export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteIndex: number, startId: number, recording?: RecordedPath | null): SessionPlan[] {
   const site = cfg.siti[siteIndex];
   const sample = discovery.sample;
   const host = new URL(discovery.site).hostname;
@@ -111,7 +121,7 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
     const repeat = reps > 1 ? r : undefined;
     if (active.has('nessuna-azione')) {
       for (const [k, p] of sample.entries()) {
-        plans.push({ id: rid('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url], analyzeBanner: k === 0 && r === 1, repeat });
+        plans.push({ id: rid('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url], analyzeBanner: k === 0, repeat });
       }
     }
     const choiceScenarios = (['rifiuta', 'accetta', 'personalizza', 'revoca'] as const).filter((s) => active.has(s));
@@ -134,7 +144,27 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
   // Navigazione manuale: una sessione per scenario richiesto, dalla pagina di partenza indicata
   const m = site.navigazioneManuale;
   if (m) {
-    const start = m.partenza ? new URL(m.partenza, discovery.site).toString() : sample[0].url;
+    // "www.esempio.it/preventivo" senza https:// è un indirizzo, non un percorso del sito
+    const partenza = m.partenza && /^[\w-]+(\.[\w-]+)+(\/|$)/.test(m.partenza) ? `https://${m.partenza}` : m.partenza;
+    const start = partenza ? new URL(partenza, discovery.site).toString() : sample[0].url;
+    // Percorso già registrato in un audit precedente: si rigioca in automatico, in ogni ripetizione
+    if (recording?.steps.length) {
+      for (let r = 1; r <= reps; r++) {
+        for (const scenario of m.scenari) {
+          plans.push({
+            id: `${id(scenario)}-percorso${reps > 1 ? `-r${r}` : ''}`,
+            site: discovery.site,
+            siteConfig: site,
+            scenario,
+            pageType: 'percorso registrato',
+            pages: [recording.start],
+            replay: recording,
+            repeat: reps > 1 ? r : undefined,
+          });
+        }
+      }
+      return plans;
+    }
     for (const scenario of m.scenari) {
       plans.push({
         id: `${id(scenario)}-manuale`,
@@ -148,6 +178,21 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
     }
   }
   return plans;
+}
+
+/** File del percorso registrato di un sito, accanto alla configurazione (cartella percorsi/). */
+export function recordingFile(configPath: string, siteUrl: string): string {
+  const name = basename(configPath).replace(/\.ya?ml$/i, '');
+  return join(dirname(configPath), 'percorsi', `${name}_${new URL(siteUrl).hostname}.json`);
+}
+const recordingPath = (loaded: LoadedConfig, siteUrl: string) => recordingFile(loaded.path, siteUrl);
+
+function readRecording(path: string): RecordedPath | null {
+  try {
+    return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as RecordedPath) : null;
+  } catch {
+    return null;
+  }
 }
 
 function listFiles(dir: string, base = dir): string[] {
@@ -189,6 +234,34 @@ function linkEvidenceToFindings(runDir: string, findings: Finding[]) {
   }
 }
 
+/**
+ * HAR più leggeri da consegnare: le sessioni non citate in nessuna scheda perdono i corpi delle risposte (restano
+ * richieste, intestazioni, cookie, tempi e dati inviati ai terzi), poi tutti i HAR si comprimono in .har.gz.
+ */
+function compressHars(runDir: string, sessions: SessionResult[], findings: Finding[], mode: 'tutti' | 'testo' | 'nessuno') {
+  const cited = new Set(findings.flatMap((f) => [...f.evidence.map((e) => e.file), String(f.requestExcerpt?.har ?? '')]).filter((x) => x.endsWith('.har')));
+  const renamed = new Map<string, string>();
+  for (const s of sessions) {
+    if (!s.har?.endsWith('.har')) continue;
+    const path = join(runDir, s.har);
+    if (!existsSync(path)) continue;
+    try {
+      if (!cited.has(s.har) && mode !== 'nessuno') trimHar(path, 'nessuno');
+      writeFileSync(`${path}.gz`, gzipSync(readFileSync(path)));
+      rmSync(path);
+      renamed.set(s.har, `${s.har}.gz`);
+      s.har = `${s.har}.gz`;
+    } catch (e) {
+      s.errors.push(`compressione del file HAR non riuscita: ${(e as Error).message.split('\n')[0]}`);
+    }
+  }
+  for (const f of findings) {
+    f.evidence = f.evidence.map((e) => (renamed.has(e.file) ? { ...e, file: renamed.get(e.file)! } : e));
+    const har = f.requestExcerpt?.har;
+    if (typeof har === 'string' && renamed.has(har)) f.requestExcerpt!.har = renamed.get(har);
+  }
+}
+
 /** Host delle richieste senza risposta in una sessione, per spiegare un banner mancante. */
 function failedHosts(s: SessionResult): string {
   const hosts = [...new Set(s.requests.filter((r) => r.failure).map((r) => r.host))];
@@ -200,6 +273,17 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
     ? { ...loaded.config, siti: loaded.config.siti.filter((s) => opts.onlySites!.some((u) => new URL(u).hostname === new URL(s.url).hostname)) }
     : loaded.config;
   if (!config.siti.length) throw new Error('Nessuno dei siti indicati è nella configurazione');
+  // dati inseriti dall'operatore: riconosciuti come prova certa e riportati in chiaro
+  setTestData(config.datiDiProva);
+  const releaseAwake = keepAwake(opts.log ?? ((m: string) => console.log(m)));
+  try {
+    return await runAuditInner(loaded, opts, config);
+  } finally {
+    releaseAwake();
+  }
+}
+
+async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: AuditConfig): Promise<RunResult> {
   const progress = new ProgressTracker(opts.onProgress ?? (() => {}), 30 + (opts.pdf ?? config.report.pdf ? 20 : 0) + 5 * config.siti.length);
   const log = opts.log ?? ((m: string) => console.log(m));
   const startedAt = new Date().toISOString();
@@ -212,13 +296,15 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const extra: TrackerEntry[] = config.trackerExtra ? Classifier.loadExtraTrackers(loaded.resolvePath(config.trackerExtra)) : [];
   const classifier = new Classifier(extra);
 
-  // Con la navigazione manuale il browser deve avere una finestra (salvo nei test, dove l'operatore è simulato)
+  // Solo le navigazioni manuali hanno una finestra (un browser a parte, chiuso a fine fase); scoperta e sessioni
+  // automatiche restano senza finestra, così il computer resta utilizzabile. Nei test l'operatore è simulato.
   const manualSites = config.siti.filter((s) => s.navigazioneManuale);
   if (manualSites.length && !opts.manualDriver) {
     log(`Navigazione manuale prevista per: ${manualSites.map((s) => s.url).join(', ')}. Il browser si aprirà in una finestra: restare al computer.`);
   }
-  const headless = manualSites.length && !opts.manualDriver ? false : config.browser.headless;
+  const headless = config.browser.headless;
   const browser = await chromium.launch(launchOptions(config, headless));
+  let manualBrowser: Browser | null = null;
   const sessions: SessionResult[] = [];
   const discovery: DiscoveryResult[] = [];
   const declared: DeclaredSet[] = [];
@@ -278,7 +364,7 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
         decl.note = 'Elenco fornito nella configurazione (prevale sulla lettura dal CMP).';
       }
       declared.push(decl);
-      const plans = planSessions(config, d, i, nextId);
+      const plans = planSessions(config, d, i, nextId, site.navigazioneManuale ? readRecording(recordingPath(loaded, site.url)) : null);
       nextId += plans.length;
       jobs.push({ i, site, d, decl, plans, manual: [] });
     }
@@ -290,12 +376,14 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
       const t0 = Date.now();
       progress.start(`${new URL(plan.site).hostname} · ${plan.scenario}${plan.manual ? ' (navigazione manuale)' : ''}${plan.repeat ? ` · ripetizione ${plan.repeat}` : ''}`);
       if (plan.manual) progress.wait('manuale');
-      const res = await runSession(browser, plan, {
+      if (plan.manual && !opts.manualDriver && headless && !manualBrowser) manualBrowser = await chromium.launch(launchOptions(config, false));
+      const res = await runSession(plan.manual && manualBrowser ? manualBrowser : browser, plan, {
         config,
         runDir,
         classifier,
         userAgent,
         manualDriver: opts.manualDriver,
+        onManualFinisher: opts.onManualFinisher,
         log,
         onDeclared: decl.source
           ? undefined
@@ -317,8 +405,25 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
     if (manualPlans.length) {
       log(`\nNavigazioni manuali (${manualPlans.length}): si fanno adesso, poi l'audit prosegue da solo.`);
       progress.phase('manuale');
-      for (const { j, p } of manualPlans) j.manual.push(await exec(j, p));
+      try {
+        for (const { j, p } of manualPlans) j.manual.push(await exec(j, p));
+      } finally {
+        // assegnato dentro exec: TypeScript non lo vede
+        await (manualBrowser as Browser | null)?.close().catch(() => {});
+        manualBrowser = null;
+      }
       log('\nNavigazioni manuali concluse: da qui l\'audit prosegue da solo. Il computer deve restare acceso, sveglio e collegato a internet.');
+      // La navigazione più completa di ogni sito diventa il percorso registrato: dalla prossima esecuzione si
+      // rigioca in automatico, in ogni ripetizione, senza operatore.
+      for (const j of jobs) {
+        const best = j.manual.filter((r) => r.manual?.endedBy === 'operatore' && r.manual.steps?.length).sort((a, b) => b.manual!.steps!.length - a.manual!.steps!.length)[0];
+        if (!best) continue;
+        const rec: RecordedPath = { site: j.site.url, start: j.plans.find((p) => p.manual)!.pages[0], savedAt: new Date().toISOString(), fromSession: best.id, steps: best.manual!.steps! };
+        const path = recordingPath(loaded, j.site.url);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, JSON.stringify(rec, null, 2));
+        log(`Percorso registrato (${rec.steps.length} passi) salvato in ${path}: dalla prossima esecuzione si rigioca in automatico.`);
+      }
     }
 
     progress.phase('automatiche');
@@ -388,14 +493,16 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
         const policyUrl = site.cookiePolicy ?? (fromBanner && /cookie/i.test(fromBanner) ? fromBanner : undefined) ?? fromSample ?? fromBanner;
         if (policyUrl) {
           log(`  lettura dell'elenco dichiarato dalla cookie policy: ${policyUrl}`);
-          const items = await readPolicyDeclared(browser, new URL(policyUrl, site.url).toString(), userAgent, config.browser.locale).catch((e: Error) => {
+          const { items, skipped } = await readPolicyDeclared(browser, new URL(policyUrl, site.url).toString(), userAgent, config.browser.locale).catch((e: Error) => {
             log(`    non riuscita: ${e.message.split('\n')[0]}`);
-            return [];
+            return { items: [], skipped: [] as string[] };
           });
           if (items.length) {
             decl.items = items;
             decl.source = `cookie policy (${policyUrl})`;
-            decl.note = 'Elenco ricavato dalle tabelle della cookie policy: va verificato a vista, la struttura delle pagine varia.';
+            decl.note =
+              'Elenco ricavato dalle tabelle della cookie policy: va verificato a vista, la struttura delle pagine varia.' +
+              (skipped.length ? ` ${skipped.length} righe non lette perché la prima colonna non contiene un nome di cookie (es. "${skipped.slice(0, 3).join('", "')}"): per un confronto completo fornire l'elenco a mano (file dei dichiarati).` : '');
           }
         }
       }
@@ -417,16 +524,41 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   // Ripetizioni: le regole si valutano anche su ogni ripetizione da sola; per ogni scheda si conta in quante compare.
   // Le navigazioni manuali non si ripetono e non entrano nel conteggio.
   const reps = config.scenari.ripetizioni;
-  if (reps > 1) {
-    const seen = new Map<string, number>();
-    for (let r = 1; r <= reps; r++) {
-      const subset = validSessions.filter((s) => s.repeat === r);
+  // Ripetibilità, sito per sito: lo stesso fatto può essere ripetuto su un sito e venire da una sessione manuale
+  // (fatta una volta) su un altro.
+  const manualSessions = validSessions.filter((s) => s.manual);
+  if (reps > 1 || manualSessions.length) {
+    const hostOf = (u: string) => new URL(u).hostname;
+    const rawKeys = (subset: SessionResult[]) => {
       const comp = declared.flatMap((d) => compareDeclared(d.site, subset.filter((s) => s.site === d.site), d));
-      const keys = new Set(evaluateRules({ config, sessions: subset, blocked: blockedSessions, declared, comparison: comp, exit, discovery }, norms).map((f) => f.key));
-      for (const k of keys) if (k) seen.set(k, (seen.get(k) ?? 0) + 1);
+      const ctx = { config, sessions: subset, blocked: blockedSessions, declared, comparison: comp, exit, discovery };
+      return new Set(evaluateRules(ctx, norms, { merge: false }).map((f) => `${f.key}@${hostOf(f.site)}`));
+    };
+    const seen = new Map<string, number>();
+    if (reps > 1) {
+      for (let r = 1; r <= reps; r++) for (const k of rawKeys(validSessions.filter((s) => s.repeat === r))) seen.set(k, (seen.get(k) ?? 0) + 1);
+    } else {
+      for (const k of rawKeys(validSessions.filter((s) => !s.manual))) seen.set(k, 1);
     }
-    for (const f of findings) if (f.key) f.repeats = { seen: Math.max(1, seen.get(f.key) ?? 0), of: reps };
+    const manualKeys = manualSessions.length ? rawKeys(manualSessions) : new Set<string>();
+    for (const f of findings) {
+      if (!f.key) continue;
+      const perSite = [...new Set(f.sites.map(hostOf))].map((host) => {
+        const n = seen.get(`${f.key}@${host}`) ?? 0;
+        // non visto nelle sessioni automatiche: viene da una sessione manuale, fatta una volta sola
+        return n === 0 && manualKeys.has(`${f.key}@${host}`) ? { host, seen: 1, of: 1, manual: true } : { host, seen: Math.max(1, n), of: reps };
+      });
+      const best = perSite.filter((p) => !p.manual).sort((a, b) => b.seen - a.seen)[0];
+      if (!best && perSite.length) f.repeats = { seen: 1, of: 1, manual: true, perSite };
+      else if (best && reps > 1) f.repeats = { seen: best.seen, of: reps, perSite };
+      else if (best && perSite.some((p) => p.manual)) f.repeats = { seen: 1, of: 1, perSite };
+    }
   }
+  if (config.report.harCompressi) compressHars(runDir, [...sessions, ...discarded], findings, config.report.harContenuti);
+
+  // Ordine delle schede: gravità, poi forza della prova e ripetibilità
+  findings.sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || findingScore(b) - findingScore(a));
+  findings.forEach((f, i) => (f.id = `C-${String(i + 1).padStart(3, '0')}`));
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
@@ -459,8 +591,8 @@ export async function runAudit(loaded: LoadedConfig, opts: RunOptions = {}): Pro
   const rev = writeReviewTemplate(runDir, findings, config.cliente);
   if (rev.prefilled) log(`Revisione: ${rev.prefilled} schede precompilate dalla revisione di ${rev.from}`);
   const html = renderHtml({
-    // il report descrive il browser come è stato davvero usato (con la navigazione manuale ha una finestra)
-    config: { ...config, browser: { ...config.browser, headless } },
+    configFile: basename(loaded.path),
+    config,
     toolVersion: TOOL_VERSION,
     browserVersion,
     userAgent,
