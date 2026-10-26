@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { Command } from 'commander';
 import { chromium } from 'playwright';
 import { loadConfig } from './config/load.js';
@@ -84,19 +87,49 @@ program
   .description('Apre l\'interfaccia visuale nel browser (resta attiva finché non si chiude il terminale)')
   .option('--clienti <cartella>', 'cartella delle configurazioni dei clienti', 'clienti')
   .option('--esecuzioni <cartella>', 'cartella dei risultati', 'runs')
-  .option('-p, --porta <numero>', 'porta locale', '4777')
+  .option('-p, --porta <numero>', 'porta locale (se occupata, ad esempio da un altro utente del computer, si prova la successiva)', '4777')
   .option('--no-apri', 'non aprire il browser automaticamente')
   .action(async (opts: { clienti: string; esecuzioni: string; porta: string; apri: boolean }) => {
-    const ui = await startUi({ clientsDir: opts.clienti, runsDir: opts.esecuzioni, port: Number(opts.porta), onQuit: () => process.exit(0) }).catch((e: NodeJS.ErrnoException) => {
-      if (e.code === 'EADDRINUSE') {
-        throw new Error(`La porta ${opts.porta} è già in uso: forse l'interfaccia è già aperta in un'altra finestra del terminale. In alternativa: npm run interfaccia -- --porta 4778`);
-      }
-      throw e;
-    });
+    let ui: Awaited<ReturnType<typeof startUi>> | null = null;
+    const first = Number(opts.porta);
+    for (let port = first; port < first + 20 && !ui; port++) {
+      ui = await startUi({ clientsDir: opts.clienti, runsDir: opts.esecuzioni, port, onQuit: () => process.exit(0) }).catch((e: NodeJS.ErrnoException) => {
+        if (e.code === 'EADDRINUSE') {
+          console.log(`La porta ${port} è già in uso (forse da un'altra finestra o da un altro utente del computer): si prova la ${port + 1}.`);
+          return null;
+        }
+        throw e;
+      });
+    }
+    if (!ui) throw new Error(`Nessuna porta libera tra ${first} e ${first + 19}: chiudere le altre interfacce aperte`);
+    writeSessionFile(ui.url);
     console.log(`Interfaccia Scookie attiva su ${ui.url}`);
-    console.log('È raggiungibile solo da questo computer. Per chiuderla: Ctrl+C in questa finestra.');
+    console.log('È raggiungibile solo da questo computer e solo con questo indirizzo. Per chiuderla: Ctrl+C in questa finestra.');
     if (opts.apri) openInBrowser(ui.url);
   });
+
+/**
+ * Indirizzo dell'interfaccia aperta (con la chiave), in un file leggibile solo da questo utente: l'icona lo usa
+ * per riaprire la propria interfaccia invece di avviarne un'altra, senza mai finire su quella di un altro utente.
+ */
+function writeSessionFile(url: string) {
+  try {
+    const dir = join(homedir(), '.scookie');
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = join(dir, 'interfaccia.json');
+    writeFileSync(file, JSON.stringify({ url, pid: process.pid, cartella: process.cwd() }), { mode: 0o600 });
+    process.on('exit', () => {
+      try {
+        rmSync(file, { force: true });
+      } catch {
+        // file già rimosso
+      }
+    });
+    for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => process.exit(0));
+  } catch {
+    // senza il file l'icona avvierà semplicemente una nuova interfaccia
+  }
+}
 
 program.parseAsync().catch((e: Error) => {
   console.error(e.message);
