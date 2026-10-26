@@ -19,7 +19,7 @@ import { REVIEW_FILE, writeReviewTemplate } from './report/review.js';
 import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms } from './rules/engine.js';
 import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult } from './types.js';
 import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
-import { TOOL_VERSION } from './version.js';
+import { TOOL_COMMIT, TOOL_VERSION } from './version.js';
 import { ProgressTracker, type Progress } from './progress.js';
 import { setTestData } from './util/pii.js';
 import { keepAwake } from './util/awake.js';
@@ -211,14 +211,14 @@ async function hashFiles(runDir: string, paths: string[]) {
   return out;
 }
 
-/** Copia le evidenze di ogni criticità con il numero della criticità nel nome. */
+/** Copia le evidenze di ogni rilievo con il numero del rilievo nel nome. */
 function linkEvidenceToFindings(runDir: string, findings: Finding[]) {
-  const dir = join(runDir, 'evidenze', 'criticita');
+  const dir = join(runDir, 'evidenze', 'rilievi');
   mkdirSync(dir, { recursive: true });
   for (const f of findings) {
     f.evidence = f.evidence.map((e) => {
       if (!e.file.endsWith('.png')) return e;
-      const rel = `evidenze/criticita/${f.id}_${basename(e.file)}`;
+      const rel = `evidenze/rilievi/${f.id}_${basename(e.file)}`;
       try {
         copyFileSync(join(runDir, e.file), join(runDir, rel));
         return { ...e, file: rel };
@@ -227,7 +227,7 @@ function linkEvidenceToFindings(runDir: string, findings: Finding[]) {
       }
     });
     if (f.requestExcerpt) {
-      const rel = `evidenze/criticita/${f.id}_estratto-richiesta.json`;
+      const rel = `evidenze/rilievi/${f.id}_estratto-richiesta.json`;
       writeFileSync(join(runDir, rel), JSON.stringify(f.requestExcerpt, null, 2));
       f.evidence.push({ label: 'estratto richiesta', file: rel });
     }
@@ -558,7 +558,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
 
   // Ordine delle schede: gravità, poi forza della prova e ripetibilità
   findings.sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || findingScore(b) - findingScore(a));
-  findings.forEach((f, i) => (f.id = `C-${String(i + 1).padStart(3, '0')}`));
+  findings.forEach((f, i) => (f.id = `R-${String(i + 1).padStart(3, '0')}`));
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
@@ -592,6 +592,8 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   if (rev.prefilled) log(`Revisione: ${rev.prefilled} schede precompilate dalla revisione di ${rev.from}`);
   const html = renderHtml({
     configFile: basename(loaded.path),
+    configSha256: sha256(loaded.raw),
+    toolCommit: TOOL_COMMIT,
     config,
     toolVersion: TOOL_VERSION,
     browserVersion,
@@ -627,7 +629,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   // revisione.csv è un modulo da compilare dopo l'esecuzione: non entra nelle impronte (lo traccia revisione-applicata.json)
   const allFiles = await hashFiles(runDir, listFiles(runDir).filter((p) => p !== 'manifest.json' && p !== REVIEW_FILE));
   const manifest = {
-    strumento: { nome: 'scookie', versione: TOOL_VERSION },
+    strumento: { nome: 'scookie', versione: TOOL_VERSION, commit: TOOL_COMMIT },
     cliente: config.cliente,
     inizio: startedAt,
     fine: endedAt,
@@ -647,6 +649,6 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   writeFileSync(join(runDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   writeFileSync(join(runDir, 'manifest.json.sha256'), `${await sha256File(join(runDir, 'manifest.json'))}  manifest.json\n`);
   progress.phase('fine');
-  log(`\nCompletato: ${sessions.length} sessioni, ${findings.length} criticità. Report: ${join(runDir, 'report.html')}`);
+  log(`\nCompletato: ${sessions.length} sessioni, ${findings.length} rilievi. Rapporto: ${join(runDir, 'report.html')}`);
   return { runDir, findings, sessions };
 }

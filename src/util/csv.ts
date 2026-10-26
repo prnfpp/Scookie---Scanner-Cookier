@@ -43,7 +43,9 @@ export function detectSeparator(text: string): string {
 /** CSV con separatore ";" e BOM, così si apre correttamente in Excel con impostazioni italiane. */
 export function toCsv(headers: string[], rows: unknown[][]): string {
   const esc = (v: unknown) => {
-    const str = v === null || v === undefined ? '' : Array.isArray(v) ? v.join(', ') : String(v);
+    let str = v === null || v === undefined ? '' : Array.isArray(v) ? v.join(', ') : String(v);
+    // Testi presi dai siti (nomi di cookie, indirizzi): una cella che inizia con = + - @ sarebbe una formula in Excel
+    if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`;
     return /[";\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
   };
   return '﻿' + [headers, ...rows].map((r) => r.map(esc).join(';')).join('\r\n') + '\r\n';

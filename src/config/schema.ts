@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TEST_TYPES } from '../util/pii.js';
 
 const bannerSchema = z
   .object({
@@ -207,19 +208,40 @@ export const configSchema = z
     /** File YAML aggiuntivo di domini tracker (si somma all'elenco incluso). */
     trackerExtra: z.string().optional(),
     /**
-     * Dati di prova inseriti dall'operatore nelle navigazioni manuali (targa, data di nascita…). Il tool li riconosce
+     * Dati di prova inseriti dall'operatore nei moduli durante le navigazioni manuali: elenco di tipo e valore
+     * (es. { tipo: email, valore: test@esempio.it }, { tipo: data, valore: 01/01/1990, etichetta: data di nascita }). Il tool li riconosce
      * nelle richieste come prova certa, li riporta in chiaro (sono fittizi o concordati) e distingue i valori che
      * soltanto somigliano a dati personali.
      */
     datiDiProva: z
-      .object({
-        targa: z.string().optional(),
-        dataNascita: z.string().optional(),
-        email: z.string().optional(),
-        codiceFiscale: z.string().optional(),
-        telefono: z.string().optional(),
-      })
-      .strict()
+      .union([
+        z.array(
+          z
+            .object({
+              tipo: z.enum(TEST_TYPES),
+              valore: z.string().min(1),
+              etichetta: z.string().optional(),
+            })
+            .strict(),
+        ),
+        // formato precedente, con un campo per tipo: convertito nell'elenco
+        z
+          .object({ targa: z.string().optional(), dataNascita: z.string().optional(), email: z.string().optional(), codiceFiscale: z.string().optional(), telefono: z.string().optional() })
+          .strict()
+          .transform((o) =>
+            (
+              [
+                ['targa', o.targa, undefined],
+                ['data', o.dataNascita, 'data di nascita'],
+                ['email', o.email, undefined],
+                ['codice fiscale', o.codiceFiscale, undefined],
+                ['telefono', o.telefono, undefined],
+              ] as const
+            )
+              .filter(([, v]) => v)
+              .map(([tipo, valore, etichetta]) => ({ tipo, valore: valore!, ...(etichetta ? { etichetta } : {}) })),
+          ),
+      ])
       .optional(),
     report: z
       .object({
@@ -234,6 +256,8 @@ export const configSchema = z
          * la cartella si consegna più facilmente. Su Mac un doppio clic sul .gz restituisce il .har.
          */
         harCompressi: z.boolean().default(true),
+        /** Sottotitolo del rapporto (es. "Verifica post-intervento su esempio.it e sottodomini"). */
+        sottotitolo: z.string().optional(),
         /** Testo libero da includere nella sezione "Limiti". */
         noteLimiti: z.array(z.string()).default([]),
       })

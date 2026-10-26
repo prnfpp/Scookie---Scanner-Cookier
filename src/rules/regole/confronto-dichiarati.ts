@@ -80,7 +80,7 @@ export const dichiaratiNonOsservati: Rule = {
  */
 export const categoriaIncoerente: Rule = {
   id: 'categoria-incoerente',
-  title: 'Categoria dichiarata non coerente',
+  title: 'Categoria dichiarata diversa da quella osservata',
   defaultSeverity: 'media',
   defaultNorms: ['gdpr13', 'garante2021', 'art122'],
   evaluate({ comparison, sessions }) {

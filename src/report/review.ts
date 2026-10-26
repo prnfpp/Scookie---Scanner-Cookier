@@ -147,11 +147,11 @@ export function writeReviewRows(runDir: string, updates: { chiave: string; esito
 }
 
 interface Manifest {
-  strumento: { versione: string };
+  strumento: { versione: string; commit?: string | null };
   inizio: string;
   fine: string;
   ambiente: { browser: string; userAgent: string; uscita: ExitInfo };
-  configurazione: { contenuto: string; file?: string };
+  configurazione: { contenuto: string; file?: string; sha256?: string };
   norme: { file: string };
   file: { path: string; sha256: string; bytes: number }[];
 }
@@ -175,6 +175,8 @@ export async function applyReview(runDir: string, opts: { pdf?: boolean } = {}):
   const html = renderHtml({
     config,
     configFile: m.configurazione.file,
+    configSha256: m.configurazione.sha256,
+    toolCommit: m.strumento.commit ?? null,
     toolVersion: m.strumento.versione,
     browserVersion: m.ambiente.browser,
     userAgent: m.ambiente.userAgent,

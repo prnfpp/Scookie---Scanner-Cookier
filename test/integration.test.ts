@@ -202,7 +202,7 @@ test('analisi del banner: comandi, categorie pre-attivate, informativa, revoca',
   // OneTrust: categoria configurata ma senza interruttore nel centro preferenze
   const np = result.findings.find((f) => f.ruleId === 'categorie-non-presentate' && f.site.includes('www.sito-b.test'))!;
   assert.match(np.description, /"Cookie funzionali" \(1 elemento\)/);
-  assert.equal(session('www.sito-b.test', 'accetta').interaction.verification === 'incoerente', false, 'categoria non presentata: non è un consenso incoerente');
+  assert.equal(session('www.sito-b.test', 'accetta').interaction.verification === 'diverso', false, 'categoria non presentata: lo stato non risulta diverso dalla scelta');
   // Dynatrace dichiarato tecnico ma attivo solo dopo l'accettazione
   const dt = result.findings.find((f) => f.ruleId === 'tecnico-solo-dopo-consenso' && f.site.includes('www.sito-b.test'))!;
   assert.match(dt.headline ?? '', /^Dynatrace: elementi dichiarati tecnici/);
@@ -283,7 +283,7 @@ test('paese di uscita verificato e registrato nel manifest', () => {
 });
 
 test('output: report, dati, evidenze con hash verificabili', () => {
-  for (const f of ['report.html', 'report.pdf', 'manifest.json', 'manifest.json.sha256', 'dati.json', 'cookie.csv', 'richieste.csv', 'criticita.csv', 'confronto-dichiarati.csv']) {
+  for (const f of ['report.html', 'report.pdf', 'manifest.json', 'manifest.json.sha256', 'dati.json', 'cookie.csv', 'richieste.csv', 'rilievi.csv', 'confronto-dichiarati.csv']) {
     assert.ok(existsSync(join(result.runDir, f)), f);
   }
   const manifest = JSON.parse(readFileSync(join(result.runDir, 'manifest.json'), 'utf8')) as { file: { path: string; sha256: string }[] };
@@ -302,6 +302,7 @@ test('output: report, dati, evidenze con hash verificabili', () => {
   const withShot = result.findings.find((f) => f.evidence.some((e) => e.file.endsWith('.png')))!;
   assert.ok(withShot.evidence.some((e) => e.file.includes(`${withShot.id}_`)));
   const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
-  assert.match(html, /Perimetro e metodo/);
+  assert.match(html, /2\. Perimetro e metodo/);
+  for (const h of ['1. Sintesi', '3. Rilievi', '4. Inventario', '5. Limiti', '6. Allegati']) assert.ok(html.includes(`<h2>${h}`), h);
   assert.match(html, new RegExp(withShot.id));
 });

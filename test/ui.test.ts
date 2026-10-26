@@ -126,9 +126,9 @@ test('audit dall\'interfaccia e apertura del report', async () => {
   await page.click('.step[data-step="4"]');
   await page.click('#run');
   await page.waitForSelector('text=Audit completato', { timeout: 240000 });
-  const [report] = await Promise.all([page.waitForEvent('popup'), page.click('text=Apri il report')]);
+  const [report] = await Promise.all([page.waitForEvent('popup'), page.click('text=Apri il rapporto')]);
   await report.waitForLoadState();
-  assert.match(await report.textContent('h1') ?? '', /Audit tecnico/);
+  assert.match(await report.textContent('h1') ?? '', /Rapporto tecnico di verifica/);
   // le immagini delle evidenze si caricano dalla cartella esecuzioni
   const imgOk = await report.evaluate(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0));
   assert.ok(imgOk);
@@ -153,6 +153,6 @@ test('confronto con l\'esecuzione precedente', async () => {
   assert.match(await link.textContent() ?? '', /−0 \/ =\d+ \/ \+0/);
   const [cmp] = await Promise.all([page.waitForEvent('popup'), link.click()]);
   await cmp.waitForLoadState();
-  assert.match(await cmp.textContent('h1') ?? '', /Confronto tra due esecuzioni/);
+  assert.match(await cmp.textContent('h1') ?? '', /Confronto tra due rilevazioni/);
   await cmp.close();
 });

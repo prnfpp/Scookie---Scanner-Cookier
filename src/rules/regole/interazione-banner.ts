@@ -53,7 +53,7 @@ export const rifiutoNonAlPrimoLivello: Rule = {
  */
 export const sceltaNonVerificata: Rule = {
   id: 'scelta-non-verificata',
-  title: 'Stato del consenso non coerente con la scelta',
+  title: 'Stato del consenso registrato diverso dalla scelta',
   defaultSeverity: 'media',
   defaultNorms: ['gdpr4_11', 'gdpr7'],
   evaluate({ sessions }) {
@@ -61,7 +61,7 @@ export const sceltaNonVerificata: Rule = {
     for (const s of sessions.filter((x) => x.scenario === 'rifiuta' || x.scenario === 'accetta' || x.scenario === 'personalizza')) {
       const i = s.interaction;
       const label = s.scenario === 'rifiuta' ? 'il rifiuto' : s.scenario === 'personalizza' ? "l'accettazione della sola categoria statistica" : "l'accettazione";
-      if (i.outcome === 'eseguito' && i.verification === 'incoerente') {
+      if (i.outcome === 'eseguito' && i.verification === 'diverso') {
         out.push({
           site: s.site,
           scenario: s.scenario,
