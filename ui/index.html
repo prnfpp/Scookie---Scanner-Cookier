@@ -62,6 +62,8 @@ section { display: grid; gap: 18px; }
 .spread { justify-content: space-between; }
 .stack { display: grid; gap: 14px; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.grid3 { display: grid; grid-template-columns: minmax(140px, 0.8fr) minmax(200px, 1.4fr) minmax(200px, 1.2fr); gap: 10px; align-items: end; }
+@media (max-width: 720px) { .grid3 { grid-template-columns: 1fr; } }
 .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 9px; padding: 9px 16px; font-weight: 600; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-decoration: none; }
 .btn:hover { border-color: var(--ink-2); }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
@@ -218,7 +220,8 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
 
       <div class="card stack" data-s="1">
         <div class="grid2">
-          <label class="f">Nome del cliente <input type="text" id="f-cliente" placeholder="Es. Rossi Srl"></label>
+          <label class="f">Committente <span class="hint">nome del cliente, senza versioni</span><input type="text" id="f-cliente" placeholder="Es. Rossi Srl"></label>
+          <label class="f">Sottotitolo del rapporto <span class="hint">facoltativo</span><input type="text" id="f-sottotitolo" placeholder="Es. Verifica post-intervento su esempio.it e sottodomini"></label>
           <label class="f" id="file-box">Nome del file <span class="hint">solo lettere, numeri, - e _</span><input type="text" id="f-file" placeholder="rossi"></label>
         </div>
         <div class="row spread"><div><h2>Siti da controllare</h2><p class="muted small">Ogni sito o sottodominio (www, app, shop…) è una voce a sé.</p></div><button class="btn sm" id="add-site">+ Aggiungi sito</button></div>
@@ -248,14 +251,9 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
         </div>
         <div class="stack" style="gap:8px">
           <h3>Dati di prova delle navigazioni manuali</h3>
-          <p class="small muted">I dati che inserirai nei moduli (es. il preventivo). Usa dati palesemente fittizi o concordati col cliente. Il report li riconosce come prova certa e li mostra in chiaro.</p>
-          <div class="grid2">
-            <label class="f">Targa<input type="text" id="f-dp-targa" placeholder="AA123BB"></label>
-            <label class="f">Data di nascita<input type="text" id="f-dp-dataNascita" placeholder="01/01/1990"></label>
-            <label class="f">Email<input type="text" id="f-dp-email" placeholder="test.audit@esempio.it"></label>
-            <label class="f">Codice fiscale<input type="text" id="f-dp-codiceFiscale"></label>
-            <label class="f">Telefono<input type="text" id="f-dp-telefono"></label>
-          </div>
+          <p class="small muted">I dati che inserirai nei moduli del sito (contatti, registrazione, preventivo…). Usa dati palesemente fittizi o concordati con il committente. Il rapporto li riconosce come prova certa, in ogni formato (es. una data come 01/01/1990 o 1990-01-01), e li mostra in chiaro.</p>
+          <div class="stack" id="dp-list" style="gap:8px"></div>
+          <div><button class="btn sm" type="button" id="dp-add">+ Aggiungi un dato di prova</button></div>
         </div>
         <details class="adv" id="adv-general"><summary>Opzioni avanzate</summary>
           <div class="stack">
@@ -314,7 +312,7 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
         <div class="ph" data-p="scoperta"><i></i><b>Scoperta pagine</b><span id="ph-scoperta">siti</span></div>
         <div class="ph" data-p="manuale"><i></i><b>Navigazione manuale</b><span id="ph-manuale">se prevista</span></div>
         <div class="ph" data-p="automatiche"><i></i><b>Sessioni automatiche</b><span id="ph-auto">—</span></div>
-        <div class="ph" data-p="report"><i></i><b>Report</b><span>HTML, PDF, CSV</span></div>
+        <div class="ph" data-p="report"><i></i><b>Rapporto</b><span>HTML, PDF, CSV</span></div>
       </div>
       <div class="row spread" style="align-items:flex-end"><div class="pct" id="pct">—</div><div class="eta"><span class="muted small" id="eta-l">Tempo rimanente</span><b id="eta">—</b></div></div>
       <div class="bar" id="bar"><i style="width:0"></i></div>
@@ -336,7 +334,7 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
   <!-- ESECUZIONI -->
   <section id="view-esecuzioni" class="hidden">
     <div class="row spread">
-      <div class="stack" style="gap:4px"><h1>Esecuzioni</h1><p class="muted">Per ogni audit: leggi il report, revisiona le schede, genera il report rivisto, confronta con il precedente.</p></div>
+      <div class="stack" style="gap:4px"><h1>Esecuzioni</h1><p class="muted">Per ogni audit: leggi il rapporto, revisiona i rilievi, genera il rapporto rivisto, confronta con il precedente.</p></div>
       <button class="btn sm" id="refresh-runs">Aggiorna</button>
     </div>
     <div id="runs" class="stack"></div>
@@ -350,8 +348,8 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
       <button class="btn ghost" id="rev-back">← Esecuzioni</button>
     </div>
     <div class="card stack">
-      <p class="muted small">Per ogni scheda indica se l'hai verificata (<b>confermato</b>), se è un <b>falso positivo</b> o se resta <b>da verificare</b>, con una nota. Il report originale e le prove non cambiano: il report rivisto riporta l'esito accanto a ogni scheda e sposta i falsi positivi in coda.</p>
-      <div class="tbl"><table class="rev"><thead><tr><th>Scheda</th><th>Gravità</th><th>Criticità</th><th>Esito</th><th>Nota</th></tr></thead><tbody id="rev-rows"></tbody></table></div>
+      <p class="muted small">Per ogni rilievo indica se l'hai verificato (<b>confermato</b>), se è un <b>falso positivo</b> o se resta <b>da verificare</b>, con una nota. Il report originale e le prove non cambiano: il report rivisto riporta l'esito accanto a ogni scheda e sposta i falsi positivi in coda.</p>
+      <div class="tbl"><table class="rev"><thead><tr><th>Rilievo</th><th>Priorità</th><th>Fatto osservato</th><th>Esito</th><th>Nota</th></tr></thead><tbody id="rev-rows"></tbody></table></div>
       <div class="foot"><span class="muted small" id="rev-count"></span><div class="row"><button class="btn" id="rev-save">Salva</button><button class="btn primary" id="rev-apply">Salva e genera il report rivisto</button></div></div>
     </div>
   </section>
@@ -375,10 +373,10 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
     <label class="f s-extra-box">Pagine da includere sempre <span class="hint">una per riga, percorso o indirizzo completo</span><textarea class="s-extra" placeholder="/contatti&#10;/preventivo/step-1"></textarea></label>
     <div class="manual">
       <div class="row spread"><h3>Navigazione manuale</h3><span class="chip s-manual-chip">Non attiva</span></div>
-      <p class="small muted">Per percorsi che il tool non sa fare da solo, come un preventivo. Se scrivi le istruzioni, all'inizio dell'audit si apre una finestra del browser: il tool fa la scelta sul banner, poi navighi tu e premi "Ho finito". Usa dati palesemente fittizi o concordati con il cliente.</p>
+      <p class="small muted">Per percorsi che il tool non sa fare da solo, come moduli in più passi (contatti, registrazione, preventivo). Se scrivi le istruzioni, all'inizio dell'audit si apre una finestra del browser: il tool fa la scelta sul banner, poi navighi tu e premi "Ho finito". Usa dati palesemente fittizi o concordati con il cliente.</p>
       <div class="grid2">
-        <label class="f">Istruzioni per chi naviga <textarea class="s-manuale" rows="2" placeholder="Es. compila il preventivo auto con dati di prova concordati fino alla pagina del prezzo"></textarea></label>
-        <label class="f">Pagina di partenza <span class="hint">facoltativa: un percorso (/preventivo) o un indirizzo completo (https://www.esempio.it/)</span><input type="text" class="s-manuale-partenza" placeholder="/preventivo"></label>
+        <label class="f">Istruzioni per chi naviga <textarea class="s-manuale" rows="2" placeholder="Es. compila il modulo (contatti, registrazione, preventivo…) con i dati di prova, fino alla pagina di conferma"></textarea></label>
+        <label class="f">Pagina di partenza <span class="hint">facoltativa: un percorso (/contatti) o un indirizzo completo (https://www.esempio.it/)</span><input type="text" class="s-manuale-partenza" placeholder="/contatti"></label>
       </div>
       <p class="small muted">La prima volta i tuoi clic e i campi compilati vengono registrati: dalle esecuzioni successive il percorso si rigioca da solo, in ogni ripetizione, senza bisogno di te.</p>
       <div class="hint-box hidden s-rec"></div>
@@ -476,7 +474,7 @@ async function loadClients() {
     const alta = last?.gravita?.alta;
     b.innerHTML = `<div class="row spread"><h2>${esc(c.cliente)}</h2>${c.valido ? '<span class="chip ok">Pronto</span>' : '<span class="chip bad">Da correggere</span>'}</div>
       <div class="sites">${c.siti.map((s) => `<span class="chip">${esc(host(s))}</span>`).join('') || `<span class="muted small">${esc(c.file)}</span>`}</div>
-      <div class="last">${last ? `Ultimo audit ${esc(fmt(last.inizio))} · ${esc(last.criticita ?? '—')} schede${alta ? ` <span class="chip bad">${alta} alta</span>` : ''}` : 'Nessun audit ancora'}</div>`;
+      <div class="last">${last ? `Ultimo audit ${esc(fmt(last.inizio))} · ${esc(last.criticita ?? '—')} rilievi${alta ? ` <span class="chip bad">${alta} alta</span>` : ''}` : 'Nessun audit ancora'}</div>`;
     b.onclick = () => openClient(c.file);
     box.appendChild(b);
   }
@@ -538,7 +536,29 @@ $$('[data-go-step]').forEach((b) => (b.onclick = () => step(Number(b.dataset.goS
 const SCENARI = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta'], ['personalizza', '#f-sc-personalizza'], ['revoca', '#f-sc-revoca']];
 const lines = (t) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
-const DATI_PROVA = ['targa', 'dataNascita', 'email', 'codiceFiscale', 'telefono'];
+const DP_TYPES = [['email', 'Email'], ['telefono', 'Telefono'], ['data', 'Data'], ['nome', 'Nome e cognome'], ['indirizzo', 'Indirizzo'], ['codice fiscale', 'Codice fiscale'], ['targa', 'Targa'], ['altro', 'Altro testo']];
+/** Una riga dei dati di prova: tipo, valore e (facoltativa) etichetta per il rapporto. */
+function addTestRow(e = { tipo: 'email', valore: '' }) {
+  const row = document.createElement('div');
+  row.className = 'grid3 dp-row';
+  row.innerHTML = `<label class="f">Tipo<select class="dp-tipo">${DP_TYPES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+    <label class="f">Valore<input type="text" class="dp-valore" placeholder="es. test.verifica@esempio.it"></label>
+    <label class="f">Nome nel rapporto <span class="hint">facoltativo</span><span class="row" style="gap:6px;flex-wrap:nowrap"><input type="text" class="dp-etichetta" placeholder="es. data di nascita"><button class="btn sm" type="button" title="Rimuovi">×</button></span></label>`;
+  row.querySelector('.dp-tipo').value = e.tipo;
+  row.querySelector('.dp-valore').value = e.valore || '';
+  row.querySelector('.dp-etichetta').value = e.etichetta || '';
+  row.querySelector('button').onclick = () => row.remove();
+  $('#dp-list').appendChild(row);
+}
+/** Dati di prova dal file: elenco, oppure il formato precedente con un campo per tipo. */
+function testEntries(d) {
+  const v = d.datiDiProva;
+  if (Array.isArray(v)) return v;
+  if (!v || typeof v !== 'object') return [];
+  return [['targa', v.targa], ['data', v.dataNascita, 'data di nascita'], ['email', v.email], ['codice fiscale', v.codiceFiscale], ['telefono', v.telefono]]
+    .filter(([, x]) => x)
+    .map(([tipo, valore, etichetta]) => ({ tipo, valore, ...(etichetta ? { etichetta } : {}) }));
+}
 function setOrDelete(obj, key, value) {
   if (value === undefined || value === '' || (Array.isArray(value) && !value.length)) delete obj[key];
   else obj[key] = value;
@@ -618,7 +638,9 @@ function fillForm(d) {
   $('#f-visibile').checked = br.headless === false;
   $('#f-controllo').checked = br.uaNormale === true;
   $('#f-paese').value = br.paeseUscita || '';
-  for (const k of DATI_PROVA) $('#f-dp-' + k).value = d.datiDiProva?.[k] || '';
+  $('#f-sottotitolo').value = rp.sottotitolo || '';
+  $('#dp-list').innerHTML = '';
+  for (const e of testEntries(d)) addTestRow(e);
   $('#f-verifica').value = br.verificaUscita || 'avvisa';
   $('#f-har').value = rp.harContenuti || 'testo';
   $('#f-pdf').checked = rp.pdf !== false;
@@ -672,8 +694,13 @@ function readForm() {
   setOrDelete(group('browser'), 'verificaUscita', $('#f-verifica').value);
   setOrDelete(group('report'), 'harContenuti', $('#f-har').value === 'testo' ? undefined : $('#f-har').value);
   setOrDelete(group('report'), 'pdf', $('#f-pdf').checked ? undefined : false);
-  for (const k of DATI_PROVA) setOrDelete(group('datiDiProva'), k, $('#f-dp-' + k).value.trim());
-  for (const k of ['campionamento', 'scenari', 'browser', 'report', 'datiDiProva']) if (d[k] && !Object.keys(d[k]).length) delete d[k];
+  setOrDelete(group('report'), 'sottotitolo', $('#f-sottotitolo').value.trim());
+  const dp = $$('#dp-list .dp-row')
+    .map((r) => ({ tipo: r.querySelector('.dp-tipo').value, valore: r.querySelector('.dp-valore').value.trim(), etichetta: r.querySelector('.dp-etichetta').value.trim() }))
+    .filter((e) => e.valore)
+    .map((e) => (e.etichetta ? e : { tipo: e.tipo, valore: e.valore }));
+  setOrDelete(d, 'datiDiProva', dp);
+  for (const k of ['campionamento', 'scenari', 'browser', 'report']) if (d[k] && !Object.keys(d[k]).length) delete d[k];
   return d;
 }
 
@@ -714,7 +741,7 @@ function refreshSummary() {
     p.attivi.length ? ['ok', 'Scenari', `${p.attivi.join(', ')}${p.reps > 1 ? ` · ripetuti ${p.reps} volte` : ''}`] : ['bad', 'Nessuno scenario', 'Scegli almeno uno scenario al passo 2.'],
     [($('#f-verifica').value === 'no') ? 'warn' : 'ok', `Paese di uscita: ${$('#f-paese').value || 'IT'}`, $('#f-verifica').value === 'blocca' ? "Verificato all'avvio: se non corrisponde l'audit si ferma." : $('#f-verifica').value === 'avvisa' ? 'Verificato all\'avvio: se non corrisponde lo segnala il report.' : 'Non verificato.'],
     state.discovery ? (few.length ? ['warn', 'Poche pagine su ' + few.map((r) => host(r.site)).join(', '), 'Per percorsi con moduli usa la navigazione manuale (passo 1).'] : ['ok', 'Pagine trovate su tutti i siti', `Campione di ${p.rows.reduce((a, r) => a + r.pages, 0)} pagine in tutto.`]) : ['warn', 'Anteprima non ancora fatta', 'Premi "Anteprima pagine" per vedere quali pagine verranno visitate.'],
-    ...(p.manual && !DATI_PROVA.some((k) => $('#f-dp-' + k).value.trim()) ? [['warn', 'Dati di prova non indicati', 'Indica al passo 2 i dati che inserirai nei moduli: il report li riconoscerà come prova certa.']] : []),
+    ...(p.manual && !$$('#dp-list .dp-valore').some((i) => i.value.trim()) ? [['warn', 'Dati di prova non indicati', 'Indica al passo 2 i dati che inserirai nei moduli: il report li riconoscerà come prova certa.']] : []),
     ...(p.manual ? [['warn', 'Serve la tua presenza all\'inizio', `${p.manual} ${p.manual === 1 ? 'navigazione manuale' : 'navigazioni manuali'} nei primi minuti, poi puoi lasciare il computer.`]] : []),
     ['warn', 'Computer acceso e collegato alla corrente', 'Se va in stop l\'audit si interrompe. Su Mac avvia l\'interfaccia con: caffeinate -i npm run interfaccia'],
   ];
@@ -766,6 +793,7 @@ async function save() {
   }
 }
 $('#save').onclick = save;
+$('#dp-add').onclick = () => addTestRow();
 $('#save-copy').onclick = () => {
   // Stesso cliente, file diverso: la versione della configurazione sta nel nome del file, non nel nome del cliente
   const base = (state.file || $('#f-cliente').value || 'cliente').replace(/\.ya?ml$/i, '');
@@ -812,7 +840,7 @@ async function refreshJob() {
   if (!running && state.polling) {
     clearInterval(state.polling);
     state.polling = null;
-    if (j && j.kind === 'audit' && j.status === 'completato') toast('Audit completato: il report è pronto.');
+    if (j && j.kind === 'audit' && j.status === 'completato') toast('Audit completato: il rapporto è pronto.');
   }
 }
 
@@ -898,9 +926,9 @@ function renderAudit(j) {
   } else if (j.status === 'completato' && j.runName) {
     const base = '/esecuzioni/' + encodeURIComponent(j.runName) + '/';
     r.innerHTML = `<div class="card stack"><div class="row spread"><h2>Audit completato</h2><span class="chip ok">Report pronto</span></div>
-      <div class="row"><a class="btn primary" href="${base}report.html" target="_blank" rel="noopener">Apri il report</a>
+      <div class="row"><a class="btn primary" href="${base}report.html" target="_blank" rel="noopener">Apri il rapporto</a>
       <a class="btn" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>
-      <button class="btn" data-open-run="${esc(j.runName)}">Revisiona le schede</button>
+      <button class="btn" data-open-run="${esc(j.runName)}">Revisiona i rilievi</button>
       <button class="btn" id="all-runs">Tutte le esecuzioni</button></div>
       <p class="muted small">Cartella: ${esc(j.runName)}</p></div>`;
     $('#all-runs').onclick = () => show('esecuzioni');
@@ -933,9 +961,9 @@ async function loadRuns() {
       ${r.sitiSenzaDati && r.sitiSenzaDati.length ? `<div class="hint-box"><div><b>Nessun dato per ${esc(r.sitiSenzaDati.map(host).join(', '))}</b><span class="small">Le pagine non si sono caricate (connessione assente o computer in stop): per questi siti l'audit va ripetuto.</span>
         ${configOk ? `<div style="margin-top:8px"><button class="btn sm" data-rerun="${esc(r.configurazione)}" data-siti="${esc(JSON.stringify(r.sitiSenzaDati))}">Ripeti solo questi siti</button></div>` : ''}</div></div>` : ''}
       <div class="flow">
-        <div class="fs done"><span class="k">1 · Leggi</span><span class="small">Report e allegati</span><div class="row"><a class="btn sm primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>${r.pdf ? `<a class="btn sm" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}<a class="btn sm" href="${base}criticita.csv">CSV</a></div></div>
-        <div class="fs ${r.revisione ? (revDone ? 'done' : 'next') : ''}"><span class="k">2 · Revisiona</span><span class="small">${r.revisione ? `${reviewed} schede su ${total}` : 'Modulo non disponibile'}</span>${r.revisione ? `<div class="row"><button class="btn sm ${revDone ? '' : 'primary'}" data-open-run="${esc(r.name)}">${reviewed ? 'Continua' : 'Inizia'} la revisione</button></div>` : ''}</div>
-        <div class="fs ${r.rivisto ? 'done' : ''}"><span class="k">3 · Report rivisto</span><span class="small">${r.rivisto ? 'Generato' : 'Dopo la revisione'}</span><div class="row">${r.rivisto ? `<a class="btn sm" href="${base}report-rivisto.html" target="_blank" rel="noopener">Apri</a>` : ''}${r.revisione ? `<button class="btn sm" data-revisione="${esc(r.name)}" ${reviewed ? '' : 'disabled'}>${r.rivisto ? 'Rigenera' : 'Genera'}</button>` : ''}</div></div>
+        <div class="fs done"><span class="k">1 · Leggi</span><span class="small">Rapporto e allegati</span><div class="row"><a class="btn sm primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>${r.pdf ? `<a class="btn sm" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}<a class="btn sm" href="${base}criticita.csv">CSV</a></div></div>
+        <div class="fs ${r.revisione ? (revDone ? 'done' : 'next') : ''}"><span class="k">2 · Revisiona</span><span class="small">${r.revisione ? `${reviewed} rilievi su ${total}` : 'Modulo non disponibile'}</span>${r.revisione ? `<div class="row"><button class="btn sm ${revDone ? '' : 'primary'}" data-open-run="${esc(r.name)}">${reviewed ? 'Continua' : 'Inizia'} la revisione</button></div>` : ''}</div>
+        <div class="fs ${r.rivisto ? 'done' : ''}"><span class="k">3 · Rapporto rivisto</span><span class="small">${r.rivisto ? 'Generato' : 'Dopo la revisione'}</span><div class="row">${r.rivisto ? `<a class="btn sm" href="${base}report-rivisto.html" target="_blank" rel="noopener">Apri</a>` : ''}${r.revisione ? `<button class="btn sm" data-revisione="${esc(r.name)}" ${reviewed ? '' : 'disabled'}>${r.rivisto ? 'Rigenera' : 'Genera'}</button>` : ''}</div></div>
         <div class="fs"><span class="k">4 · Confronta</span><span class="small">${prev ? `Con il ${esc(fmt(prev.inizio))}` : 'Nessuna esecuzione precedente'}</span>${prev ? `<div class="row"><button class="btn sm" data-prima="${esc(prev.name)}" data-dopo="${esc(r.name)}">Confronta con precedente</button></div>` : ''}</div>
       </div>
       <div class="cmp hidden" data-cmp="${esc(r.name)}"></div>
@@ -1022,7 +1050,7 @@ function reviewRows() {
 }
 function reviewCount() {
   const rows = reviewRows();
-  $('#rev-count').textContent = `${rows.filter((r) => r.esito).length} schede revisionate su ${rows.length} · ${rows.filter((r) => r.esito === 'falso positivo').length} falsi positivi`;
+  $('#rev-count').textContent = `${rows.filter((r) => r.esito).length} rilievi revisionati su ${rows.length} · ${rows.filter((r) => r.esito === 'falso positivo').length} falsi positivi`;
 }
 $('#rev-rows').addEventListener('change', reviewCount);
 async function saveReview() {

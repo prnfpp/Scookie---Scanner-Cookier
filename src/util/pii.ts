@@ -1,10 +1,12 @@
 /**
- * Dati personali negli indirizzi e nei corpi delle richieste: targa, data di nascita, email, codice fiscale, telefono.
- * Si cercano sia per nome del parametro (targa=…, dataNascita=…) sia, per email e codice fiscale, per forma del valore.
- * I valori trovati si riportano solo mascherati: il report non deve diffondere a sua volta i dati.
+ * Dati personali negli indirizzi e nei corpi delle richieste.
+ * - Dati di prova dichiarati nella configurazione (qualsiasi tipo): riconosciuti in ogni forma, riportati in chiaro.
+ * - Altri valori: per nome del parametro (targa=…, dataNascita=…, email=…) o, per email e codice fiscale, per forma;
+ *   si riportano solo mascherati, perché il rapporto non diffonda a sua volta i dati.
  */
 
-export type PiiKind = 'targa' | 'data di nascita' | 'email' | 'codice fiscale' | 'telefono';
+/** Tipo di dato: per i valori trovati per nome o forma (targa, data di nascita…); per i dati di prova, il tipo dichiarato. */
+export type PiiKind = string;
 
 export interface PiiHit {
   kind: PiiKind;
@@ -16,50 +18,60 @@ export interface PiiHit {
   test?: boolean;
 }
 
-export type TestData = Partial<Record<'targa' | 'dataNascita' | 'email' | 'codiceFiscale' | 'telefono', string>>;
+/** Tipi di dato di prova: decidono come riconoscere il valore nelle sue varianti (es. le date in più formati). */
+export const TEST_TYPES = ['email', 'telefono', 'data', 'codice fiscale', 'targa', 'nome', 'indirizzo', 'altro'] as const;
+export type TestType = (typeof TEST_TYPES)[number];
+export interface TestEntry {
+  tipo: TestType;
+  valore: string;
+  /** Come chiamarlo nel rapporto (es. "data di nascita"); predefinito: il tipo. */
+  etichetta?: string;
+}
 
-const TEST_KIND: Record<keyof TestData, PiiKind> = { targa: 'targa', dataNascita: 'data di nascita', email: 'email', codiceFiscale: 'codice fiscale', telefono: 'telefono' };
+const isDate = (k: string) => k === 'data' || k === 'data di nascita';
+/** Testi liberi: si confrontano senza distinguere maiuscole e spazi multipli. */
+const isText = (k: string) => k === 'nome' || k === 'indirizzo' || k === 'altro';
 
-/** Forma canonica per il confronto: date come aaaammgg, il resto senza spazi e separatori. */
-function canon(kind: PiiKind, v: string): string {
+/** Forma canonica per il confronto: date come aaaammgg, testi in minuscolo, il resto senza spazi e separatori. */
+function canon(kind: string, v: string): string {
   const t = v.trim();
-  if (kind === 'data di nascita') {
+  if (isDate(kind)) {
     let m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
     if (m) return `${m[3]}${m[2].padStart(2, '0')}${m[1].padStart(2, '0')}`;
     m = /^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})$/.exec(t);
     if (m) return `${m[1]}${m[2].padStart(2, '0')}${m[3].padStart(2, '0')}`;
   }
   if (kind === 'email') return t.toLowerCase();
+  if (isText(kind)) return t.toLowerCase().replace(/\s+/g, ' ');
   return t.replace(/[\s.\-/]/g, '').toUpperCase();
 }
 
 /** Forme in cui un dato di prova può comparire in un testo (es. la data come 01/01/1990 o 1990-01-01). */
-function variants(kind: PiiKind, v: string): string[] {
+function variants(kind: string, v: string): string[] {
   const out = new Set([v.trim()]);
-  if (kind === 'data di nascita') {
+  if (isDate(kind)) {
     const c = canon(kind, v);
     if (/^\d{8}$/.test(c)) {
       const [y, m, d] = [c.slice(0, 4), c.slice(4, 6), c.slice(6)];
-      for (const x of [`${d}/${m}/${y}`, `${y}-${m}-${d}`, `${d}-${m}-${y}`, `${d}.${m}.${y}`]) out.add(x);
+      for (const x of [`${d}/${m}/${y}`, `${y}-${m}-${d}`, `${d}-${m}-${y}`, `${d}.${m}.${y}`, `${y}${m}${d}`]) out.add(x);
     }
   }
   if (kind === 'targa' || kind === 'codice fiscale') out.add(v.trim().toUpperCase());
+  if (kind === 'telefono') out.add(v.replace(/[\s.-]/g, ''));
   return [...out].filter((x) => x.length >= 4);
 }
 
-let testData: { kind: PiiKind; value: string; canon: string; forms: string[] }[] = [];
+let testData: { kind: string; tipo: TestType; value: string; canon: string; forms: string[] }[] = [];
 
 /** Dati di prova dell'esecuzione in corso (dalla configurazione). */
-export function setTestData(d: TestData | undefined) {
-  testData = Object.entries(d ?? {})
-    .filter(([, v]) => typeof v === 'string' && v.trim())
-    .map(([k, v]) => {
-      const kind = TEST_KIND[k as keyof TestData];
-      return { kind, value: v!.trim(), canon: canon(kind, v!), forms: variants(kind, v!) };
-    });
+export function setTestData(entries: TestEntry[] | undefined) {
+  testData = (entries ?? [])
+    .filter((e) => typeof e.valore === 'string' && e.valore.trim().length >= 4)
+    .map((e) => ({ kind: e.etichetta?.trim() || e.tipo, tipo: e.tipo, value: e.valore.trim(), canon: canon(e.tipo, e.valore), forms: variants(e.tipo, e.valore) }));
 }
 
-const testMatch = (kind: PiiKind, v: string) => testData.find((t) => t.kind === kind && t.canon === canon(kind, v));
+/** Il valore coincide con un dato di prova dichiarato (in una qualsiasi delle sue forme)? */
+const testMatch = (v: string) => testData.find((t) => t.canon === canon(t.tipo, v));
 
 const PARAMS: { kind: PiiKind; re: RegExp; value: RegExp }[] = [
   { kind: 'targa', re: /^(targa|plate|license_?plate|licence_?plate|numero_?targa)$/i, value: /^[A-Z]{2}\s?\d{3}\s?[A-Z]{2}$|^[A-Z0-9]{5,8}$/i },
@@ -107,7 +119,7 @@ function shapeHits(text: string): (PiiHit & { raw: string })[] {
 
 export function maskValue(v: string): string {
   // i dati di prova dichiarati sono fittizi o concordati: restano in chiaro
-  if (testData.some((t) => t.forms.includes(v) || t.canon === canon(t.kind, v))) return v;
+  if (testMatch(v)) return v;
   if (v.includes('@')) {
     const [user, dom] = v.split('@');
     return `${user.slice(0, 1)}•••@${dom}`;
@@ -142,11 +154,21 @@ export function detectPii(...texts: (string | null | undefined)[]): PiiHit[] {
       const [, name, value] = m;
       const p = PARAMS.find((x) => x.re.test(name));
       const v = value.trim();
-      if (p && p.value.test(v) && (p.kind !== 'email' || isEmail(v)) && (p.kind !== 'codice fiscale' || cfValid(v))) add({ kind: p.kind, param: name, masked: maskValue(v), ...(testMatch(p.kind, v) ? { test: true } : {}) });
+      const t = testMatch(v);
+      if (t) add({ kind: t.kind, param: name, masked: t.value, test: true });
+      else if (p && p.value.test(v) && (p.kind !== 'email' || isEmail(v)) && (p.kind !== 'codice fiscale' || cfValid(v))) add({ kind: p.kind, param: name, masked: maskValue(v) });
     }
-    for (const { raw, ...h } of shapeHits(text)) add({ ...h, ...(testMatch(h.kind, raw) ? { test: true } : {}) });
-    // i dati di prova si cercano anche come valori nudi (es. dentro un JSON o un percorso)
-    for (const t of testData) if (t.forms.some((f) => text.includes(f))) add({ kind: t.kind, param: null, masked: t.value, test: true });
+    for (const { raw, ...h } of shapeHits(text)) {
+      const t = testMatch(raw);
+      add(t ? { kind: t.kind, param: null, masked: t.value, test: true } : h);
+    }
+    // i dati di prova si cercano anche come valori nudi (es. dentro un JSON o un percorso); i testi liberi
+    // (nomi, indirizzi) senza distinguere le maiuscole
+    const lower = text.toLowerCase();
+    for (const t of testData) {
+      const hay = isText(t.tipo) ? lower : text;
+      if (t.forms.some((f) => hay.includes(isText(t.tipo) ? f.toLowerCase() : f))) add({ kind: t.kind, param: null, masked: t.value, test: true });
+    }
   }
   // la stessa email trovata per nome di parametro e per forma conta una volta
   const hits = [...out.values()];

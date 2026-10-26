@@ -231,22 +231,24 @@ test('confronto tra due esecuzioni', () => {
   const root = mkdtempSync(join(tmpdir(), 'scookie-cmp-'));
   const f = (id: string, key: string, severity: Finding['severity'], site = 'https://www.a.test'): Finding =>
     ({ id, key, ruleId: key.split('|')[0], ruleTitle: 'Regola', severity, site, sites: [site], scenario: null, pageUrl: null, description: 'd', details: [], evidence: [], norms: [], headline: `titolo ${key}` }) as Finding;
-  const run = (name: string, findings: Finding[]) => {
+  const run = (name: string, findings: Finding[], versione = '0.1.0') => {
     const d = join(root, name);
     mkdirSync(d);
     writeFileSync(join(d, 'dati.json'), JSON.stringify({ findings }));
-    writeFileSync(join(d, 'manifest.json'), JSON.stringify({ cliente: 'Cliente', inizio: '2026-10-01T10:00:00Z' }));
+    writeFileSync(join(d, 'manifest.json'), JSON.stringify({ cliente: 'Cliente', inizio: '2026-10-01T10:00:00Z', strumento: { versione } }));
     return d;
   };
   const a = run('prima', [f('C-001', 'r1|meta|a.test', 'alta'), f('C-002', 'r2|_ga|a.test', 'media'), f('C-003', 'r3|x|a.test', 'bassa')]);
-  const b = run('dopo', [f('C-001', 'r2|_ga|a.test', 'alta'), f('C-002', 'r4|tiktok|a.test', 'media'), f('C-003', 'r3|x|a.test', 'bassa')]);
+  const b = run('dopo', [f('C-001', 'r2|_ga|a.test', 'alta'), f('C-002', 'r4|tiktok|a.test', 'media'), f('C-003', 'r3|x|a.test', 'bassa')], '0.2.0');
   const { path, comparison: c } = writeComparison(a, b);
   assert.deepEqual(c.risolte.map((x) => x.key), ['r1|meta|a.test']);
   assert.deepEqual(c.nuove.map((x) => x.key), ['r4|tiktok|a.test']);
   assert.deepEqual(c.rimaste.map((x) => [x.prima.id, x.dopo.id, x.gravita]), [['C-002', 'C-001', 'aumentata'], ['C-003', 'C-003', 'uguale']]);
   const html = readFileSync(path, 'utf8');
-  assert.match(html, /Non più osservate \(1\)/);
+  assert.match(html, /Non più osservati \(1\)/);
   assert.match(html, /C-002 → C-001/);
+  // versioni diverse dello strumento: il confronto lo dichiara
+  assert.match(html, /Condizioni diverse<\/strong> \(versione dello strumento\)/);
 });
 
 test('consenso Google in breve, richiesta più forte, pagine di gestione cookie', () => {
@@ -288,8 +290,8 @@ test('revisione manuale: modulo, precompilazione dalla revisione precedente, rep
   assert.equal(readReview(a)!.get('r1|vimeo|a.test')!.esito, 'falso positivo');
   const r = await applyReview(a, { pdf: false });
   const html = readFileSync(r.html, 'utf8');
-  assert.match(html, /Report rivisto\.<\/strong>.*1 confermate, 1 escluse come falso positivo/);
-  assert.match(html, /Schede escluse dopo la revisione manuale/);
+  assert.match(html, /Rapporto rivisto\.<\/strong>.*1 confermati, 1 esclusi come falso positivo/);
+  assert.match(html, /Rilievi esclusi dopo la revisione manuale/);
   assert.match(html, /challenge Cloudflare, non Vimeo/);
   assert.ok(existsSync(join(a, 'revisione-applicata.json')));
   // esecuzione successiva dello stesso cliente: i giudizi si riportano sulle schede con la stessa chiave
@@ -333,12 +335,14 @@ test('dati personali: niente falsi positivi da nomi di file e codici casuali; ta
 });
 
 test('dati di prova dichiarati: riconosciuti in ogni forma e lasciati in chiaro', () => {
-  setTestData({ targa: 'AA123BB', dataNascita: '01/01/1990' });
+  setTestData([{ tipo: 'targa', valore: 'AA123BB' }, { tipo: 'data', valore: '01/01/1990', etichetta: 'data di nascita' }, { tipo: 'nome', valore: 'Mario Prova' }]);
   try {
     const u = 'https://ads.example/c?dl=' + encodeURIComponent('https://app.esempio.it/inizio?dataNascita=01/01/1990&targa=AA123BB') + '&p=' + encodeURIComponent('/quotazione/auto/AA123BB/1990-01-01');
     const hits = detectPii(u);
     assert.deepEqual(hits.filter((h) => h.test).map((h) => `${h.kind}:${h.masked}`).sort(), ['data di nascita:01/01/1990', 'targa:AA123BB']);
     assert.ok(maskPii(u).includes('AA123BB'), 'i dati di prova restano in chiaro');
+    // testo libero dichiarato (es. un nome): trovato anche con maiuscole diverse e codificato
+    assert.ok(detectPii('https://x.example/c?n=' + encodeURIComponent('MARIO prova')).some((h) => h.test && h.kind === 'nome'));
     // un valore diverso resta un dato non di prova, mascherato
     assert.ok(detectPii('targa=BB456CC').every((h) => !h.test && h.masked === 'BB•••CC'));
   } finally {

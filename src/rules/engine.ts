@@ -64,7 +64,7 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
   }
   const merged = opts.merge === false ? all.map(({ groupKey: _g, ...f }: Omit<Finding, 'id'> & { groupKey?: string }) => f) : mergeAcrossSites(all as (Omit<Finding, 'id'> & { groupKey?: string })[]);
   merged.sort((a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity) || a.site.localeCompare(b.site));
-  return merged.map((f, i) => ({ id: `C-${String(i + 1).padStart(3, '0')}`, ...f }));
+  return merged.map((f, i) => ({ id: `R-${String(i + 1).padStart(3, '0')}`, ...f }));
 }
 
 const shortHost = (site: string) => {

@@ -128,7 +128,7 @@ export async function performChoice(
   let verification: InteractionReport['verification'];
   let verificationDetail: string;
   if (bad.length) {
-    verification = 'incoerente';
+    verification = 'diverso';
     verificationDetail = bad.map((c) => `${c.by}: ${c.detail}`).join('; ');
   } else if (good.length) {
     verification = 'verificato';
@@ -201,7 +201,7 @@ export async function performPersonalize(
           via: r.via,
           clicked: r.clicked ?? [],
           detail: `${r.detail}: ${(r.clicked ?? []).join(', poi ')}`,
-          verification: check.consistent === null ? 'non-verificabile' : check.consistent ? 'verificato' : 'incoerente',
+          verification: check.consistent === null ? 'non-verificabile' : check.consistent ? 'verificato' : 'diverso',
           verificationDetail: check.detail,
           consentStateAfter: await readStates(page, adapters),
           bannerVisibleAfter: await bannerVisible(page, adapters, banner).catch(() => false),
@@ -231,7 +231,7 @@ export async function performPersonalize(
         via: r.via,
         clicked: r.clicked ?? [],
         detail: `${r.detail}${r.clicked?.length ? `: ${r.clicked.join(', poi ')}` : ''}${attempts.length ? ` (tentativi precedenti: ${attempts.join(' | ')})` : ''}`,
-        verification: check.consistent === true ? 'verificato' : check.consistent === false ? 'incoerente' : 'non-verificabile',
+        verification: check.consistent === true ? 'verificato' : check.consistent === false ? 'diverso' : 'non-verificabile',
         verificationDetail: check.detail,
         consentStateAfter: await readStates(page, adapters),
         bannerVisibleAfter: await bannerVisible(page, adapters, banner).catch(() => false),

@@ -57,12 +57,12 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
     [
       'confronto-dichiarati.csv',
       toCsv(
-        ['sito', 'tipo', 'nome', 'dominio', 'stato', 'categorie_dichiarate', 'sempre_attivo', 'categoria_osservata', 'problema_categoria', 'scenari'],
+        ['sito', 'tipo', 'nome', 'dominio', 'stato', 'categorie_dichiarate', 'sempre_attivo', 'categoria_osservata', 'differenza_categoria', 'scenari'],
         comparison.map((c) => [c.site, c.kind, c.name, c.domain, c.status, c.declaredCategories, c.declaredAlwaysActive, c.observedCategory, c.categoryIssue, c.scenarios]),
       ),
     ],
     [
-      'criticita.csv',
+      'rilievi.csv',
       toCsv(
         ['id', 'regola', 'titolo', 'gravita', 'sito', 'scenario', 'pagina', 'osservato', 'descrizione', 'dettagli', 'evidenze', 'norme'],
         findings.map((f) => [
