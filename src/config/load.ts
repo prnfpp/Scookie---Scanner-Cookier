@@ -13,7 +13,12 @@ export interface LoadedConfig {
 
 export function loadConfig(path: string): LoadedConfig {
   const abs = resolve(path);
-  const raw = readFileSync(abs, 'utf8');
+  return loadConfigText(readFileSync(abs, 'utf8'), abs);
+}
+
+/** Configurazione da un testo YAML (es. quello conservato in una rilevazione), con i percorsi relativi a `path`. */
+export function loadConfigText(raw: string, path: string): LoadedConfig {
+  const abs = resolve(path);
   const parsed = configSchema.safeParse(parse(raw));
   if (!parsed.success) {
     const issues = parsed.error.issues
