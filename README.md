@@ -437,6 +437,7 @@ Chromium viene indirizzato al server locale con `--host-resolver-rules`, quindi 
 
 ## Sicurezza e riservatezza
 
+- **Interfaccia personale**: si apre solo con l'indirizzo che contiene la chiave della sessione, aperto dall'icona o dal Terminale; la chiave è salvata in un file leggibile solo dall'utente (`~/.scookie/interfaccia.json`). Su un Mac con più utenti ognuno ha la propria interfaccia (se la porta 4777 è occupata si usa la successiva) e nessuno può aprire quella di un altro.
 - **Interfaccia solo locale**: ascolta su `127.0.0.1`, verifica l'intestazione Host (contro il DNS rebinding), accetta le chiamate solo con cookie di sessione `SameSite=Strict` e un'intestazione dedicata. I rapporti e i file delle esecuzioni sono serviti con una Content-Security-Policy che non permette script né risorse esterne: un testo preso da un sito verificato non può eseguire codice nell'interfaccia.
 - **Dati in locale**: configurazioni (`clienti/`), percorsi registrati (`clienti/percorsi/`) e rilevazioni (`runs/`) restano sul computer e sono esclusi da git.
 - **Dati personali**: i valori che somigliano a dati personali (in indirizzi, corpi delle richieste, anteprime di cookie e storage) sono mascherati in rapporto, CSV e `dati.json`; restano interi solo nei file HAR, che sono la registrazione fedele del traffico. I dati di prova dichiarati sono fittizi o concordati e compaiono in chiaro. Le celle dei CSV che Excel leggerebbe come formule sono neutralizzate.

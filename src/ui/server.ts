@@ -447,6 +447,16 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
       const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
       const path = url.pathname;
       if (path === '/' && req.method === 'GET') {
+        // La pagina si apre solo con la chiave di questa sessione (nell'indirizzo aperto dall'icona o dal Terminale)
+        // o con il cookie già ricevuto: sullo stesso computer un altro utente non può usare questa interfaccia.
+        if (url.searchParams.get('t') !== token && !hasCookie(req)) {
+          return send(
+            res,
+            403,
+            '<!doctype html><meta charset="utf-8"><title>Scookie</title><body style="font:16px/1.5 system-ui;max-width:560px;margin:80px auto;padding:0 16px"><h1>Scookie</h1><p>Questa interfaccia appartiene a un\'altra sessione o va aperta dall\'icona Scookie sulla Scrivania (o dal Terminale con <code>npm run interfaccia</code>).</p></body>',
+            'text/html; charset=utf-8',
+          );
+        }
         const page = readFileSync(PAGE_FILE, 'utf8');
         return send(res, 200, page, 'text/html; charset=utf-8', {
           'set-cookie': `scookie=${token}; HttpOnly; SameSite=Strict; Path=/`,
@@ -474,7 +484,8 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
     server.listen(opts.port, '127.0.0.1', () => ok());
   });
   port = (server.address() as AddressInfo).port;
-  const url = `http://127.0.0.1:${port}/`;
+  // indirizzo con la chiave della sessione: solo chi lo riceve (questo utente) può aprire l'interfaccia
+  const url = `http://127.0.0.1:${port}/?t=${token}`;
   return { server, url, close: () => new Promise((ok) => server.close(() => ok())) };
 }
 

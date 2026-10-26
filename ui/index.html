@@ -1123,6 +1123,8 @@ $('#upd-go').onclick = async () => {
 };
 
 /* ---------- Avvio ---------- */
+// la chiave della sessione serve solo alla prima apertura (poi vale il cookie): via dalla barra degli indirizzi
+if (location.search) history.replaceState(null, '', '/');
 (async () => {
   try {
     const info = await api('/api/info');
