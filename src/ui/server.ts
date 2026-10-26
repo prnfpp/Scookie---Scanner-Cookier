@@ -13,7 +13,7 @@ import { discoverSite, type DiscoveryResult } from '../discovery/discover.js';
 import { writeComparison } from '../report/compare.js';
 import { applyReview, readReview, readReviewRows, REVIEW_FILE, writeReviewRows } from '../report/review.js';
 import type { Progress } from '../progress.js';
-import { launchOptions, recordingFile, resolveUserAgent, runAudit } from '../run.js';
+import { COLLECTED_FILE, launchOptions, recordingFile, regenerateRun, resolveUserAgent, runAudit } from '../run.js';
 import { closeSafely } from '../util/misc.js';
 import { TOOL_VERSION } from '../version.js';
 import { checkUpdates, restartWithUpdate } from './update.js';
@@ -108,7 +108,16 @@ function summaryOf(dir: string) {
 
 function listRuns(runsDir: string) {
   if (!existsSync(runsDir)) return [];
-  return readdirSync(runsDir)
+  // Rilevazioni interrotte nella fase finale: i dati raccolti ci sono (raccolta.json), il rapporto no
+  const incomplete = readdirSync(runsDir)
+    .filter((n) => RUN_RE.test(n) && existsSync(join(runsDir, n, COLLECTED_FILE)) && !existsSync(join(runsDir, n, 'manifest.json')))
+    .map((name) => ({
+      name,
+      incompleta: true,
+      cliente: name.replace(/^[\d_T-]+_/, '').replace(/-/g, ' '),
+      inizio: statSync(join(runsDir, name, COLLECTED_FILE)).mtime.toISOString(),
+    }));
+  const complete = readdirSync(runsDir)
     .filter((n) => RUN_RE.test(n) && existsSync(join(runsDir, n, 'manifest.json')))
     .map((name) => {
       try {
@@ -129,6 +138,7 @@ function listRuns(runsDir: string) {
           criticita: m.criticita ?? null,
           paese: m.ambiente?.uscita?.verified ? m.ambiente.uscita.country : null,
           pdf: existsSync(join(runsDir, name, 'report.pdf')),
+          csv: existsSync(join(runsDir, name, 'rilievi.csv')) ? 'rilievi.csv' : 'criticita.csv',
           revisione: existsSync(join(runsDir, name, REVIEW_FILE)),
           rivisto: existsSync(join(runsDir, name, 'report-rivisto.html')),
           ...summaryOf(join(runsDir, name)),
@@ -137,8 +147,8 @@ function listRuns(runsDir: string) {
         return null;
       }
     })
-    .filter((r) => r !== null)
-    .sort((a, b) => String(b.inizio).localeCompare(String(a.inizio)));
+    .filter((r) => r !== null);
+  return [...incomplete, ...complete].sort((a, b) => String(b.inizio).localeCompare(String(a.inizio)));
 }
 
 /**
@@ -408,6 +418,23 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
         falsiPositivi: v.filter((e) => e.esito === 'falso positivo').length,
         nonRevisionate: v.filter((e) => !e.esito).length,
       });
+    }
+    // Rapporto rigenerato dai dati raccolti: per una rilevazione interrotta nella fase finale, oppure (copia) per
+    // applicare le regole della versione attuale a una rilevazione passata
+    if (path === '/api/rigenera' && method === 'POST') {
+      const body = (await readBody(req)) as { esecuzione?: unknown; copia?: unknown };
+      const n = body.esecuzione;
+      if (typeof n !== 'string' || !RUN_RE.test(n) || n === '.' || n === '..' || !existsSync(join(runsDir, n))) throw new HttpError(400, 'Esecuzione non valida');
+      const j = startJob('audit', n, async (jj) => {
+        const result = await regenerateRun(join(runsDir, n), {
+          copy: body.copia === true,
+          log: (m) => {
+            for (const line of m.split('\n')) if (line.trim()) jj.log.push(line);
+          },
+        });
+        jj.runName = result.runDir.split(sep).pop() ?? null;
+      });
+      return json(res, 202, { id: j.id });
     }
     if (path === '/api/confronta' && method === 'POST') {
       const body = (await readBody(req)) as { prima?: unknown; dopo?: unknown };

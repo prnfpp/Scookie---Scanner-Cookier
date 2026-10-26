@@ -9,6 +9,7 @@ import { isRevokeUrl } from '../src/cmp/revoke.js';
 import { detectPii, maskPii, setTestData } from '../src/util/pii.js';
 import { mergeDetails } from '../src/rules/engine.js';
 import { summaryItems } from '../src/report/summary.js';
+import { siteHost } from '../src/run.js';
 import { PartyResolver, registrableDomain } from '../src/util/domains.js';
 import { parseCsv, toCsv } from '../src/util/csv.js';
 import type { RequestRecord } from '../src/types.js';
@@ -378,4 +379,10 @@ test('sintesi per causa: un punto per fatto, ordinata per gravità, prova e ripe
   // TikTok visto in una sola sessione manuale: dopo Hotjar (3 su 3), prima del banner (media)
   assert.match(items[2].title, /^TikTok: attivo dopo il rifiuto/);
   assert.match(items[3].title, /^Banner/);
+});
+
+test('host dei rilievi: indirizzo o dominio intero (regola sui sottodomini)', () => {
+  assert.equal(siteHost('https://www.esempio.it/'), 'www.esempio.it');
+  // la regola sui sottodomini riporta il dominio, non un indirizzo: non deve interrompere l'audit
+  assert.equal(siteHost('esempio.it'), 'esempio.it');
 });

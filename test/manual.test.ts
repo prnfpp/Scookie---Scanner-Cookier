@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -8,7 +8,7 @@ import { stringify } from 'yaml';
 import type { Collector } from '../src/browser/collector.js';
 import { manualJourney } from '../src/browser/manual.js';
 import { loadConfig } from '../src/config/load.js';
-import { recordingFile, runAudit, type RunResult } from '../src/run.js';
+import { recordingFile, regenerateRun, runAudit, type RunResult } from '../src/run.js';
 import { FIXTURES, startFixtureServer } from './fixtures/server.js';
 
 let srv: Awaited<ReturnType<typeof startFixtureServer>>;
@@ -142,4 +142,22 @@ test('percorso manuale registrato e rigiocato in automatico nella prova successi
     assert.ok(s.pages.some((p) => /beta\.html\?targa=/.test(p)), s.pages.join(', '));
   }
   assert.match(readFileSync(join(second.runDir, 'report.html'), 'utf8'), /Percorso registrato<\/strong>/);
+});
+
+test('rapporto rigenerato dai dati raccolti: dopo un errore nella fase finale e in copia', async () => {
+  // rilevazione interrotta dopo la raccolta: restano raccolta.json e le prove, non il rapporto
+  const broken = `${result.runDir}_interrotta`;
+  cpSync(result.runDir, broken, { recursive: true });
+  for (const f of ['report.html', 'manifest.json', 'manifest.json.sha256', 'dati.json']) rmSync(join(broken, f), { force: true });
+  const r1 = await regenerateRun(broken, { pdf: false, log: () => {} });
+  assert.equal(r1.runDir, broken);
+  assert.equal(r1.findings.length, result.findings.length);
+  assert.match(readFileSync(join(broken, 'report.html'), 'utf8'), /Rapporto rigenerato<\/strong>/);
+  // con il rapporto già presente serve la copia: l'originale non si tocca
+  await assert.rejects(regenerateRun(result.runDir, { pdf: false, log: () => {} }), /--copia/);
+  const before = readFileSync(join(result.runDir, 'report.html'), 'utf8');
+  const r2 = await regenerateRun(result.runDir, { copy: true, pdf: false, log: () => {} });
+  assert.notEqual(r2.runDir, result.runDir);
+  assert.ok(existsSync(join(r2.runDir, 'report.html')) && existsSync(join(r2.runDir, 'manifest.json')));
+  assert.equal(readFileSync(join(result.runDir, 'report.html'), 'utf8'), before);
 });
