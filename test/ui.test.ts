@@ -69,6 +69,13 @@ test('protezioni: solo da questo computer e solo dalla pagina dell\'interfaccia'
   assert.equal(await raw('/api/clienti', { host: ok.host, 'x-scookie': '1' }), 401, 'senza cookie');
   assert.equal(await raw('/api/clienti', { host: ok.host, cookie: ok.cookie }), 403, 'senza intestazione');
   assert.equal(await raw('/esecuzioni/..%2F..%2Fetc/passwd', ok), 400, 'percorso fuori dalla cartella');
+  // la pagina si apre solo con la chiave della sessione (o col cookie già ricevuto): un altro utente dello
+  // stesso computer che apre l'indirizzo non entra
+  const key = new URL(ui.url).search;
+  assert.equal(await raw('/', { host: ok.host }), 403, 'senza chiave né cookie');
+  assert.equal(await raw('/?t=sbagliata', { host: ok.host }), 403, 'chiave sbagliata');
+  assert.equal(await raw(`/${key}`, { host: ok.host }), 200, 'con la chiave');
+  assert.equal(await raw('/', { host: ok.host, cookie: ok.cookie }), 200, 'con il cookie');
 });
 
 test('nuovo cliente dal modulo, con errore leggibile se manca l\'indirizzo', async () => {

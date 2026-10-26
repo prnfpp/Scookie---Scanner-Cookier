@@ -13,10 +13,15 @@ BRANCH=main
 notify() { osascript -e "display notification \"$1\" with title \"Scookie\"" >/dev/null 2>&1 || echo "$1"; }
 echo "--- $(date '+%Y-%m-%d %H:%M:%S') avvio"
 
-# Interfaccia già aperta: basta mostrarla
-if curl -s -o /dev/null -m 2 "http://127.0.0.1:$PORT/"; then
-  open "http://127.0.0.1:$PORT/" 2>/dev/null || true
-  exit 0
+# Interfaccia di questo utente già aperta: basta mostrarla. Si riconosce dal file privato con indirizzo e chiave
+# (~/.scookie/interfaccia.json); un'interfaccia di un altro utente sulla stessa porta non viene mai riusata.
+SESSION="$HOME/.scookie/interfaccia.json"
+if [ -f "$SESSION" ]; then
+  URL="$(node -e 'try { const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.kill(s.pid, 0); console.log(s.url); } catch {}' "$SESSION" 2>/dev/null)"
+  if [ -n "$URL" ] && [ "$(curl -s -o /dev/null -m 2 -w '%{http_code}' "$URL")" = "200" ]; then
+    open "$URL" 2>/dev/null || true
+    exit 0
+  fi
 fi
 
 notify "Controllo degli aggiornamenti…"
