@@ -8,7 +8,7 @@ import { loadConfig } from './config/load.js';
 import { discoverSite } from './discovery/discover.js';
 import { writeComparison } from './report/compare.js';
 import { applyReview } from './report/review.js';
-import { launchOptions, resolveUserAgent, runAudit } from './run.js';
+import { launchOptions, regenerateRun, resolveUserAgent, runAudit } from './run.js';
 import { openInBrowser, startUi } from './ui/server.js';
 import { TOOL_VERSION } from './version.js';
 
@@ -79,6 +79,17 @@ program
     const v = [...r.review.values()];
     console.log(`${v.filter((e) => e.esito === 'confermato').length} confermate, ${v.filter((e) => e.esito === 'falso positivo').length} falsi positivi, ${v.filter((e) => e.esito === 'da verificare').length} da verificare, ${v.filter((e) => !e.esito).length} non revisionate.`);
     console.log(`Report rivisto: ${r.html}${r.pdf ? ` e ${r.pdf}` : ''}`);
+  });
+
+program
+  .command('rigenera')
+  .description('Rigenera regole e rapporto dai dati già raccolti, senza visitare di nuovo i siti')
+  .argument('<cartella>', 'cartella della rilevazione (es. runs/2026-10-24_…)')
+  .option('--copia', 'se il rapporto esiste già, rigenera in una copia della cartella (es. per applicare le regole attuali a una rilevazione passata)')
+  .option('--no-pdf', 'non generare il PDF')
+  .action(async (dir: string, opts: { copia?: boolean; pdf: boolean }) => {
+    const r = await regenerateRun(dir, { copy: !!opts.copia, pdf: opts.pdf });
+    console.log(`Rapporto: ${join(r.runDir, 'report.html')}`);
   });
 
 program

@@ -947,7 +947,14 @@ async function loadRuns() {
   }
   box.innerHTML = runs.map((r, i) => {
     const base = '/esecuzioni/' + encodeURIComponent(r.name) + '/';
-    const prev = runs.slice(i + 1).find((x) => x.cliente === r.cliente);
+    if (r.incompleta) {
+      return `<article class="card run">
+      <div class="run-h"><h2>${esc(r.cliente)}</h2><span class="muted">${esc(fmt(r.inizio))}</span><span class="chip warn">Rapporto non generato</span></div>
+      <div class="hint-box"><div><b>La rilevazione si è interrotta nella fase finale.</b><span class="small">Le sessioni, le prove e i file di traffico sono salvati: il rapporto si genera dai dati raccolti, senza visitare di nuovo i siti.</span></div>
+      <button class="btn sm primary" data-rigenera="${esc(r.name)}">Genera il rapporto</button></div>
+    </article>`;
+    }
+    const prev = runs.slice(i + 1).find((x) => !x.incompleta && x.cliente === r.cliente);
     const g = r.gravita;
     const reviewed = r.revisionate ?? 0;
     const total = r.criticita ?? 0;
@@ -957,16 +964,17 @@ async function loadRuns() {
     return `<article class="card run">
       <div class="run-h"><h2>${esc(r.cliente)}</h2><span class="muted">${esc(fmt(r.inizio))}${r.durataSec ? ` · ${Math.round(r.durataSec / 60)} minuti` : ''}</span>${country}
         ${r.rivisto ? '<span class="chip ok">Revisionato</span>' : r.revisione ? '<span class="chip warn">Da revisionare</span>' : ''}</div>
-      <div class="sev">${g ? ['alta', 'media', 'bassa', 'informativa'].map((k) => `<div class="s ${k}"><b>${g[k] ?? 0}</b><span>${k}</span></div>`).join('') : `<div class="s"><b>${esc(total)}</b><span>schede</span></div>`}</div>
+      <div class="sev">${g ? ['alta', 'media', 'bassa', 'informativa'].map((k) => `<div class="s ${k}"><b>${g[k] ?? 0}</b><span>${k}</span></div>`).join('') : `<div class="s"><b>${esc(total)}</b><span>rilievi</span></div>`}</div>
       ${r.sitiSenzaDati && r.sitiSenzaDati.length ? `<div class="hint-box"><div><b>Nessun dato per ${esc(r.sitiSenzaDati.map(host).join(', '))}</b><span class="small">Le pagine non si sono caricate (connessione assente o computer in stop): per questi siti l'audit va ripetuto.</span>
         ${configOk ? `<div style="margin-top:8px"><button class="btn sm" data-rerun="${esc(r.configurazione)}" data-siti="${esc(JSON.stringify(r.sitiSenzaDati))}">Ripeti solo questi siti</button></div>` : ''}</div></div>` : ''}
       <div class="flow">
-        <div class="fs done"><span class="k">1 · Leggi</span><span class="small">Rapporto e allegati</span><div class="row"><a class="btn sm primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>${r.pdf ? `<a class="btn sm" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}<a class="btn sm" href="${base}criticita.csv">CSV</a></div></div>
+        <div class="fs done"><span class="k">1 · Leggi</span><span class="small">Rapporto e allegati</span><div class="row"><a class="btn sm primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>${r.pdf ? `<a class="btn sm" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}<a class="btn sm" href="${base}${esc(r.csv || 'rilievi.csv')}">CSV</a></div></div>
         <div class="fs ${r.revisione ? (revDone ? 'done' : 'next') : ''}"><span class="k">2 · Revisiona</span><span class="small">${r.revisione ? `${reviewed} rilievi su ${total}` : 'Modulo non disponibile'}</span>${r.revisione ? `<div class="row"><button class="btn sm ${revDone ? '' : 'primary'}" data-open-run="${esc(r.name)}">${reviewed ? 'Continua' : 'Inizia'} la revisione</button></div>` : ''}</div>
         <div class="fs ${r.rivisto ? 'done' : ''}"><span class="k">3 · Rapporto rivisto</span><span class="small">${r.rivisto ? 'Generato' : 'Dopo la revisione'}</span><div class="row">${r.rivisto ? `<a class="btn sm" href="${base}report-rivisto.html" target="_blank" rel="noopener">Apri</a>` : ''}${r.revisione ? `<button class="btn sm" data-revisione="${esc(r.name)}" ${reviewed ? '' : 'disabled'}>${r.rivisto ? 'Rigenera' : 'Genera'}</button>` : ''}</div></div>
         <div class="fs"><span class="k">4 · Confronta</span><span class="small">${prev ? `Con il ${esc(fmt(prev.inizio))}` : 'Nessuna esecuzione precedente'}</span>${prev ? `<div class="row"><button class="btn sm" data-prima="${esc(prev.name)}" data-dopo="${esc(r.name)}">Confronta con precedente</button></div>` : ''}</div>
       </div>
       <div class="cmp hidden" data-cmp="${esc(r.name)}"></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn sm" data-rigenera="${esc(r.name)}" data-copia="1" title="Applica le regole della versione attuale ai dati di questa rilevazione, in una copia: utile per confrontare a parità di strumento una rilevazione passata con una nuova">Rigenera con la versione attuale</button></div>
     </article>`;
   }).join('');
 }
@@ -986,6 +994,17 @@ $('#manual-done').onclick = async () => {
 $('#runs').addEventListener('click', async (ev) => {
   const open = ev.target.closest('[data-open-run]');
   if (open) return openReview(open.dataset.openRun);
+  const rg = ev.target.closest('button[data-rigenera]');
+  if (rg) {
+    try {
+      await api('/api/rigenera', { method: 'POST', body: { esecuzione: rg.dataset.rigenera, copia: rg.dataset.copia === '1' } });
+      show('audit');
+      refreshJob();
+    } catch (e) {
+      toast(e.message);
+    }
+    return;
+  }
   const rerun = ev.target.closest('[data-rerun]');
   if (rerun) return startJob('avvia-siti', { file: rerun.dataset.rerun, siti: JSON.parse(rerun.dataset.siti) });
   const rv = ev.target.closest('button[data-revisione]');

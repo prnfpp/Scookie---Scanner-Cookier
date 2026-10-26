@@ -1,11 +1,11 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { trimHar } from './browser/har.js';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium, type Browser, type LaunchOptions, type Page } from 'playwright';
 import { Classifier, type TrackerEntry } from './classify/classifier.js';
-import type { LoadedConfig } from './config/load.js';
+import { loadConfigText, type LoadedConfig } from './config/load.js';
 import type { AuditConfig } from './config/schema.js';
 import { compareDeclared } from './declared/compare.js';
 import { loadDeclaredFile } from './declared/declared.js';
@@ -180,6 +180,18 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
   return plans;
 }
 
+/**
+ * Host di un sito come compare nei rilievi: di solito un indirizzo (https://www.esempio.it/), ma alcune regole
+ * riguardano un intero dominio e riportano solo quello (esempio.it).
+ */
+export function siteHost(site: string): string {
+  try {
+    return new URL(site).hostname;
+  } catch {
+    return site;
+  }
+}
+
 /** File del percorso registrato di un sito, accanto alla configurazione (cartella percorsi/). */
 export function recordingFile(configPath: string, siteUrl: string): string {
   const name = basename(configPath).replace(/\.ya?ml$/i, '');
@@ -214,6 +226,8 @@ async function hashFiles(runDir: string, paths: string[]) {
 /** Copia le evidenze di ogni rilievo con il numero del rilievo nel nome. */
 function linkEvidenceToFindings(runDir: string, findings: Finding[]) {
   const dir = join(runDir, 'evidenze', 'rilievi');
+  // una rigenerazione rinumera i rilievi: le copie precedenti non devono restare
+  rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   for (const f of findings) {
     f.evidence = f.evidence.map((e) => {
@@ -512,6 +526,54 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
     await browser.close();
   }
 
+  // I dati raccolti vanno su disco prima di regole e rapporto: un errore in quella fase non deve far perdere
+  // la raccolta (si rigenera con il comando "rigenera").
+  const collected: Collected = {
+    configurazione: { file: loaded.path, contenuto: loaded.raw },
+    startedAt,
+    userAgent,
+    browserVersion,
+    exit,
+    discovery,
+    sessions,
+    discarded,
+    declared,
+  };
+  writeFileSync(join(runDir, COLLECTED_FILE), JSON.stringify(collected));
+  return finishRun(loaded, config, runDir, collected, { pdf: opts.pdf, log, progress });
+}
+
+/** Dati raccolti dalle sessioni, salvati prima di regole e rapporto. */
+export const COLLECTED_FILE = 'raccolta.json';
+export interface Collected {
+  configurazione: { file: string; contenuto: string };
+  startedAt: string;
+  userAgent: string;
+  browserVersion: string;
+  exit: ExitInfo;
+  discovery: DiscoveryResult[];
+  sessions: SessionResult[];
+  discarded: SessionResult[];
+  declared: DeclaredSet[];
+}
+
+/**
+ * Regole, rapporto, CSV, PDF e manifest a partire dai dati raccolti. Usata a fine audit e dal comando "rigenera".
+ */
+async function finishRun(
+  loaded: LoadedConfig,
+  config: AuditConfig,
+  runDir: string,
+  collected: Collected,
+  o: { pdf?: boolean; log: (m: string) => void; progress?: ProgressTracker; regeneratedAt?: string },
+): Promise<RunResult> {
+  const { startedAt, userAgent, browserVersion, exit, discovery, sessions, discarded, declared } = collected;
+  const log = o.log;
+  const progress = o.progress ?? new ProgressTracker(() => {}, 0);
+  const opts = { pdf: o.pdf };
+  const normsPath = config.norme ? loaded.resolvePath(config.norme) : DEFAULT_NORMS_FILE;
+  const norms = loadNorms(normsPath);
+
   // Le sessioni bloccate da un sistema anti-bot o senza accesso al sito non descrivono il sito:
   // restano nei dati ma non entrano nelle regole.
   const validSessions = sessions.filter((s) => !s.blocked && !s.unreachable);
@@ -527,31 +589,37 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   // Ripetibilità, sito per sito: lo stesso fatto può essere ripetuto su un sito e venire da una sessione manuale
   // (fatta una volta) su un altro.
   const manualSessions = validSessions.filter((s) => s.manual);
+  // Arricchimento del rapporto: un errore qui non deve far perdere la rilevazione (dati e prove sono già raccolti)
   if (reps > 1 || manualSessions.length) {
-    const hostOf = (u: string) => new URL(u).hostname;
-    const rawKeys = (subset: SessionResult[]) => {
-      const comp = declared.flatMap((d) => compareDeclared(d.site, subset.filter((s) => s.site === d.site), d));
-      const ctx = { config, sessions: subset, blocked: blockedSessions, declared, comparison: comp, exit, discovery };
-      return new Set(evaluateRules(ctx, norms, { merge: false }).map((f) => `${f.key}@${hostOf(f.site)}`));
-    };
-    const seen = new Map<string, number>();
-    if (reps > 1) {
-      for (let r = 1; r <= reps; r++) for (const k of rawKeys(validSessions.filter((s) => s.repeat === r))) seen.set(k, (seen.get(k) ?? 0) + 1);
-    } else {
-      for (const k of rawKeys(validSessions.filter((s) => !s.manual))) seen.set(k, 1);
-    }
-    const manualKeys = manualSessions.length ? rawKeys(manualSessions) : new Set<string>();
-    for (const f of findings) {
-      if (!f.key) continue;
-      const perSite = [...new Set(f.sites.map(hostOf))].map((host) => {
-        const n = seen.get(`${f.key}@${host}`) ?? 0;
-        // non visto nelle sessioni automatiche: viene da una sessione manuale, fatta una volta sola
-        return n === 0 && manualKeys.has(`${f.key}@${host}`) ? { host, seen: 1, of: 1, manual: true } : { host, seen: Math.max(1, n), of: reps };
-      });
-      const best = perSite.filter((p) => !p.manual).sort((a, b) => b.seen - a.seen)[0];
-      if (!best && perSite.length) f.repeats = { seen: 1, of: 1, manual: true, perSite };
-      else if (best && reps > 1) f.repeats = { seen: best.seen, of: reps, perSite };
-      else if (best && perSite.some((p) => p.manual)) f.repeats = { seen: 1, of: 1, perSite };
+    try {
+      const hostOf = siteHost;
+      const rawKeys = (subset: SessionResult[]) => {
+        const comp = declared.flatMap((d) => compareDeclared(d.site, subset.filter((s) => s.site === d.site), d));
+        const ctx = { config, sessions: subset, blocked: blockedSessions, declared, comparison: comp, exit, discovery };
+        return new Set(evaluateRules(ctx, norms, { merge: false }).map((f) => `${f.key}@${hostOf(f.site)}`));
+      };
+      const seen = new Map<string, number>();
+      if (reps > 1) {
+        for (let r = 1; r <= reps; r++) for (const k of rawKeys(validSessions.filter((s) => s.repeat === r))) seen.set(k, (seen.get(k) ?? 0) + 1);
+      } else {
+        for (const k of rawKeys(validSessions.filter((s) => !s.manual))) seen.set(k, 1);
+      }
+      const manualKeys = manualSessions.length ? rawKeys(manualSessions) : new Set<string>();
+      for (const f of findings) {
+        if (!f.key) continue;
+        const perSite = [...new Set(f.sites.map(hostOf))].map((host) => {
+          const n = seen.get(`${f.key}@${host}`) ?? 0;
+          // non visto nelle sessioni automatiche: viene da una sessione manuale, fatta una volta sola
+          return n === 0 && manualKeys.has(`${f.key}@${host}`) ? { host, seen: 1, of: 1, manual: true } : { host, seen: Math.max(1, n), of: reps };
+        });
+        const best = perSite.filter((p) => !p.manual).sort((a, b) => b.seen - a.seen)[0];
+        if (!best && perSite.length) f.repeats = { seen: 1, of: 1, manual: true, perSite };
+        else if (best && reps > 1) f.repeats = { seen: best.seen, of: reps, perSite };
+        else if (best && perSite.some((p) => p.manual)) f.repeats = { seen: 1, of: 1, perSite };
+      }
+    } catch (e) {
+      for (const f of findings) delete f.repeats;
+      log(`Ripetibilità non calcolata (${(e as Error).message}): il rapporto è completo, senza l'indicazione "osservato in k su N".`);
     }
   }
   if (config.report.harCompressi) compressHars(runDir, [...sessions, ...discarded], findings, config.report.harContenuti);
@@ -591,6 +659,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   const rev = writeReviewTemplate(runDir, findings, config.cliente);
   if (rev.prefilled) log(`Revisione: ${rev.prefilled} schede precompilate dalla revisione di ${rev.from}`);
   const html = renderHtml({
+    regeneratedAt: o.regeneratedAt,
     configFile: basename(loaded.path),
     configSha256: sha256(loaded.raw),
     toolCommit: TOOL_COMMIT,
@@ -630,6 +699,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   const allFiles = await hashFiles(runDir, listFiles(runDir).filter((p) => p !== 'manifest.json' && p !== REVIEW_FILE));
   const manifest = {
     strumento: { nome: 'scookie', versione: TOOL_VERSION, commit: TOOL_COMMIT },
+    ...(o.regeneratedAt ? { rigenerato: o.regeneratedAt } : {}),
     cliente: config.cliente,
     inizio: startedAt,
     fine: endedAt,
@@ -651,4 +721,51 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   progress.phase('fine');
   log(`\nCompletato: ${sessions.length} sessioni, ${findings.length} rilievi. Rapporto: ${join(runDir, 'report.html')}`);
   return { runDir, findings, sessions };
+}
+
+/**
+ * Rigenera regole e rapporto dai dati già raccolti, senza visitare di nuovo i siti: dopo un errore nella fase
+ * finale (raccolta.json) oppure, con `copy`, per applicare le regole della versione attuale a una rilevazione
+ * passata (es. per confrontarla a parità di strumento con una nuova). Con `copy` si lavora su una copia della
+ * cartella: la rilevazione originale e il suo rapporto restano intatti.
+ */
+export async function regenerateRun(runDir: string, o: { copy?: boolean; pdf?: boolean; log?: (m: string) => void } = {}): Promise<RunResult> {
+  const log = o.log ?? ((m: string) => console.log(m));
+  let collected: Collected;
+  if (existsSync(join(runDir, COLLECTED_FILE))) {
+    collected = JSON.parse(readFileSync(join(runDir, COLLECTED_FILE), 'utf8')) as Collected;
+  } else if (existsSync(join(runDir, 'dati.json')) && existsSync(join(runDir, 'manifest.json'))) {
+    const d = JSON.parse(readFileSync(join(runDir, 'dati.json'), 'utf8')) as { discovery: DiscoveryResult[]; sessions: SessionResult[]; sessioniScartate?: SessionResult[]; declared: DeclaredSet[] };
+    const m = JSON.parse(readFileSync(join(runDir, 'manifest.json'), 'utf8')) as {
+      inizio: string;
+      configurazione: { file: string; contenuto: string };
+      ambiente: { browser: string; userAgent: string; uscita: ExitInfo };
+    };
+    collected = {
+      configurazione: { file: m.configurazione.file, contenuto: m.configurazione.contenuto },
+      startedAt: m.inizio,
+      userAgent: m.ambiente.userAgent,
+      browserVersion: m.ambiente.browser,
+      exit: m.ambiente.uscita,
+      discovery: d.discovery,
+      sessions: d.sessions,
+      discarded: d.sessioniScartate ?? [],
+      declared: d.declared,
+    };
+  } else {
+    throw new Error(`Nella cartella ${runDir} non ci sono dati raccolti (raccolta.json o dati.json): la rilevazione va ripetuta`);
+  }
+  let target = runDir;
+  if (existsSync(join(runDir, 'report.html'))) {
+    if (!o.copy) throw new Error('La rilevazione ha già un rapporto: per rigenerarlo senza toccare l\'originale usare l\'opzione --copia');
+    // copia della cartella con le sole prove e i dati raccolti: rapporto, CSV e manifest si rifanno
+    target = `${runDir.replace(/[\\/]+$/, '')}_rigenerato-${timestampForPath()}`;
+    const derived = /^(report|report-rivisto)\.(html|pdf)$|^(dati|riepilogo|manifest|revisione-applicata)\.json$|^manifest\.json\.sha256$|\.csv$|^confronto-.*\.html$/;
+    cpSync(runDir, target, { recursive: true, filter: (src) => !derived.test(basename(src)) && !src.includes(`${join('evidenze', 'rilievi')}`) });
+  }
+  if (!existsSync(join(target, COLLECTED_FILE))) writeFileSync(join(target, COLLECTED_FILE), JSON.stringify(collected));
+  const loaded = loadConfigText(collected.configurazione.contenuto, collected.configurazione.file);
+  setTestData(loaded.config.datiDiProva);
+  log(`Rigenerazione del rapporto in ${target} (dati raccolti il ${collected.startedAt})…`);
+  return finishRun(loaded, loaded.config, target, collected, { pdf: o.pdf, log, regeneratedAt: new Date().toISOString() });
 }

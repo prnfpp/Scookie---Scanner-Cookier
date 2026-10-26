@@ -332,6 +332,8 @@ Per la validazione su siti reali c'è già [`config/validazione.yaml`](config/va
 
 Opzioni di `run`: `--out <cartella>` per cambiare la cartella di output, `--no-pdf` per saltare il PDF.
 
+**Rapporto rigenerato dai dati raccolti.** I dati delle sessioni sono salvati in `raccolta.json` prima che si generi il rapporto: se l'audit si interrompe nella fase finale, non si perde la raccolta. `npm run scookie -- rigenera runs/<cartella>` (nell'interfaccia: Esecuzioni, **Genera il rapporto**) crea rapporto, CSV e manifest senza visitare di nuovo i siti. Con `--copia` (nell'interfaccia: **Rigenera con la versione attuale**) si applicano le regole della versione attuale a una rilevazione passata, in una copia della cartella: la rilevazione originale resta intatta. Serve per confrontare a parità di strumento una rilevazione precedente con una nuova; il rapporto lo dichiara in apertura.
+
 Confronto tra due rilevazioni: `npm run scookie -- confronta <cartella-prima> <cartella-dopo> [-o file.html]`. I rilievi sono abbinati per regola, oggetto e dominio (non per numero); il documento riporta anche le condizioni delle due rilevazioni (versione dello strumento, configurazione e sua impronta, scenari, ripetizioni, paese di uscita) e avvisa se differiscono, perché un rilievo "nuovo" o "non più osservato" può dipendere anche da questo. Per una verifica post-intervento a parità di condizioni: stessa configurazione e stessa versione dello strumento. Il file va nella cartella della seconda rilevazione.
 
 Tutto si regola dal file YAML, senza toccare il codice. I campi sono commentati in [`config/esempio.yaml`](config/esempio.yaml) e definiti in [`src/config/schema.ts`](src/config/schema.ts).

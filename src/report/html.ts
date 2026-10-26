@@ -14,6 +14,8 @@ export interface ReportInput {
   configSha256?: string;
   /** Versione esatta del codice dello strumento (commit), se disponibile. */
   toolCommit?: string | null;
+  /** Rapporto rigenerato dai dati già raccolti (data della rigenerazione). */
+  regeneratedAt?: string;
   toolVersion: string;
   browserVersion: string;
   userAgent: string;
@@ -129,6 +131,7 @@ export function renderHtml(r: ReportInput): string {
 <h1>Rapporto tecnico di verifica sull'uso di cookie e altri strumenti di tracciamento</h1>
 ${config.report.sottotitolo ? `<p class="subtitle">${esc(config.report.sottotitolo)}</p>` : ''}
 <p class="muted">Committente: ${esc(config.cliente)} · rilevazione del ${esc(fmt(r.startedAt))} · siti: ${esc(sites.map(host).join(', '))} · strumento Scookie ${esc(r.toolVersion)}</p>
+${r.regeneratedAt ? `<p class="muted"><strong>Rapporto rigenerato</strong> il ${esc(fmt(r.regeneratedAt))} con Scookie ${esc(r.toolVersion)}, dai dati raccolti nella rilevazione del ${esc(fmt(r.startedAt))}: le sessioni, le prove e i file di traffico sono quelli originali.</p>` : ''}
 ${r.review ? `<p class="warn"><strong>Rapporto rivisto.</strong> È stata applicata la revisione manuale dei rilievi (file <code>revisione.csv</code>): ${r.findings.filter((f) => reviewOf(f)?.esito === 'confermato').length} confermati, ${excluded.length} esclusi come falso positivo (elencati in fondo alla sezione 3), ${r.findings.filter((f) => !reviewOf(f)?.esito).length} non revisionati. I dati raccolti e le prove non cambiano.</p>` : ''}
 ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.exit.note)}</p>` : ''}
 <h2>Natura del documento</h2>
