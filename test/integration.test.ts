@@ -7,7 +7,9 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { stringify } from 'yaml';
 import { loadConfig } from '../src/config/load.js';
-import { runAudit, type RunResult } from '../src/run.js';
+import { chromium } from 'playwright';
+import { loadConfigText } from '../src/config/load.js';
+import { launchOptions, runAudit, type RunResult } from '../src/run.js';
 import type { Finding } from '../src/types.js';
 import { FIXTURES, startFixtureServer } from './fixtures/server.js';
 
@@ -38,6 +40,7 @@ before(async () => {
       { url: url('sito-f.test'), sitemap: false, seguiLink: false, banner: { attesa: 1500 } },
       { url: url('sito-g.test'), sitemap: false, seguiLink: false, banner: { attesa: 2000 } },
       { url: url('sito-h.test'), sitemap: false, seguiLink: false, banner: { attesa: 1000 } },
+      { url: url('sito-j.test'), sitemap: false, seguiLink: false, banner: { attesa: 1000 } },
       { url: url('sito-d.test'), sitemap: false, dichiarati: join(FIXTURES, 'dichiarati-sito-d.csv'), cookiePolicy: url('www.sito-b.test', '/cookie-policy') },
     ],
   };
@@ -136,6 +139,28 @@ test('sito-e: euristica al secondo livello sceglie "Rifiuta tutti" nelle prefere
   assert.match(r.interaction.detail, /"Personalizza".*"Rifiuta tutti"/);
   assert.ok(r.cookies.some((c) => c.name === 'pref' && c.valuePreview === 'no'));
   assert.ok(rules('sito-e.test').includes('rifiuto-non-al-primo-livello'));
+});
+
+test('sito-j: script caricati alla prima rotellata visti prima della scelta', () => {
+  const s = session('sito-j.test', 'nessuna-azione');
+  assert.equal(s.cookies.find((c) => c.name === '_fbp')?.stage, 'scroll');
+  assert.ok(s.requests.some((r) => r.url.includes('j=interazione') && r.phase === 'prima' && r.stage === 'scroll'));
+  const r = rules('sito-j.test');
+  assert.ok(r.includes('cookie-prima-del-consenso'));
+  assert.ok(r.includes('richiesta-tracker-prima-del-consenso'));
+});
+
+test('esecuzione di controllo: il browser non si dichiara automatizzato', async () => {
+  for (const [ua, expected] of [[false, true], [true, false]] as const) {
+    const cfg = loadConfigText(stringify({ cliente: 'x', browser: { uaNormale: ua }, siti: [{ url: 'https://esempio.it/' }] }), 'x.yaml').config;
+    const browser = await chromium.launch(launchOptions(cfg));
+    try {
+      const page = await browser.newPage();
+      assert.equal(await page.evaluate(() => navigator.webdriver), expected, `uaNormale: ${ua}`);
+    } finally {
+      await browser.close();
+    }
+  }
 });
 
 test('sito-f: tracciamento attivato dallo scroll distinto dal caricamento', () => {

@@ -188,7 +188,7 @@ browser:
 
 Nell'interfaccia sono le opzioni "Browser" e "Mostra il browser durante l'audit". Il tool non tenta di superare le verifiche: se il blocco resta, va annotato come limite.
 
-Per capire se le verifiche anti-bot alterano i risultati si può fare un'**esecuzione di controllo** con `uaNormale: true` (insieme a `headless: false`): lo user agent è quello di un browser normale, senza "HeadlessChrome" e senza la dichiarazione dell'audit. Il report lo indica. Confrontando le due esecuzioni ("Confronta con precedente") si vede cosa cambia.
+Per capire se le verifiche anti-bot alterano i risultati si può fare un'**esecuzione di controllo** con `uaNormale: true` (insieme a `headless: false`): lo user agent è quello di un browser normale, senza "HeadlessChrome" e senza la dichiarazione dell'audit, e il browser non si dichiara automatizzato (`navigator.webdriver` falso). Il report lo indica. Confrontando le due esecuzioni ("Confronta con precedente") si vede cosa cambia.
 
 #### Se il banner non viene riconosciuto
 
@@ -295,7 +295,7 @@ Il report descrive sempre l'elemento esatto cliccato (es. `pulsante "Rifiuta tut
 
 **Consent Mode**: i parametri `gcs` e `gcd` delle richieste Google sono tradotti in chiaro (es. `gcs=G101: ad_storage negato, analytics_storage concesso`).
 
-Per ogni sessione registra tutti i cookie (anche HttpOnly), localStorage e sessionStorage di tutti i frame, e tutte le richieste di rete. Ogni elemento viene marcato *prima/terza parte* e con il momento in cui compare: *al caricamento* (nessuna interazione), *dopo lo scroll* (nessuna scelta sul banner) o *dopo la scelta*. Separare lo scroll serve per i banner che lo trattano come consenso. Le prove sono screenshot e file HAR, con hash SHA-256.
+Per ogni sessione registra tutti i cookie (anche HttpOnly), localStorage e sessionStorage di tutti i frame, e tutte le richieste di rete. Ogni elemento viene marcato *prima/terza parte* e con il momento in cui compare: *al caricamento* (nessuna interazione), *dopo lo scroll* (nessuna scelta sul banner) o *dopo la scelta*. Lo scroll si fa come un visitatore, con movimento del mouse e rotella: alcuni siti caricano gli script solo alla prima interazione (es. WordPress con WP Rocket "Delay JS"), e uno scroll fatto solo via script non genera gli eventi della rotella. Il browser invia già al caricamento un movimento del mouse, come quando il cursore di un visitatore è sopra la pagina: gli script che aspettano solo quello compaiono quindi "al caricamento". Separare lo scroll serve per i banner che lo trattano come consenso. Le prove sono screenshot e file HAR, con hash SHA-256.
 
 All'avvio il tool rileva IP e paese di uscita effettivi, passando dallo stesso browser e dallo stesso eventuale proxy, e li confronta con `paeseUscita`. Molti CMP mostrano il banner solo a visitatori da UE/SEE. Con `verificaUscita: blocca` l'esecuzione si ferma se il paese non corrisponde.
 
@@ -428,6 +428,7 @@ I test di integrazione usano siti di prova locali (`test/fixtures/sites/`), uno 
 - banner in shadow DOM e in iframe;
 - rifiuto raggiungibile solo dalle preferenze;
 - tracciamento attivato dallo scroll;
+- script caricati solo alla prima rotellata;
 - vanilla-cookieconsent il cui script non si carica alla prima visita (ripetizione automatica);
 - pagina di verifica anti-bot (Cloudflare);
 - applicazione a pagina singola senza sitemap né link (esplorazione con clic);
@@ -445,7 +446,7 @@ Chromium viene indirizzato al server locale con `--host-resolver-rules`, quindi 
 - **Dati personali**: i valori che somigliano a dati personali (in indirizzi, corpi delle richieste, anteprime di cookie e storage) sono mascherati in rapporto, CSV e `dati.json`; restano interi solo nei file HAR, che sono la registrazione fedele del traffico. I dati di prova dichiarati sono fittizi o concordati e compaiono in chiaro. Le celle dei CSV che Excel leggerebbe come formule sono neutralizzate.
 - **Cosa contengono i HAR**: tutto il traffico del browser di prova, compresi cookie e indirizzo IP di uscita dello strumento. Vanno consegnati solo a chi deve verificare le prove.
 - **Aggiornamento automatico dall'icona**: scarica ed esegue il codice del ramo `main` del repository. Conviene proteggere il ramo su GitHub (modifiche solo tramite pull request) e tenere private le credenziali con cui si accede al repository.
-- **Dichiarazione dello strumento**: per impostazione predefinita lo user agent dichiara l'audit (`ScookieAudit`); l'esecuzione di controllo (`uaNormale`) usa quello di un browser comune, per verificare che il sito non si comporti diversamente.
+- **Dichiarazione dello strumento**: per impostazione predefinita lo user agent dichiara l'audit (`ScookieAudit`); l'esecuzione di controllo (`uaNormale`) usa quello di un browser comune e non si dichiara automatizzata, per verificare che il sito non si comporti diversamente.
 
 ## Licenze
 

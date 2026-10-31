@@ -1,0 +1,21 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Sito J</title></head>
+<body style="min-height:3000px"><h1>Sito J</h1>
+<div id="b" style="position:fixed;bottom:0;left:0;right:0;background:#eee;padding:16px">
+  <p>Usiamo cookie di profilazione previo consenso.</p><button id="no">Rifiuta</button> <button id="ok">Accetta</button>
+</div>
+<script>
+  // Script caricati alla prima interazione, qui solo con la rotella (non con il semplice evento scroll).
+  // Il mousemove non serve a distinguere: Chromium ne invia già uno al caricamento della pagina
+  var ev = ['wheel', 'keydown', 'touchstart'];
+  var fired = false;
+  function load() {
+    if (fired) return;
+    fired = true;
+    ev.forEach(function (e) { window.removeEventListener(e, load); });
+    document.cookie = '_fbp=fb.1.1.42; max-age=7776000; path=/';
+    new Image().src = 'http://pixel.adtest.example:' + location.port + '/tr?j=interazione';
+  }
+  ev.forEach(function (e) { window.addEventListener(e, load, { passive: true }); });
+  document.getElementById('ok').onclick = function () { document.getElementById('b').remove(); };
+  document.getElementById('no').onclick = function () { document.getElementById('b').remove(); };
+</script></body></html>

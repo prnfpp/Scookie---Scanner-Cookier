@@ -72,7 +72,7 @@ export function stageWhen(stages: Stage[]): { when: string; onlyAfterScroll: boo
   return {
     onlyAfterScroll,
     when: onlyAfterScroll
-      ? 'prima di qualsiasi scelta sul banner, ma solo dopo lo scroll della pagina'
+      ? 'prima di qualsiasi scelta sul banner, ma solo dopo lo scroll della pagina e il movimento del mouse'
       : 'prima di qualsiasi scelta sul banner, già al caricamento della pagina',
   };
 }

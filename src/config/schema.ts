@@ -85,7 +85,7 @@ export const configSchema = z
         userAgent: z.string().optional(),
         /**
          * Esecuzione di controllo: user agent come quello di un browser normale (senza "HeadlessChrome" e senza
-         * la dichiarazione dell'audit). Serve a verificare se sistemi anti-bot o verifiche alterano i risultati;
+         * la dichiarazione dell'audit) e navigator.webdriver a false, come in un browser non automatizzato. Serve a verificare se sistemi anti-bot o verifiche alterano i risultati;
          * il report lo indica. Da usare insieme a headless: false.
          */
         uaNormale: z.boolean().default(false),

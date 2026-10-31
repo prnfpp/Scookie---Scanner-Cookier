@@ -12,7 +12,7 @@ export type Phase = 'prima' | 'dopo';
 /**
  * Momento preciso in cui un elemento compare:
  * - caricamento: pagina caricata, nessuna interazione dell'utente;
- * - scroll: dopo lo scroll della pagina, senza alcuna scelta sul banner;
+ * - scroll: dopo lo scroll della pagina (con mouse e rotella), senza alcuna scelta sul banner;
  * - scelta: dopo il click sul banner.
  * Separare lo scroll serve per i banner che (illegittimamente) lo trattano come consenso.
  */
@@ -20,7 +20,7 @@ export type Stage = 'caricamento' | 'scroll' | 'scelta' | 'revoca';
 
 export const STAGE_LABEL: Record<Stage, string> = {
   caricamento: 'al caricamento, senza interazioni',
-  scroll: 'dopo lo scroll della pagina, senza scelta sul banner',
+  scroll: 'dopo lo scroll della pagina e il movimento del mouse, senza scelta sul banner',
   scelta: 'dopo la scelta sul banner',
   revoca: 'dopo la revoca del consenso',
 };
