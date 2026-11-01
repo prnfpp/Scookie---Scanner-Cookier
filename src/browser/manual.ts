@@ -180,14 +180,16 @@ export async function manualJourney(
   const open = new Set<Page>([page]);
   let active = page;
   let extraTabs = 0;
+  const record = (p: Page) => {
+    active = p;
+    const url = maskPii(p.url());
+    if (url === 'about:blank' || !url) return;
+    collector.currentUrl = url;
+    if (pages[pages.length - 1] !== url) pages.push(url);
+  };
   const watch = (p: Page) => {
     p.on('framenavigated', (frame) => {
-      if (frame !== p.mainFrame()) return;
-      active = p;
-      const url = maskPii(frame.url());
-      if (url === 'about:blank') return;
-      collector.currentUrl = url;
-      if (pages[pages.length - 1] !== url) pages.push(url);
+      if (frame === p.mainFrame()) record(p);
     });
     p.on('response', (res) => {
       const req = res.request();
@@ -207,6 +209,9 @@ export async function manualJourney(
     extraTabs++;
     active = p;
     watch(p);
+    // la scheda può aver già caricato la pagina prima di essere osservata
+    record(p);
+    void p.waitForLoadState('domcontentloaded').then(() => !p.isClosed() && active === p && record(p)).catch(() => {});
   };
   context.on('page', onPage);
   // Fotografia periodica di cookie e storage, come dopo ogni pagina nelle sessioni automatiche

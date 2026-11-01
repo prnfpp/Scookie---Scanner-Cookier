@@ -151,6 +151,17 @@ export async function replayJourney(page: Page, collector: Collector, path: Reco
   const onPage = (p: Page) => {
     watch(p);
     cur = p;
+    // la scheda può aver già caricato la pagina prima di essere osservata
+    void p
+      .waitForLoadState('domcontentloaded')
+      .then(() => {
+        const url = maskPii(p.url());
+        if (url && url !== 'about:blank' && pages[pages.length - 1] !== url) {
+          collector.currentUrl = url;
+          pages.push(url);
+        }
+      })
+      .catch(() => {});
   };
   context.on('page', onPage);
   let done = 0;
