@@ -61,13 +61,117 @@ function variants(kind: string, v: string): string[] {
   return [...out].filter((x) => x.length >= 4);
 }
 
-let testData: { kind: string; tipo: TestType; value: string; canon: string; forms: string[] }[] = [];
+let testData: { kind: string; tipo: TestType; value: string; canon: string; forms: string[]; typed?: boolean }[] = [];
 
 /** Dati di prova dell'esecuzione in corso (dalla configurazione). */
 export function setTestData(entries: TestEntry[] | undefined) {
   testData = (entries ?? [])
     .filter((e) => typeof e.valore === 'string' && e.valore.trim().length >= 4)
     .map((e) => ({ kind: e.etichetta?.trim() || e.tipo, tipo: e.tipo, value: e.valore.trim(), canon: canon(e.tipo, e.valore), forms: variants(e.tipo, e.valore) }));
+}
+
+/** Tipo di un valore digitato dall'operatore, dalla sua forma e dal nome o etichetta del campo. */
+function guessType(v: string, rawHint: string): { tipo: TestType; label?: string } | null {
+  // il selettore del campo contiene i nomi degli attributi (es. [name="citta"]): contano solo i valori
+  const hint = rawHint.replace(/\[[\w-]+=/g, '[');
+  if (/^[A-Z0-9._%+-]+@[A-Z0-9-]+(\.[A-Z0-9-]+)*\.[A-Z]{2,}$/i.test(v)) return { tipo: 'email' };
+  if (/^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$|^\d{4}-\d{2}-\d{2}$/.test(v)) return { tipo: 'data', label: /nasc|birth|dob/i.test(hint) ? 'data di nascita' : undefined };
+  if (/^[A-Z]{2}\s?\d{3}\s?[A-Z]{2}$/i.test(v)) return { tipo: 'targa' };
+  if (/^[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]$/i.test(v)) return { tipo: 'codice fiscale' };
+  if (/^\+?[\d\s.-]{8,}$/.test(v) && v.replace(/\D/g, '').length >= 8) return { tipo: 'telefono' };
+  if (/nome|name|cognome|surname/i.test(hint) && /^[\p{L}' -]{2,60}$/u.test(v)) return { tipo: 'nome', label: /cognome|surname|last/i.test(hint) ? 'cognome' : 'nome' };
+  return null;
+}
+
+/**
+ * Valore inserito dall'operatore in un campo durante una navigazione manuale: vale come dato di prova (riconosciuto in
+ * ogni forma e riportato in chiaro), anche se non è stato dichiarato nella configurazione o è stato digitato diverso.
+ * Restituisce il dato aggiunto, o null se il valore non ha la forma di un dato personale o è già noto.
+ */
+export function registerTypedValue(value: string, hint = ''): TestEntry | null {
+  const v = value.trim();
+  if (v.length < 4 || v.length > 80) return null;
+  const g = guessType(v, hint);
+  if (!g) return null;
+  if (testData.some((t) => t.tipo === g.tipo && t.canon === canon(g.tipo, v))) return null;
+  const entry: TestEntry = { tipo: g.tipo, valore: v, ...(g.label ? { etichetta: g.label } : {}) };
+  testData.push({ kind: entry.etichetta ?? entry.tipo, tipo: entry.tipo, value: v, canon: canon(entry.tipo, v), forms: variants(entry.tipo, v), typed: true });
+  return entry;
+}
+
+/** Dati digitati dall'operatore e riconosciuti come dati di prova (non dichiarati nella configurazione). */
+export function typedTestData(): TestEntry[] {
+  return testData.filter((t) => t.typed).map((t) => ({ tipo: t.tipo, valore: t.value, ...(t.kind !== t.tipo ? { etichetta: t.kind } : {}) }));
+}
+
+/** Codice del cognome o del nome nel codice fiscale. */
+function cfPart(word: string, isName: boolean): string {
+  const w = word
+    .normalize('NFD')
+    .replace(/[^A-Za-z]/g, '')
+    .toUpperCase();
+  const cons = w.replace(/[AEIOU]/g, '');
+  const vow = w.replace(/[^AEIOU]/g, '');
+  if (isName && cons.length >= 4) return cons[0] + cons[2] + cons[3];
+  return (cons + vow + 'XXX').slice(0, 3);
+}
+
+/**
+ * Codici fiscali compatibili con i dati di prova (nome, cognome, data di nascita): le prime 11 posizioni (cognome,
+ * nome, anno, mese, giorno; anche per il sesso femminile). Il sito calcola spesso il codice fiscale dai dati inseriti.
+ */
+function cfPrefixesFromTestData(): string[] {
+  const words = testData.filter((t) => t.tipo === 'nome').flatMap((t) => t.value.split(/\s+/)).filter((w) => w.length >= 2);
+  const dates = testData.filter((t) => isDate(t.tipo)).map((t) => canon(t.tipo, t.value)).filter((c) => /^\d{8}$/.test(c));
+  const out: string[] = [];
+  for (const sur of words)
+    for (const nam of words) {
+      if (sur === nam) continue;
+      for (const d of dates) {
+        const day = Number(d.slice(6));
+        const base = cfPart(sur, false) + cfPart(nam, true) + d.slice(2, 4) + 'ABCDEHLMPRST'[Number(d.slice(4, 6)) - 1];
+        out.push(base + String(day).padStart(2, '0'), base + String(day + 40));
+      }
+    }
+  return out;
+}
+
+/** Il codice fiscale è quello calcolato dai dati di prova? */
+export function cfFromTestData(cf: string): boolean {
+  const c = cf.toUpperCase();
+  return cfPrefixesFromTestData().some((p) => c.startsWith(p));
+}
+
+/** Cognomi di prova compatibili con le prime lettere di un codice fiscale mascherato (es. RS••••••3L). */
+export function maskedCfMatchesTestSurname(masked: string): string | null {
+  const head = masked.slice(0, 2).toUpperCase();
+  if (!/^[A-Z]{2}$/.test(head)) return null;
+  for (const t of testData.filter((x) => x.tipo === 'nome'))
+    for (const w of t.value.split(/\s+/)) if (w.length >= 2 && cfPart(w, false).startsWith(head)) return w;
+  return null;
+}
+
+/** Mascheratura senza eccezioni (come nelle rilevazioni in cui il dato non era ancora noto come dato di prova). */
+function rawMask(v: string): string {
+  if (v.includes('@')) {
+    const [user, dom] = v.split('@');
+    return `${user.slice(0, 1)}•••@${dom}`;
+  }
+  if (v.length <= 4) return '•'.repeat(v.length);
+  return `${v.slice(0, 2)}${'•'.repeat(Math.min(6, v.length - 4))}${v.slice(-2)}`;
+}
+
+/**
+ * Valori mascherati in una rilevazione precedente che corrispondono a un dato di prova (dichiarato o digitato
+ * dall'operatore): tornano in chiaro e certi. Serve a rigenerare un rapporto quando i dati di prova in configurazione
+ * non coincidevano con quelli digitati.
+ */
+export function reviveTestHits(hits: PiiHit[]): PiiHit[] {
+  return hits.map((h) => {
+    if (h.test) return h;
+    const t = testData.find((x) => (isDate(x.tipo) ? isDate(h.kind) || h.kind === 'data di nascita' : x.tipo === h.kind || x.kind === h.kind) && x.forms.some((f) => rawMask(f) === h.masked));
+    return t ? { ...h, kind: t.kind, masked: t.value, test: true } : h;
+  });
 }
 
 /** Il valore coincide con un dato di prova dichiarato (in una qualsiasi delle sue forme)? */
@@ -120,6 +224,7 @@ function shapeHits(text: string): (PiiHit & { raw: string })[] {
 export function maskValue(v: string): string {
   // i dati di prova dichiarati sono fittizi o concordati: restano in chiaro
   if (testMatch(v)) return v;
+  if (/^[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]$/i.test(v) && cfFromTestData(v)) return v;
   if (v.includes('@')) {
     const [user, dom] = v.split('@');
     return `${user.slice(0, 1)}•••@${dom}`;
@@ -156,11 +261,14 @@ export function detectPii(...texts: (string | null | undefined)[]): PiiHit[] {
       const v = value.trim();
       const t = testMatch(v);
       if (t) add({ kind: t.kind, param: name, masked: t.value, test: true });
+      else if (p?.kind === 'codice fiscale' && p.value.test(v) && cfFromTestData(v)) add({ kind: 'codice fiscale calcolato dai dati di prova', param: name, masked: v.toUpperCase(), test: true });
       else if (p && p.value.test(v) && (p.kind !== 'email' || isEmail(v)) && (p.kind !== 'codice fiscale' || cfValid(v))) add({ kind: p.kind, param: name, masked: maskValue(v) });
     }
     for (const { raw, ...h } of shapeHits(text)) {
       const t = testMatch(raw);
-      add(t ? { kind: t.kind, param: null, masked: t.value, test: true } : h);
+      if (t) add({ kind: t.kind, param: null, masked: t.value, test: true });
+      else if (h.kind === 'codice fiscale' && cfFromTestData(raw)) add({ kind: 'codice fiscale calcolato dai dati di prova', param: null, masked: raw.toUpperCase(), test: true });
+      else add(h);
     }
     // i dati di prova si cercano anche come valori nudi (es. dentro un JSON o un percorso); i testi liberi
     // (nomi, indirizzi) senza distinguere le maiuscole
@@ -176,7 +284,7 @@ export function detectPii(...texts: (string | null | undefined)[]): PiiHit[] {
   // un dato di prova conta una volta per tipo, nella forma dichiarata, col nome del parametro se c'è
   const tests = [...new Set(hits.filter((h) => h.test).map((h) => h.kind))].map((kind) => {
     const hs = hits.filter((h) => h.test && h.kind === kind);
-    const value = testData.find((t) => t.kind === kind)?.value ?? hs[0].masked;
+    const value = testData.find((t) => t.kind === kind)?.value ?? hs.find((h) => h.masked)?.masked ?? '';
     return { kind, param: hs.find((h) => h.param)?.param ?? null, masked: value, test: true };
   });
   return [...tests, ...other];
@@ -194,6 +302,8 @@ export function maskPii(text: string): string {
   }
   for (const h of shapeHits(decoded)) values.add(h.raw);
   for (const v of values) {
+    // dato di prova (dichiarato o digitato dall'operatore): resta com'è, anche nella forma codificata
+    if (maskValue(v) === v) continue;
     // il valore può comparire in chiaro o codificato (una o due volte)
     for (const form of new Set([v, encodeURIComponent(v), encodeURIComponent(encodeURIComponent(v))])) out = out.split(form).join(maskValue(v));
   }

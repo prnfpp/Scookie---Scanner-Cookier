@@ -2,9 +2,9 @@
 
 /**
  * Scenari: nessuna azione, rifiuta, accetta; personalizza (accetta solo la categoria statistica);
- * revoca (accetta, poi revoca il consenso e rifiuta).
+ * revoca (accetta, poi revoca il consenso e rifiuta); chiudi (chiude il banner con la X, senza scegliere).
  */
-export type ScenarioName = 'nessuna-azione' | 'rifiuta' | 'accetta' | 'personalizza' | 'revoca';
+export type ScenarioName = 'nessuna-azione' | 'rifiuta' | 'accetta' | 'personalizza' | 'revoca' | 'chiudi';
 
 /** Momento rispetto alla scelta sul banner. */
 export type Phase = 'prima' | 'dopo';
@@ -109,6 +109,8 @@ export interface RequestRecord {
   tracker?: { company: string; category: Category };
   /** Parametri di consenso Google (gcs, gcd, npa) se presenti. */
   consentParams?: Record<string, string>;
+  /** Natura della richiesta riconosciuta dallo strumento (es. Session Replay di Dynatrace, segnale di consenso UET). */
+  purpose?: string;
   /** Endpoint di raccolta riconosciuto su un dominio proprio (probabile server-side tagging). */
   serverSide?: string;
   /** Motivo del fallimento, se la richiesta non ha ricevuto risposta (es. net::ERR_TIMED_OUT). */
@@ -137,6 +139,10 @@ export interface InteractionReport {
   bannerVisibleAfter: boolean | null;
   /** Elementi effettivamente cliccati, con testo e tipo (pulsante, link, X di chiusura). */
   clicked?: string[];
+  /** Scenario "chiudi": cosa registra il gestore dopo la X. */
+  closeEffect?: 'rifiuto' | 'consenso' | 'nessuna-scelta' | 'non-verificabile';
+  /** Scenario "chiudi": il banner ricompare alla pagina successiva (la chiusura non è stata ricordata). */
+  bannerOnNextPage?: boolean;
 }
 
 /** Struttura del banner osservata sulla prima pagina (sessione "nessuna azione"). */
@@ -208,11 +214,16 @@ export interface SessionResult {
   /** Prima pagina non raggiungibile (es. connessione assente, computer in stop): la sessione non descrive il sito. */
   unreachable?: string;
   /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
-  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; steps?: import('./browser/replay.js').RecordedStep[] };
+  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; steps?: import('./browser/replay.js').RecordedStep[]; errorPages?: { url: string; status: number }[]; extraTabs?: number };
   /** Sessione automatica che ha rigiocato un percorso registrato in una navigazione manuale. */
   replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string };
   /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */
   bannerAnalysis?: BannerAnalysis;
+  /**
+   * Parte di una sessione attribuita a un altro sito: le pagine visitate (di solito in una navigazione manuale)
+   * erano su questo host, non su quello della sessione di origine. Stesso id e stesse prove della sessione di origine.
+   */
+  attributedFrom?: { session: string; site: string };
   /** Se presente, la navigazione è stata intercettata da un sistema anti-bot: sessione non valida. */
   blocked?: { provider: string; signal: string; url: string };
 }

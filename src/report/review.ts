@@ -1,3 +1,4 @@
+import type { TestEntry } from '../util/pii.js';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -169,6 +170,8 @@ export async function applyReview(runDir: string, opts: { pdf?: boolean } = {}):
     declared: DeclaredSet[];
     comparison: ComparisonRow[];
     findings: Finding[];
+    noteAttribuzione?: string[];
+    datiDigitati?: TestEntry[];
   };
   const m = JSON.parse(readFileSync(join(runDir, 'manifest.json'), 'utf8')) as Manifest;
   const config = configSchema.parse(parse(m.configurazione.contenuto));
@@ -187,6 +190,8 @@ export async function applyReview(runDir: string, opts: { pdf?: boolean } = {}):
     declared: dati.declared,
     comparison: dati.comparison,
     findings: dati.findings,
+    attributionNotes: dati.noteAttribuzione,
+    typedData: dati.datiDigitati,
     files: m.file.filter((f) => f.path.startsWith('evidenze/')),
     normsPath: m.norme.file,
     exit: m.ambiente.uscita,

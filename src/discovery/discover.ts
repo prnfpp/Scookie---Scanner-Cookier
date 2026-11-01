@@ -382,5 +382,9 @@ export async function discoverSite(
   }
   const revokePages = candidates.map((c) => c.url).filter(isRevokeUrl).slice(0, 5);
   if (revokePages.length) notes.push(`Pagina di gestione dei cookie trovata: ${revokePages[0]}`);
+  // Campione molto piccolo (es. la home rimanda al login): il perimetro automatico copre poco del sito
+  if (s.length < 4 && !site.soloPagineExtra) {
+    notes.push(`Campione ridotto: ${s.length === 1 ? '1 pagina' : `${s.length} pagine`}. Le pagine chiave (es. l'inizio del preventivo, i moduli) vanno indicate tra le pagine da includere sempre (pagineExtra).`);
+  }
   return { site: origin, sitemapUrls, found: candidates.length, byType, sample: s, notes, revokePages };
 }

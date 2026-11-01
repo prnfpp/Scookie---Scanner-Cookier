@@ -21,9 +21,11 @@
     var b = document.createElement('div');
     b.id = 'banner';
     b.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#eee;padding:20px;z-index:9999';
-    b.innerHTML = '<p>Questo sito usa cookie per migliorare la tua esperienza.</p><button id="a" style="background:#2e7d32;color:#fff;border:0;padding:12px 28px;font-size:16px">Accetta tutti</button> <a href="#" id="r" style="font-size:11px;color:#777">Rifiuta</a>';
+    b.innerHTML = '<p>Questo sito usa cookie per migliorare la tua esperienza.</p><button id="a" style="background:#2e7d32;color:#fff;border:0;padding:12px 28px;font-size:16px">Accetta tutti</button> <a href="#" id="r" style="font-size:11px;color:#777">Rifiuta</a> <button id="x" aria-label="Chiudi il banner dei cookie" style="position:absolute;top:4px;right:8px;border:0;background:none;font-size:18px">×</button>';
     document.body.appendChild(b);
     b.querySelector('#a').onclick = function () { document.cookie = 'consenso=si; max-age=15552000; path=/'; document.cookie = '_gid=GA1.1.5; max-age=86400; path=/'; b.remove(); };
+    // La X chiude il banner senza salvare nulla: alla pagina successiva il banner ricompare
+    b.querySelector('#x').onclick = function () { b.remove(); };
     b.querySelector('#r').onclick = function (ev) { ev.preventDefault(); document.cookie = 'consenso=no; max-age=15552000; path=/'; b.remove(); load('http://rec.sessiontest.example:' + P + '/rec.js'); };
   }
 })();

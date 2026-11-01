@@ -376,9 +376,32 @@ test('sintesi per causa: un punto per fatto, ordinata per gravità, prova e ripe
   assert.match(items[0].title, /^Dati inseriti nei moduli arrivano a Meta, anche dopo il rifiuto/);
   assert.match(items[1].title, /dichiarati tecnici .*\(Hotjar\): attivi prima della scelta e dopo il rifiuto/);
   assert.deepEqual(items[1].findings.map((f) => f.id), ['C-001', 'C-002', 'C-003']);
-  // TikTok visto in una sola sessione manuale: dopo Hotjar (3 su 3), prima del banner (media)
-  assert.match(items[2].title, /^TikTok: attivo dopo il rifiuto/);
+  // per causa: i tracciamenti dopo il rifiuto di altri fornitori in un punto solo, con l'elenco dei fornitori
+  assert.match(items[2].title, /^Dopo il rifiuto restano attivi: TikTok/);
   assert.match(items[3].title, /^Banner/);
+});
+
+test('sintesi: niente doppioni di fornitore, prove deboli e fatti rari in coda', () => {
+  const mk = (id: string, ruleId: string, subjects: string[], extra: Partial<Finding> = {}): Finding => ({
+    id, ruleId, ruleTitle: ruleId, severity: 'alta', site: 'https://www.a.test/', sites: ['https://www.a.test/'], scenario: null, pageUrl: null,
+    description: 'Categoria: marketing/pubblicità', details: [], evidence: [], norms: [], subjects, headline: `${ruleId} ${subjects.join(',')}`, evidenceLevel: 'raccolta', repeats: { seen: 3, of: 3 }, ...extra,
+  });
+  const items = summaryItems([
+    mk('C-001', 'tecnico-solo-dopo-consenso', ['Bing / Microsoft'], { severity: 'media' }),
+    mk('C-002', 'richiesta-tracker-prima-del-consenso', ['Microsoft']),
+    mk('C-003', 'attivazione-dopo-rifiuto', ['Google'], { headline: 'Dopo il rifiuto, Google continua a ricevere dati di navigazione, con ad_storage negato, cioè senza cookie pubblicitari' }),
+    mk('C-004', 'attivazione-dopo-rifiuto', ['Hotjar'], { evidenceLevel: 'risorsa', severity: 'media' }),
+    mk('C-005', 'attivazione-dopo-rifiuto', ['DoubleClick'], { repeats: { seen: 1, of: 3 } }),
+  ]);
+  // Microsoft compare una sola volta, insieme a "Bing / Microsoft"
+  assert.equal(items.filter((i) => /Microsoft/.test(i.title)).length, 1);
+  const reject = items.find((i) => /^Dopo il rifiuto restano attivi/.test(i.title))!;
+  assert.match(reject.title, /Google \(con ad_storage negato, cioè senza cookie pubblicitari\)/);
+  assert.deepEqual(reject.findings.map((f) => f.id), ['C-003']);
+  // la prova debole e il fatto visto 1 volta su 3 stanno dopo i punti principali
+  const last = items.slice(-2).map((i) => i.title).join(' | ');
+  assert.match(last, /senza raccolta di dati osservata/);
+  assert.match(last, /osservato in 1 su 3/);
 });
 
 test('host dei rilievi: indirizzo o dominio intero (regola sui sottodomini)', () => {

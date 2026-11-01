@@ -220,7 +220,8 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
 
       <div class="card stack" data-s="1">
         <div class="grid2">
-          <label class="f">Committente <span class="hint">nome del cliente, senza versioni</span><input type="text" id="f-cliente" placeholder="Es. Rossi Srl"></label>
+          <label class="f">Cliente, titolare dei siti <span class="hint">nome del cliente, senza versioni</span><input type="text" id="f-cliente" placeholder="Es. Rossi Srl"></label>
+          <label class="f">Committente <span class="hint">facoltativo: chi ha chiesto la verifica, se diverso (es. lo studio legale)</span><input type="text" id="f-committente" placeholder="Es. Studio Legale Bianchi"></label>
           <label class="f">Sottotitolo del rapporto <span class="hint">facoltativo</span><input type="text" id="f-sottotitolo" placeholder="Es. Verifica post-intervento su esempio.it e sottodomini"></label>
           <label class="f" id="file-box">Nome del file <span class="hint">solo lettere, numeri, - e _</span><input type="text" id="f-file" placeholder="rossi"></label>
         </div>
@@ -238,6 +239,7 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
             <label class="check"><input type="checkbox" id="f-sc-accetta" checked><div><b>Accetta</b><span>Cosa si attiva con il consenso</span></div></label>
             <label class="check"><input type="checkbox" id="f-sc-personalizza" checked><div><b>Personalizza</b><span>Solo statistiche: parte altro?</span></div></label>
             <label class="check"><input type="checkbox" id="f-sc-revoca" checked><div><b>Accetta poi revoca</b><span>La revoca ferma i tracciamenti?</span></div></label>
+            <label class="check"><input type="checkbox" id="f-sc-chiudi" checked><div><b>Chiudi con la X</b><span>La X equivale a un rifiuto?</span></div></label>
           </div>
         </div>
         <div class="grid2">
@@ -378,6 +380,7 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
         <label class="f">Istruzioni per chi naviga <textarea class="s-manuale" rows="2" placeholder="Es. compila il modulo (contatti, registrazione, preventivo…) con i dati di prova, fino alla pagina di conferma"></textarea></label>
         <label class="f">Pagina di partenza <span class="hint">facoltativa: un percorso (/contatti) o un indirizzo completo (https://www.esempio.it/)</span><input type="text" class="s-manuale-partenza" placeholder="/contatti"></label>
       </div>
+      <div class="hint-box hidden s-partenza-warn"></div>
       <p class="small muted">La prima volta i tuoi clic e i campi compilati vengono registrati: dalle esecuzioni successive il percorso si rigioca da solo, in ogni ripetizione, senza bisogno di te.</p>
       <div class="hint-box hidden s-rec"></div>
     </div>
@@ -533,7 +536,7 @@ $$('.step').forEach((s) => (s.onclick = () => step(Number(s.dataset.step))));
 $$('[data-go-step]').forEach((b) => (b.onclick = () => step(Number(b.dataset.goStep))));
 
 /* ---------- Modulo <-> dati ---------- */
-const SCENARI = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta'], ['personalizza', '#f-sc-personalizza'], ['revoca', '#f-sc-revoca']];
+const SCENARI = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta'], ['personalizza', '#f-sc-personalizza'], ['revoca', '#f-sc-revoca'], ['chiudi', '#f-sc-chiudi']];
 const lines = (t) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
 const DP_TYPES = [['email', 'Email'], ['telefono', 'Telefono'], ['data', 'Data'], ['nome', 'Nome e cognome'], ['indirizzo', 'Indirizzo'], ['codice fiscale', 'Codice fiscale'], ['targa', 'Targa'], ['altro', 'Altro testo']];
@@ -599,11 +602,26 @@ function addSiteCard(site = {}) {
     const on = q('.s-manuale').value.trim().length > 0;
     q('.s-manual-chip').textContent = on ? 'Attiva' : 'Non attiva';
     q('.s-manual-chip').className = 'chip s-manual-chip' + (on ? ' blue' : '');
+    // Partenza su un altro sito: i fatti osservati lì saranno attribuiti a quel sito, non a questo
+    let warn = '';
+    try {
+      const raw = q('.s-manuale-partenza').value.trim();
+      const siteUrl = q('.s-url').value.trim();
+      if (on && raw && siteUrl) {
+        const full = /^[\w-]+(\.[\w-]+)+(\/|$)/.test(raw) ? 'https://' + raw : raw;
+        const from = new URL(full, siteUrl).hostname.replace(/^www\./, '');
+        const to = new URL(siteUrl).hostname.replace(/^www\./, '');
+        if (from !== to) warn = 'La partenza è su ' + new URL(full, siteUrl).hostname + ', un altro sito: ciò che succede lì sarà attribuito a quel sito, non a ' + new URL(siteUrl).hostname + '. Il percorso deve arrivare su ' + new URL(siteUrl).hostname + ' (il riquadro nel browser lo ricorda).';
+      }
+    } catch {}
+    q('.s-partenza-warn').textContent = warn;
+    q('.s-partenza-warn').classList.toggle('hidden', !warn);
     siteHints(node);
   };
   q('.s-mode').onchange = sync;
   q('.s-url').oninput = sync;
   q('.s-manuale').oninput = sync;
+  q('.s-manuale-partenza').oninput = sync;
   q('.remove').onclick = () => { node.remove(); refreshSummary(); };
   sync();
   $('#sites').appendChild(node);
@@ -625,6 +643,7 @@ function siteHints(node) {
 
 function fillForm(d) {
   $('#f-cliente').value = d.cliente || '';
+  $('#f-committente').value = d.committente || '';
   $('#sites').innerHTML = '';
   for (const s of d.siti || []) addSiteCard(s);
   const c = d.campionamento || {}, sc = d.scenari || {}, br = d.browser || {}, rp = d.report || {};
@@ -651,6 +670,7 @@ function fillForm(d) {
 function readForm() {
   const d = structuredClone(state.data || {});
   d.cliente = $('#f-cliente').value.trim();
+  setOrDelete(d, 'committente', $('#f-committente').value.trim() || undefined);
   if (!d.output) d.output = '../runs';
   d.siti = $$('#sites .site').map((node) => {
     const q = (s) => node.querySelector(s);

@@ -45,7 +45,7 @@ tracker:
   - { dominio: clarity.ms, azienda: Microsoft, categoria: registrazione-sessioni, nota: Microsoft Clarity }
   - { dominio: ads.linkedin.com, azienda: LinkedIn, categoria: marketing, nota: LinkedIn Insight Tag }
   - { dominio: snap.licdn.com, azienda: LinkedIn, categoria: marketing, nota: LinkedIn Insight Tag }
-  - { dominio: platform.linkedin.com, azienda: LinkedIn, categoria: social }
+  - { dominio: platform.linkedin.com, azienda: LinkedIn (contenuti incorporati), categoria: social, nota: "Contenuti LinkedIn incorporati nella pagina (post, pulsanti): contenuto di terze parti, non un pixel pubblicitario" }
 
   # --- Altri social / pubblicità ---
   - { dominio: analytics.tiktok.com, azienda: TikTok, categoria: marketing, nota: TikTok Pixel }
@@ -53,8 +53,9 @@ tracker:
   - { dominio: tiktok.com, azienda: TikTok, categoria: social }
   - { dominio: ads-twitter.com, azienda: X, categoria: marketing }
   - { dominio: analytics.twitter.com, azienda: X, categoria: marketing }
-  - { dominio: platform.twitter.com, azienda: X, categoria: social }
-  - { dominio: syndication.twitter.com, azienda: X, categoria: social, nota: Contenuti X incorporati }
+  - { dominio: platform.twitter.com, azienda: X (contenuti incorporati), categoria: social, nota: "Post di X incorporati nella pagina: contenuto di terze parti, non un pixel pubblicitario" }
+  - { dominio: syndication.twitter.com, azienda: X (contenuti incorporati), categoria: social, nota: "Post di X incorporati nella pagina: contenuto di terze parti, non un pixel pubblicitario" }
+  - { dominio: cdn.syndication.twimg.com, azienda: X (contenuti incorporati), categoria: social, nota: "Post di X incorporati nella pagina" }
   - { dominio: t.co, azienda: X, categoria: marketing }
   - { dominio: ct.pinterest.com, azienda: Pinterest, categoria: marketing, nota: Pinterest Tag }
   - { dominio: tr.snapchat.com, azienda: Snap, categoria: marketing }
@@ -151,6 +152,11 @@ tracker:
   - { dominio: cloudflareinsights.com, azienda: Cloudflare, categoria: statistica, nota: Cloudflare Web Analytics }
 
   # --- Altri fornitori curati ---
+  # --- Chat e assistenza clienti ---
+  - { dominio: mypurecloud.ie, azienda: Genesys, categoria: funzionalita, nota: "Widget di chat Genesys Cloud: contiene a sua volta strumenti del fornitore (es. New Relic)" }
+  - { dominio: mypurecloud.com, azienda: Genesys, categoria: funzionalita, nota: "Widget di chat Genesys Cloud" }
+  - { dominio: mypurecloud.de, azienda: Genesys, categoria: funzionalita, nota: "Widget di chat Genesys Cloud" }
+  - { dominio: pure.cloud, azienda: Genesys, categoria: funzionalita, nota: "Widget di chat Genesys Cloud" }
   - { dominio: dynatrace.com, azienda: Dynatrace, categoria: statistica, nota: "Monitoraggio delle prestazioni (APM)" }
   - { dominio: zenaps.com, azienda: Awin, categoria: marketing }
   - { dominio: dwin1.com, azienda: Awin, categoria: marketing }

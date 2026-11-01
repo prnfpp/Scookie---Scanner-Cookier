@@ -4,7 +4,7 @@ import type { InteractionReport } from '../types.js';
 import { describeElement, frames, waitFor } from './dom.js';
 import { PERSONALIZERS, genericPersonalizer } from './personalize.js';
 import { findRevokeControl } from './revoke.js';
-import { heuristicBannerVisible, heuristicChoose } from './heuristic.js';
+import { TEXTS, clickCandidate, heuristicBannerVisible, heuristicChoose, scan } from './heuristic.js';
 import { hasManual, manualBannerVisible, manualChoose } from './manual.js';
 import { ADAPTERS } from './registry.js';
 import type { CmpAdapter, Choice, ChoiceResult } from './types.js';
@@ -306,4 +306,95 @@ export async function performRevocation(
     }
   }
   return { outcome: 'non-trovata', via: null, how: `${notes.length ? notes.join('; ') : 'nessun link per riaprire le preferenze trovato nella pagina'} e nessuna API del CMP utilizzabile` };
+}
+
+/** Pulsanti X noti dei gestori (solo quelli che sono davvero una X, non "Continua senza accettare"). */
+const KNOWN_CLOSE = ['#hs-eu-close-button', '#hs-banner-close-button', '#onetrust-close-btn-container button', '.cky-banner-btn-close', '.cmplz-close', '#didomi-notice-x-button', '.iubenda-cs-close-btn'];
+
+/**
+ * Scenario "chiudi": si chiude il banner con la X, come fa chi vuole solo toglierlo di mezzo. Si registra cosa
+ * resta nello stato del consenso (rifiuto, consenso o nessuna scelta). Il comportamento dopo la chiusura si confronta
+ * poi con quello dopo il rifiuto e dopo l'accettazione.
+ */
+export async function performClose(
+  page: Page,
+  banner: BannerConfig | undefined,
+  waitAfterMs: number,
+  bannerWaitMs: number,
+  onStart?: () => void,
+): Promise<InteractionReport> {
+  const { adapters, visible, states: before } = await observeBanner(page, banner, bannerWaitMs);
+  const base: InteractionReport = {
+    method: 'nessuno',
+    detectedCmps: adapters.map((a) => a.name),
+    outcome: visible ? 'non-trovato' : 'non-applicabile',
+    layer: null,
+    via: null,
+    detail: visible ? 'nessuna X di chiusura nel banner' : 'nessun banner visibile',
+    verification: 'non-applicabile',
+    verificationDetail: '',
+    consentStateBefore: before,
+    bannerVisibleBefore: visible,
+    bannerVisibleAfter: null,
+  };
+  if (!visible) return base;
+  let label: string | null = null;
+  let method = '';
+  // prima le X note dei gestori, poi quelle riconosciute dal testo o dall'etichetta (×, "Chiudi", "Dismiss cookie banner")
+  for (const sel of KNOWN_CLOSE) {
+    for (const f of frames(page)) {
+      const el = f.locator(sel).first();
+      if (!(await el.isVisible().catch(() => false))) continue;
+      const desc = await describeElement(el);
+      const quoted = /"([^"]+)"/.exec(desc)?.[1]?.trim() ?? '';
+      if (quoted && TEXTS.reject.test(quoted)) continue;
+      onStart?.();
+      await el.click({ timeout: 5000 }).catch(() => el.click({ timeout: 5000, force: true }).catch(() => {}));
+      label = desc;
+      method = 'adattatore';
+      break;
+    }
+    if (label) break;
+  }
+  if (!label) {
+    const c = (await scan(page)).candidates.find((x) => TEXTS.close.test(x.text) && !TEXTS.reject.test(x.text));
+    if (!c) return base;
+    onStart?.();
+    label = await clickCandidate(c);
+    method = 'euristica';
+  }
+  await page.waitForTimeout(waitAfterMs);
+  const after = await readStates(page, adapters);
+  const stillVisible = await bannerVisible(page, adapters, banner).catch(() => false);
+  // Cosa ha registrato il gestore: si legge con le stesse verifiche del rifiuto e dell'accettazione
+  let effect: NonNullable<InteractionReport['closeEffect']> = 'non-verificabile';
+  const notes: string[] = [];
+  for (const a of adapters.filter((x) => x.id !== 'tcf' || adapters.length === 1)) {
+    const asReject = a.checkConsent(after[a.id], 'rifiuta');
+    const asAccept = a.checkConsent(after[a.id], 'accetta');
+    if (asAccept.consistent === true) effect = 'consenso';
+    else if (asReject.consistent === true && effect !== 'consenso') effect = 'rifiuto';
+    else if (asReject.consistent === null && asAccept.consistent === null && effect === 'non-verificabile') effect = 'nessuna-scelta';
+    notes.push(`${a.name}: ${asReject.detail}`);
+  }
+  const effectText: Record<string, string> = {
+    rifiuto: 'il gestore registra un rifiuto',
+    consenso: 'il gestore registra un consenso',
+    'nessuna-scelta': 'il gestore non registra alcuna scelta',
+    'non-verificabile': 'stato del consenso non leggibile',
+  };
+  return {
+    ...base,
+    method: method === 'adattatore' ? 'chiusura-x' : 'euristica',
+    outcome: 'eseguito',
+    layer: 'chiusura-x',
+    via: 'click',
+    clicked: [label],
+    detail: `click su ${label}`,
+    verification: effect === 'non-verificabile' ? 'non-verificabile' : 'verificato',
+    verificationDetail: `${effectText[effect]}${notes.length ? ` (${notes.join('; ')})` : ''}${stillVisible ? '; banner ancora visibile dopo il click' : ''}`,
+    closeEffect: effect,
+    consentStateAfter: after,
+    bannerVisibleAfter: stillVisible,
+  };
 }

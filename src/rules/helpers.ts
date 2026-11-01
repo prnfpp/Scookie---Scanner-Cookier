@@ -42,6 +42,7 @@ export function requestExcerpt(r: RequestRecord, s: SessionResult): Record<strin
     stato: r.status,
     pagina: r.pageUrl,
     ...(r.fromServiceWorker ? { daServiceWorker: true } : {}),
+    ...(r.purpose ? { natura: r.purpose } : {}),
     ...(r.consentParams ? { parametriConsenso: r.consentParams } : {}),
     ...(describeGoogleConsent(r.consentParams) ? { consensoGoogle: describeGoogleConsent(r.consentParams) } : {}),
   };
@@ -124,9 +125,51 @@ export function requestEvidenceLevel(reqs: RequestRecord[]): EvidenceLevel {
  * prima di uno script; la telemetria dello script stesso (host metrics.*) per ultima.
  */
 export function strongestRequest(reqs: RequestRecord[]): RequestRecord {
+  // Dopo una scelta: le richieste nel primo secondo e mezzo sono spesso la registrazione della scelta stessa (es. la
+  // chiamata che salva il rifiuto) e non provano una raccolta successiva; meglio una richiesta su una pagina seguente.
+  const firstPage = reqs.find((r) => r.msFromChoice != null)?.pageUrl;
   const score = (r: RequestRecord) =>
-    (requestEvidenceLevel([r]) === 'raccolta' ? 10 : 0) + (r.method === 'POST' ? 3 : 0) + (r.consentParams ? 1 : 0) - (/^metrics\./.test(r.host) ? 6 : 0) - (r.fromServiceWorker ? 2 : 0);
+    (requestEvidenceLevel([r]) === 'raccolta' ? 10 : 0) +
+    (r.method === 'POST' ? 3 : 0) +
+    (r.consentParams ? 1 : 0) -
+    (/^metrics\./.test(r.host) ? 6 : 0) -
+    (r.fromServiceWorker ? 2 : 0) -
+    (r.msFromChoice != null && r.msFromChoice >= 0 && r.msFromChoice < 1500 ? 8 : 0) +
+    (r.msFromChoice != null && firstPage && r.pageUrl !== firstPage ? 2 : 0) -
+    (uetConsent(r)?.consentOnly ? 4 : 0);
   return reqs.reduce((best, r) => (score(r) > score(best) ? r : best), reqs[0]);
+}
+
+/**
+ * Consent Mode di Microsoft Advertising (UET): asc=G concesso, asc=D negato; evt=consent è il solo segnale di
+ * consenso, senza evento di navigazione.
+ */
+export function uetConsent(r: RequestRecord): { state: 'concesso' | 'negato' | null; consentOnly: boolean } | null {
+  if (!/(^|\.)bat\.bing\.(com|net)$/.test(r.host)) return null;
+  let q: URLSearchParams;
+  try {
+    q = new URL(r.url).searchParams;
+  } catch {
+    return null;
+  }
+  const asc = q.get('asc');
+  const state = asc === 'G' ? 'concesso' : asc === 'D' ? 'negato' : null;
+  if (!state && !q.get('evt')) return null;
+  return { state, consentOnly: q.get('evt') === 'consent' };
+}
+
+/** Segnali di consenso Microsoft UET in un gruppo di richieste, per il dettaglio delle schede. */
+export function uetConsentSummary(reqs: RequestRecord[]): { short: string | null; detail: string | null } {
+  const xs = reqs.map(uetConsent).filter((x): x is NonNullable<ReturnType<typeof uetConsent>> => !!x);
+  if (!xs.length) return { short: null, detail: null };
+  const denied = xs.filter((x) => x.state === 'negato').length;
+  const granted = xs.filter((x) => x.state === 'concesso').length;
+  const unset = xs.length - denied - granted;
+  const only = xs.filter((x) => x.consentOnly).length;
+  const parts = [denied ? `asc=D, consenso negato (${nReq(denied)})` : '', granted ? `asc=G, consenso concesso (${nReq(granted)})` : '', unset ? `senza parametro asc (${nReq(unset)})` : ''].filter(Boolean);
+  const detail = `Consent Mode di Microsoft UET nelle richieste: ${parts.join('; ')}${only ? `; ${only} sono il solo segnale di consenso (evt=consent), senza evento di navigazione` : ''}.`;
+  const short = denied === xs.length ? 'con consenso negato dichiarato (asc=D)' : granted === xs.length ? 'con consenso dichiarato come concesso (asc=G)' : null;
+  return { short, detail };
 }
 
 /**
@@ -190,11 +233,12 @@ export function describeGoogleConsent(params: Record<string, string> | undefined
   const parts: string[] = [];
   const gcs = /^G1([01-])([01-])$/.exec(params.gcs ?? '');
   if (gcs) parts.push(`gcs=${params.gcs}: ad_storage ${GCS[gcs[1]]}, analytics_storage ${GCS[gcs[2]]}`);
-  const gcd = /^1\d?([a-z])\d([a-z])\d([a-z])\d([a-z])/.exec(params.gcd ?? '');
+  // le lettere possono arrivare in maiuscolo (es. 13v3vPv2v5l1): il significato si legge sulla minuscola
+  const gcd = /^1\d?([a-z])\d([a-z])\d([a-z])\d([a-z])/i.exec(params.gcd ?? '');
   if (gcd) {
     const names = ['ad_storage', 'analytics_storage', 'ad_user_data', 'ad_personalization'];
-    parts.push(`gcd=${params.gcd}: ${names.map((n, i) => `${n} ${GCD[gcd[i + 1]] ?? `codice "${gcd[i + 1]}"`}`).join(', ')}`);
-  }
+    parts.push(`gcd=${params.gcd}: ${names.map((n, i) => `${n} ${GCD[gcd[i + 1].toLowerCase()] ?? `codice "${gcd[i + 1]}"`}`).join(', ')}`);
+  } else if (params.gcd) parts.push(`gcd=${params.gcd}: codice in un formato non documentato, da leggere nel file HAR`);
   if (params.npa === '1') parts.push('npa=1: annunci non personalizzati richiesti');
   return parts.length ? parts.join('; ') : null;
 }

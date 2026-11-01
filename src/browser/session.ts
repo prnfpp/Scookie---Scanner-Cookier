@@ -3,7 +3,7 @@ import type { Browser, Page, Response } from 'playwright';
 import type { Classifier } from '../classify/classifier.js';
 import type { AuditConfig, SiteConfig } from '../config/schema.js';
 import { analyzeBanner } from '../cmp/analysis.js';
-import { observeBanner, performChoice, performPersonalize, performRevocation } from '../cmp/interact.js';
+import { bannerVisible, detectCmps, observeBanner, performChoice, performClose, performPersonalize, performRevocation } from '../cmp/interact.js';
 import { NON_TECHNICAL, type BannerAnalysis, type DeclaredItem, type Evidence, type InteractionReport, type ScenarioName, type SessionResult } from '../types.js';
 import { PartyResolver, registrableDomain } from '../util/domains.js';
 import { closeSafely, slug, withTimeout } from '../util/misc.js';
@@ -102,6 +102,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   context.setDefaultTimeout(15000);
   const collector = new Collector(context, new PartyResolver(domain, config.dominiPropri), env.classifier);
   const page = await context.newPage();
+  /** Scheda fotografata: nelle navigazioni manuali può essere un'altra scheda aperta dal sito. */
+  let shotPage = page;
 
   /** Passo in corso: se la sessione si blocca, l'anomalia dice dove. */
   let stage = 'apertura del browser';
@@ -109,7 +111,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     stage = `screenshot "${label}" di ${maskPii(collector.currentUrl)}`;
     const rel = `evidenze/${plan.id}_${slug(label)}.png`;
     try {
-      await page.screenshot({ path: join(env.runDir, rel), timeout: 15000 });
+      await (shotPage.isClosed() ? page : shotPage).screenshot({ path: join(env.runDir, rel), timeout: 15000 });
       screenshots.push({ label, file: rel });
     } catch (e) {
       errors.push(`screenshot "${label}" non riuscito: ${(e as Error).message.split('\n')[0]}`);
@@ -186,7 +188,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let replay: SessionResult['replay'];
   const runReplay = async () => {
     stage = `percorso registrato su ${maskPii(collector.currentUrl)}`;
-    const r = await replayJourney(page, collector, plan.replay!);
+    const { lastPage, ...r } = await replayJourney(page, collector, plan.replay!);
+    shotPage = lastPage;
     replay = { ...r, recordedAt: plan.replay!.savedAt, fromSession: plan.replay!.fromSession };
     env.log?.(`    percorso registrato: ${r.stepsDone}/${r.stepsTotal} passi${r.stoppedAt ? `; interrotto al ${r.stoppedAt}` : ''}`);
     if (r.stoppedAt) errors.push(`percorso registrato interrotto al ${r.stoppedAt}: il sito può essere cambiato, va registrato di nuovo`);
@@ -194,8 +197,11 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   };
   const runManual = async () => {
     env.log?.(`    NAVIGAZIONE MANUALE: nella finestra del browser segui le istruzioni e premi "Ho finito" (massimo ${Math.round(plan.manual!.maxMs / 60000)} minuti).`);
-    manual = await manualJourney(page, collector, plan.manual!, env.manualDriver, env.onManualFinisher);
+    const { lastPage, ...m } = await manualJourney(page, collector, plan.manual!, env.manualDriver, env.onManualFinisher);
+    manual = m;
+    shotPage = lastPage;
     env.log?.(`    navigazione manuale conclusa (${manual.endedBy === 'operatore' ? 'premuto "Ho finito"' : manual.endedBy === 'tempo' ? 'tempo scaduto' : 'finestra chiusa'})`);
+    if (manual.errorPages?.length) errors.push(`navigazione manuale: ${manual.errorPages.length === 1 ? 'una pagina ha' : `${manual.errorPages.length} pagine hanno`} risposto con un errore (${manual.errorPages.slice(0, 3).map((e) => `${e.status} su ${e.url}`).join('; ')}); le pagine restano nel percorso, i fatti osservati lì valgono come quelli delle altre pagine`);
     if (manual.pages.length <= 1 || manual.seconds < 60) {
       const note = `navigazione manuale probabilmente incompleta: conclusa dopo ${manual.seconds} s con ${manual.pages.length === 1 ? 'una sola pagina' : `${manual.pages.length} pagine`} visitate; va rifatta`;
       errors.push(note);
@@ -221,7 +227,17 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
       const obs = await observeBanner(page, banner, bannerWait);
       await shot('1-banner');
       await collector.snapshot(page);
-      if (env.onDeclared) {
+      // L'elenco dichiarato si legge solo dal gestore mostrato sul sito stesso: una navigazione manuale che parte da
+      // un altro sito (es. www per un preventivo su app) mostra il gestore di quell'altro sito.
+      const bare = (h: string) => h.replace(/^www\./, '');
+      const onSite = (() => {
+        try {
+          return bare(new URL(page.url()).hostname) === bare(new URL(plan.site).hostname);
+        } catch {
+          return false;
+        }
+      })();
+      if (env.onDeclared && onSite) {
         for (const a of obs.adapters) {
           const items = a.declared ? await a.declared(page).catch(() => null) : null;
           if (items?.length) {
@@ -261,7 +277,9 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         interaction =
           plan.scenario === 'personalizza'
             ? await performPersonalize(page, banner, p.attesaDopoScelta, bannerWait, mark)
-            : await performChoice(page, plan.scenario === 'rifiuta' ? 'rifiuta' : 'accetta', banner, p.attesaDopoScelta, bannerWait, mark);
+            : plan.scenario === 'chiudi'
+              ? await performClose(page, banner, p.attesaDopoScelta, bannerWait, mark)
+              : await performChoice(page, plan.scenario === 'rifiuta' ? 'rifiuta' : 'accetta', banner, p.attesaDopoScelta, bannerWait, mark);
         if (interaction.outcome === 'eseguito') {
           choiceAt = new Date(collector.choiceEpoch!).toISOString();
           await shot('2-dopo-scelta');
@@ -280,9 +298,15 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         // Stesso percorso in tutti gli scenari con scelta: si ricarica la pagina di partenza e si visitano le stesse
         // pagine nello stesso ordine. Così "dopo il rifiuto", "dopo l'accettazione" e "dopo la revoca" confrontano le stesse pagine.
         const journey = async () => {
-          for (const url of [first, ...rest]) {
-            if (await visit(url)) await settle();
-            else if (blocked) break;
+          for (const [k, url] of [first, ...rest].entries()) {
+            if (await visit(url)) {
+              // Dopo la X: il banner ricompare alla pagina successiva? (la chiusura non viene ricordata)
+              if (k === 0 && plan.scenario === 'chiudi' && interaction.outcome === 'eseguito') {
+                const again = await bannerVisible(page, await detectCmps(page), banner).catch(() => false);
+                interaction = { ...interaction, bannerOnNextPage: again };
+              }
+              await settle();
+            } else if (blocked) break;
           }
         };
         await journey();

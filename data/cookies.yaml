@@ -24,6 +24,12 @@ cookie:
   # --- Google Analytics tramite server di tagging proprio (server-side GTM) ---
   - { nome: "^FPID\\d*$", fornitore: Google, categoria: statistica, nota: "Identificativo first-party di Google Analytics impostato da un server di tagging" }
   - { nome: "^FPGSID$", fornitore: Google, categoria: statistica, nota: "Sessione di Google Analytics impostata da un server di tagging" }
+  - { nome: "^FPLC$", fornitore: Google, categoria: statistica, nota: "Collegamento tra domini di Google Analytics impostato da un server di tagging" }
+  - { nome: "^FPAU$", fornitore: Google Ads, categoria: marketing, nota: "Identificativo di Google Ads (conversion linker) impostato da un server di tagging" }
+  - { nome: "^FPGCL(AW|DC|GB|GS)$", fornitore: Google Ads, categoria: marketing, nota: "Clic pubblicitari di Google impostati da un server di tagging" }
+
+  # --- Chat e assistenza clienti ---
+  - { nome: "^_gcy_chat_ref$", fornitore: Genesys, categoria: funzionalita, nota: "Probabilmente del widget di chat Genesys (pagina di provenienza della chat): da verificare" }
 
   # --- Monitoraggio delle prestazioni (APM): statistica, ma da leggere con la nota ---
   - { nome: "^(dtCookie|dtPC|dtSa|dtLatC|dtValidationCookie|dtDisabled|rxVisitor|rxvt)(.*)?$", fornitore: Dynatrace, categoria: statistica, nota: "Monitoraggio delle prestazioni e degli errori (APM): la qualificazione come statistica o tecnica va valutata" }

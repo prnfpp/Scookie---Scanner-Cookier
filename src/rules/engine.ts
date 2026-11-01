@@ -46,12 +46,11 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
         site: raw.site,
         scenario: raw.scenario,
         pageUrl: raw.pageUrl,
-        description: raw.description,
-        details: raw.details,
+        ...tidy(raw.description, raw.details),
         evidence: raw.evidence,
         requestExcerpt: raw.requestExcerpt,
         evidenceLevel: raw.evidenceLevel,
-        headline: raw.headline,
+        headline: raw.headline?.replace(/\s+/g, ' ').trim(),
         ...(raw.subjects?.length ? { subjects: raw.subjects } : {}),
         sites: [raw.site],
         key: raw.groupKey
@@ -65,6 +64,34 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
   const merged = opts.merge === false ? all.map(({ groupKey: _g, ...f }: Omit<Finding, 'id'> & { groupKey?: string }) => f) : mergeAcrossSites(all as (Omit<Finding, 'id'> & { groupKey?: string })[]);
   merged.sort((a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity) || a.site.localeCompare(b.site));
   return merged.map((f, i) => ({ id: `R-${String(i + 1).padStart(3, '0')}`, ...f }));
+}
+
+/**
+ * Testi delle schede: spazi e a capo copiati dalle pagine (es. "Impostazioni Cookie   🍪") ridotti a uno spazio;
+ * i tentativi falliti prima della scelta riuscita, "(tentativi precedenti: …)", spostati dalla descrizione ai dettagli,
+ * dove non spezzano la frase con parentesi annidate.
+ */
+export function tidy(description: string, details: string[]): { description: string; details: string[] } {
+  const clean = (t: string) => t.replace(/\s+/g, ' ').replace(/\s+([,.;:)])/g, '$1').trim();
+  let text = clean(description);
+  const moved: string[] = [];
+  for (;;) {
+    const i = text.indexOf(' (tentativi precedenti: ');
+    if (i < 0) break;
+    let depth = 0;
+    let end = -1;
+    for (let k = i + 1; k < text.length; k++) {
+      if (text[k] === '(') depth++;
+      else if (text[k] === ')' && --depth === 0) {
+        end = k;
+        break;
+      }
+    }
+    if (end < 0) break;
+    moved.push(`Tentativi prima della scelta riuscita: ${text.slice(i + ' (tentativi precedenti: '.length, end)}`);
+    text = text.slice(0, i) + text.slice(end + 1);
+  }
+  return { description: text, details: [...details.map(clean), ...[...new Set(moved)]] };
 }
 
 const shortHost = (site: string) => {

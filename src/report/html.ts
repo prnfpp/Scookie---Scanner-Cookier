@@ -6,6 +6,8 @@ import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } fro
 import { NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
 import { summaryItems } from './summary.js';
+import { NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
+import type { TestEntry } from '../util/pii.js';
 
 export interface ReportInput {
   config: AuditConfig;
@@ -26,6 +28,10 @@ export interface ReportInput {
   declared: DeclaredSet[];
   comparison: ComparisonRow[];
   findings: Finding[];
+  /** Sessioni divise tra siti (pagine su altri host) ed elenchi dichiarati scartati: vanno tra le anomalie. */
+  attributionNotes?: string[];
+  /** Dati digitati dall'operatore nelle navigazioni manuali, riconosciuti come dati di prova. */
+  typedData?: TestEntry[];
   files: { path: string; sha256: string; bytes: number }[];
   normsPath: string;
   exit: ExitInfo;
@@ -53,6 +59,7 @@ const SCENARIO_TEXT: Record<string, string> = {
   rifiuta: 'dopo il rifiuto',
   personalizza: 'dopo una scelta per categoria',
   revoca: 'dopo la revoca del consenso',
+  chiudi: 'dopo la chiusura del banner con la X',
 };
 const listIt = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`);
 export const fmt = (iso: string) => new Date(iso).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
@@ -131,7 +138,7 @@ export function renderHtml(r: ReportInput): string {
 <title>Rapporto tecnico di verifica – ${esc(config.cliente)}</title><style>${CSS}</style></head><body>
 <h1>Rapporto tecnico di verifica sull'uso di cookie e altri strumenti di tracciamento</h1>
 ${config.report.sottotitolo ? `<p class="subtitle">${esc(config.report.sottotitolo)}</p>` : ''}
-<p class="muted">Committente: ${esc(config.cliente)} · rilevazione del ${esc(fmt(r.startedAt))} · siti: ${esc(sites.map(host).join(', '))} · strumento Scookie ${esc(r.toolVersion)}</p>
+<p class="muted">${config.committente ? `Committente: ${esc(config.committente)} · ` : ''}Titolare dei siti verificati: ${esc(config.cliente)} · rilevazione del ${esc(fmt(r.startedAt))} · siti: ${esc(sites.map(host).join(', '))} · strumento Scookie ${esc(r.toolVersion)}</p>
 ${r.regeneratedAt ? `<p class="muted"><strong>Rapporto rigenerato</strong> il ${esc(fmt(r.regeneratedAt))} con Scookie ${esc(r.toolVersion)}, dai dati raccolti nella rilevazione del ${esc(fmt(r.startedAt))}: le sessioni, le prove e i file di traffico sono quelli originali.</p>` : ''}
 ${r.review ? `<p class="warn"><strong>Rapporto rivisto.</strong> È stata applicata la revisione manuale dei rilievi (file <code>revisione.csv</code>): ${r.findings.filter((f) => reviewOf(f)?.esito === 'confermato').length} confermati, ${excluded.length} esclusi come falso positivo (elencati in fondo alla sezione 3), ${r.findings.filter((f) => !reviewOf(f)?.esito).length} non revisionati. I dati raccolti e le prove non cambiano.</p>` : ''}
 ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.exit.note)}</p>` : ''}
@@ -179,32 +186,45 @@ ${findings.some((f) => (f.sites?.length ?? 1) > 1) ? `<p class="muted">Un riliev
 
   // 2. Perimetro e metodo
   parts.push(`<h2>2. Perimetro e metodo</h2><table class="kv">
-<tr><td>Committente</td><td>${esc(config.cliente)}</td></tr>
+${config.committente ? `<tr><td>Committente</td><td>${esc(config.committente)}</td></tr>` : ''}
+<tr><td>Titolare dei siti verificati</td><td>${esc(config.cliente)}</td></tr>
 <tr><td>Siti</td><td>${esc(config.siti.map((s) => s.url).join(', '))}</td></tr>
 ${r.configFile ? `<tr><td>Configurazione</td><td><code>${esc(r.configFile)}</code>${r.configSha256 ? `<br><span class="muted">impronta SHA-256 ${esc(r.configSha256)}; il contenuto completo è in <code>manifest.json</code></span>` : ''}</td></tr>` : ''}
 <tr><td>Inizio / fine</td><td>${esc(fmt(r.startedAt))} — ${esc(fmt(r.endedAt))}</td></tr>
 <tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}${r.toolCommit ? ` (codice <code>${esc(r.toolCommit)}</code>)` : ''}; browser ${esc(r.browserVersion)} (${config.browser.canale === 'chromium' ? 'Chromium incluso nello strumento' : `${esc(config.browser.canale)} installato sul computer`}, ${config.browser.headless ? 'senza finestra (headless)' : 'con finestra visibile'}${config.browser.headless && r.sessions.some((s) => s.manual) ? '; navigazioni manuali con finestra visibile' : ''})</td></tr>
 <tr><td>User agent</td><td><code>${esc(r.userAgent)}</code>${config.browser.uaNormale ? '<br><span class="muted">Esecuzione di controllo: user agent di un browser comune, senza la dichiarazione dello strumento, e browser che non si dichiara automatizzato (navigator.webdriver falso).</span>' : ''}</td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
-<tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (IP ${esc(r.exit.ip)}, fonte ${esc(r.exit.source)})` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
+<tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (fonte ${esc(r.exit.source)}; l'indirizzo IP è in <code>manifest.json</code>)` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
 <tr><td>Scenari di consenso</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta</td></tr>
 <tr><td>Ripetizioni</td><td>${reps > 1 ? `ogni scenario ripetuto ${reps} volte, ogni volta con un profilo browser nuovo` : 'ogni scenario eseguito una volta, con un profilo browser nuovo'}</td></tr>
-${config.datiDiProva?.length ? `<tr><td>Dati di prova</td><td>Inseriti nei moduli durante le navigazioni manuali, fittizi o concordati con il committente: ${config.datiDiProva.map((t) => `${esc(t.etichetta || t.tipo)} <code>${esc(t.valore)}</code>`).join('; ')}. Nei rilievi sono riportati in chiaro; gli altri valori che somigliano a dati personali sono mascherati.</td></tr>` : ''}
+${config.datiDiProva?.length || r.typedData?.length ? `<tr><td>Dati di prova</td><td>${config.datiDiProva?.length ? `Dichiarati nella configurazione, fittizi o concordati con il committente: ${config.datiDiProva.map((t) => `${esc(t.etichetta || t.tipo)} <code>${esc(t.valore)}</code>`).join('; ')}.` : ''}${r.typedData?.length ? ` Digitati dall'operatore nei moduli durante le navigazioni manuali e registrati dallo strumento${config.datiDiProva?.length ? ' (diversi da quelli dichiarati o in aggiunta)' : ''}: ${r.typedData.map((t) => `${esc(t.etichetta || t.tipo)} <code>${esc(t.valore)}</code>`).join('; ')}.` : ''} Questi valori, e il codice fiscale che il sito ne calcola, sono riconosciuti in ogni forma e riportati in chiaro nei rilievi; gli altri valori che somigliano a dati personali sono mascherati.</td></tr>` : ''}
 <tr><td>Protocollo di osservazione</td><td>Per ogni pagina: caricamento completo, attesa della rete inattiva (max 5 s), attesa fissa di ${config.protocollo.attesaDopoCaricamento} ms${config.protocollo.scroll ? `, movimento del mouse e scroll con la rotella fino a fondo pagina (al massimo 12 passi) e attesa di ${config.protocollo.attesaDopoScroll} ms` : ''}. Sulla prima pagina il banner viene fotografato e l'eventuale scelta avviene <em>prima</em> dello scroll; dopo la scelta si attendono ${config.protocollo.attesaDopoScelta} ms. In tutti gli scenari con scelta il percorso dopo la scelta è lo stesso: si ricarica la pagina di partenza e si visitano le stesse pagine nello stesso ordine; nello scenario di revoca lo stesso percorso si ripete dopo la revoca. Pausa tra sessioni: ${config.protocollo.pausaTraSessioni} ms.</td></tr>
 <tr><td>Registrazioni del traffico</td><td>Un file HAR per sessione, con URL, intestazioni, cookie, tempi e corpi delle richieste. Corpi delle risposte: ${config.report.harContenuti === 'tutti' ? 'tutti' : config.report.harContenuti === 'testo' ? 'solo testuali fino a 512 KB (immagini, font e video omessi)' : 'omessi'}${config.report.harCompressi ? ', e solo per le sessioni citate nei rilievi. File compressi (.har.gz): su Mac un doppio clic restituisce il .har, che si apre negli strumenti per sviluppatori del browser' : ''}.</td></tr>
 <tr><td>Tabella delle regole e delle norme</td><td>${esc(r.normsPath)}</td></tr>
 </table>`);
 
   parts.push('<h3>Pagine e percorsi campionati</h3>');
-  for (const d of r.discovery) {
+  // Siti senza scoperta propria: pagine visitate solo durante una navigazione manuale o un percorso registrato
+  // partiti da un altro sito (attribuite al sito della pagina)
+  const visitedOnly: DiscoveryResult[] = sites
+    .filter((s) => !r.discovery.some((d) => d.site === s))
+    .map((s) => {
+      const from = [...new Set(sessions.filter((x) => x.site === s && x.attributedFrom).map((x) => host(x.attributedFrom!.site)))];
+      return { site: s, sitemapUrls: [], found: 0, byType: {}, sample: [], notes: [`Sito non incluso nella configurazione: pagine visitate durante i percorsi di ${from.join(', ')}. I fatti osservati su queste pagine sono attribuiti a questo sito.`] };
+    });
+  for (const d of [...r.discovery, ...visitedOnly]) {
+    if (!d.sample.length && visitedOnly.includes(d)) {
+      parts.push(`<p><strong>${esc(d.site)}</strong> — ${esc(d.notes[0])}</p>`);
+    } else {
     parts.push(`<p><strong>${esc(d.site)}</strong> — ${d.found} URL scoperte; tipi: ${esc(Object.entries(d.byType).map(([k, v]) => `${k} (${v})`).join(', ') || '—')}</p>
 <table><tr><th>#</th><th>Tipo</th><th>Origine</th><th>URL</th></tr>${d.sample.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.type)}</td><td>${esc(p.source)}</td><td>${esc(p.url)}</td></tr>`).join('')}</table>
 ${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`);
+    }
     // Navigazione manuale dell'operatore: istruzioni, pagine percorse e come si è conclusa
     for (const s of sessions.filter((x) => x.site === d.site && x.manual)) {
       const m = s.manual!;
       const end = m.endedBy === 'operatore' ? "conclusa dall'operatore" : m.endedBy === 'tempo' ? 'interrotta allo scadere del tempo massimo' : 'interrotta: finestra chiusa';
-      parts.push(`<p><strong>Navigazione manuale</strong> — sessione ${esc(s.id)}, scenario "${esc(s.scenario)}", ${end} dopo ${m.seconds} s. Istruzioni date all'operatore: "${esc(m.instructions)}".${m.pages.length <= 1 || m.seconds < 60 ? ' <strong>Probabilmente incompleta</strong> (breve o con una sola pagina): i fatti che ne derivano vanno confermati ripetendola.' : ''}</p>
+      parts.push(`<p><strong>Navigazione manuale</strong> — sessione ${esc(s.id)}, scenario "${esc(s.scenario)}", ${end} dopo ${m.seconds} s. Istruzioni date all'operatore: "${esc(m.instructions)}".${s.attributedFrom ? ` Pagine della navigazione per ${esc(host(s.attributedFrom.site))} che si trovano su questo sito.` : ''}${!s.attributedFrom && (m.pages.length <= 1 || m.seconds < 60) ? ' <strong>Probabilmente incompleta</strong> (breve o con una sola pagina): i fatti che ne derivano vanno confermati ripetendola.' : ''}</p>
 <ol class="muted">${m.pages.map((u) => `<li>${esc(u)}</li>`).join('')}</ol>`);
     }
     // Percorso registrato in una navigazione manuale precedente e rigiocato in automatico
@@ -319,18 +339,26 @@ ${[...third]
   for (const site of sites) {
     const ss = sessions.filter((s) => s.site === site);
     const notDone = (sc: string) => ss.filter((s) => s.scenario === sc && !s.manual && !s.replay && s.interaction.outcome !== 'eseguito' && !s.unreachable && !s.blocked);
-    for (const sc of ['rifiuta', 'accetta', 'personalizza'] as const) {
+    for (const sc of ['rifiuta', 'accetta', 'personalizza', 'chiudi'] as const) {
       const list = notDone(sc);
-      if (list.length) notSeen.push(`${host(site)}: scenario "${sc}" non eseguito in ${list.length} ${list.length === 1 ? 'sessione' : 'sessioni'} (${list[0].interaction.detail.slice(0, 160)}).`);
+      if (!list.length) continue;
+      if (sc === 'personalizza' && list.every((x) => NO_STATS_CATEGORY.test(x.interaction.detail))) {
+        notSeen.push(`${host(site)}: scenario "personalizza" non applicabile: il gestore non ha una categoria statistica separata e rifiutabile (è un fatto della struttura del banner, descritto nella scheda dedicata).`);
+      } else if (sc === 'chiudi' && list.every((x) => x.interaction.outcome === 'non-trovato')) {
+        notSeen.push(`${host(site)}: scenario "chiudi" non applicabile: il banner non ha una X di chiusura.`);
+      } else {
+        notSeen.push(`${host(site)}: scenario "${sc}" non eseguito in ${list.length} ${list.length === 1 ? 'sessione' : 'sessioni'} (${list[0].interaction.detail.replace(/\s+/g, ' ').slice(0, 160)}).`);
+      }
     }
     const rev = ss.filter((s) => s.scenario === 'revoca' && s.revocation && s.revocation.outcome !== 'eseguita');
     if (rev.length) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
-    for (const s of ss.filter((x) => x.manual && (x.manual.pages.length <= 1 || x.manual.seconds < 60))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);
+    for (const s of ss.filter((x) => x.manual && !x.attributedFrom && (x.manual.pages.length <= 1 || x.manual.seconds < 60))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);
     for (const s of ss.filter((x) => x.replay?.stoppedAt)) notSeen.push(`${host(site)}: percorso registrato interrotto in ${s.id} (${s.replay!.stoppedAt}).`);
   }
   const errBy = new Map<string, string[]>();
+  for (const n of r.attributionNotes ?? []) errBy.set(n, []);
   for (const s of sessions) for (const e of new Set(s.errors)) errBy.set(e, [...(errBy.get(e) ?? []), s.id]);
-  const errors = [...errBy].map(([e, ids]) => (ids.length === 1 ? `${ids[0]}: ${e}` : `${e} — in ${ids.length} sessioni (${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''})`));
+  const errors = [...errBy].map(([e, ids]) => (!ids.length ? e : ids.length === 1 ? `${ids[0]}: ${e}` : `${e} — in ${ids.length} sessioni (${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''})`));
   parts.push(`<h2>5. Limiti</h2>
 <h3>Limiti del metodo</h3><ul>${[...LIMITS, ...config.report.noteLimiti].map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
 <h3>Cosa non è stato osservato in questa rilevazione</h3>${notSeen.length ? `<ul>${[...new Set(notSeen)].map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : '<p>Tutti gli scenari previsti sono stati eseguiti su tutti i siti.</p>'}

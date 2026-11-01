@@ -14,7 +14,8 @@ export const TEXTS = {
   preferencesReject: /^(rifiut[ao]( tutt[ioe])?|nega( tutt[ioe])?|reject( all)?|deny( all)?|decline( all)?)$/i,
   preferencesSave:
     /^(salva( e chiudi| e esci)?( le)?( mie)?( preferenze| scelte| impostazioni| selezion[ei])?|conferma( le)?( mie)?( scelte| selezion[ei]| preferenze)?|save( and close| and exit)?( my)?( preferences| settings| choices)?|confirm( my)?( choices| selection)?)$/i,
-  close: /^(×|✕|✖|x|chiudi|close|dismiss)$/i,
+  // anche le etichette per l'accessibilità, es. "Dismiss cookie banner", "Chiudi il banner dei cookie"
+  close: /^(×|✕|✖|✗|x|chiudi|close|dismiss)$|^(chiudi|close|dismiss)\b.{0,40}\b(banner|cookies?|avviso|messaggio|finestra|dialog|popup|notice)$/i,
 };
 
 export interface Candidate {

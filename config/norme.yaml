@@ -52,6 +52,15 @@ regole:
   consent-mode-senza-consenso:
     norme: [art122, eprivacy53, edpb2_2023]
     gravita: media
+  consenso-concesso-dopo-rifiuto:
+    norme: [art122, eprivacy53, garante2021, gdpr4_11, gdpr7]
+    gravita: alta
+  attivazione-dopo-chiusura:
+    norme: [art122, eprivacy53, garante2021, gdpr4_11, gdpr7]
+    gravita: alta
+  esito-chiusura-x:
+    norme: [garante2021]
+    gravita: informativa
   attivazione-dopo-rifiuto:
     norme: [art122, eprivacy53, garante2021, gdpr4_11, gdpr7]
     gravita: alta

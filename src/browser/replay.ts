@@ -4,7 +4,8 @@ import type { Collector } from './collector.js';
 
 /** Un'azione dell'operatore durante la navigazione manuale, registrata per poterla rigiocare. */
 export interface RecordedStep {
-  type: 'click' | 'fill' | 'select' | 'check';
+  /** "indietro": l'operatore è tornato alla pagina precedente (es. dopo una pagina di errore). */
+  type: 'click' | 'fill' | 'select' | 'check' | 'indietro';
   /** Selettore CSS dell'elemento, il più stabile trovato (id, name, data-testid, aria-label, percorso). */
   css: string;
   /** Testo visibile dell'elemento: serve se il selettore non funziona più. */
@@ -71,9 +72,20 @@ export const RECORDER = `(() => {
   const send = (type, el, extra) => {
     if (!el || el.closest(CONSENT)) return;
     try {
-      window.__scookieRec && window.__scookieRec(Object.assign({ type, css: selector(el), text: (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().replace(/\\s+/g, ' ').slice(0, 80), tag: el.tagName.toLowerCase(), url: location.href }, extra || {}));
+      window.__scookieRec && window.__scookieRec(Object.assign({ type, css: selector(el), text: (type === 'click' ? (el.innerText || el.value || el.getAttribute('aria-label') || '') : ((el.labels && el.labels[0] && el.labels[0].innerText) || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '')).trim().replace(/\\s+/g, ' ').slice(0, 80), tag: el.tagName.toLowerCase(), url: location.href }, extra || {}));
     } catch (e) {}
   };
+  // ritorno alla pagina precedente con il pulsante del browser: si registra per rigiocarlo
+  try {
+    const nav = performance.getEntriesByType('navigation')[0];
+    if (nav && nav.type === 'back_forward') {
+      const sendBack = () => { try { window.__scookieRec && window.__scookieRec({ type: 'indietro', css: '', text: '', tag: '', url: location.href }); } catch (e) {} };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sendBack); else sendBack();
+    }
+  } catch (e) {}
+  window.addEventListener('popstate', () => {
+    try { window.__scookieRec && window.__scookieRec({ type: 'indietro', css: '', text: '', tag: '', url: location.href }); } catch (e) {}
+  });
   document.addEventListener('click', (e) => {
     const t = e.target instanceof Element ? e.target.closest(ACTIONABLE) || e.target : null;
     if (!t || !e.isTrusted) return;
@@ -117,22 +129,43 @@ const describe = (s: RecordedStep, i: number) => `passo ${i + 1} (${s.type} su $
  * Rigioca un percorso registrato dall'operatore, dopo la scelta sul banner: stessi clic e stessi valori nei campi
  * (i dati di prova). Così il flusso con i moduli diventa una sessione automatica, ripetibile in ogni esecuzione.
  */
-export async function replayJourney(page: Page, collector: Collector, path: RecordedPath): Promise<ReplayOutcome> {
+export async function replayJourney(page: Page, collector: Collector, path: RecordedPath): Promise<ReplayOutcome & { lastPage: Page }> {
   const started = Date.now();
   const pages: string[] = [maskPii(page.url())];
-  const onNav = (frame: Frame) => {
-    if (frame !== page.mainFrame()) return;
-    const url = maskPii(frame.url());
-    collector.currentUrl = url;
-    if (pages[pages.length - 1] !== url) pages.push(url);
+  const context = page.context();
+  // Le pagine aperte in una nuova scheda (come durante la registrazione) diventano la pagina su cui proseguire
+  let cur = page;
+  const watched = new Set<Page>();
+  const watch = (p: Page) => {
+    if (watched.has(p)) return;
+    watched.add(p);
+    p.on('framenavigated', (frame: Frame) => {
+      if (frame !== p.mainFrame()) return;
+      const url = maskPii(frame.url());
+      if (url === 'about:blank') return;
+      collector.currentUrl = url;
+      if (pages[pages.length - 1] !== url) pages.push(url);
+    });
   };
-  page.on('framenavigated', onNav);
+  watch(page);
+  const onPage = (p: Page) => {
+    watch(p);
+    cur = p;
+  };
+  context.on('page', onPage);
   let done = 0;
   let stoppedAt: string | undefined;
   try {
     for (const [i, step] of path.steps.entries()) {
-      await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
-      const el = await locate(page, step, 15000);
+      if (cur.isClosed()) cur = context.pages().filter((p) => !p.isClosed()).pop() ?? cur;
+      await cur.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+      if (step.type === 'indietro') {
+        await cur.goBack({ timeout: 15000, waitUntil: 'load' }).catch(() => null);
+        done++;
+        await cur.waitForTimeout(700);
+        continue;
+      }
+      const el = await locate(cur, step, 15000);
       if (!el) {
         stoppedAt = `${describe(step, i)}: elemento non trovato`;
         break;
@@ -147,15 +180,15 @@ export async function replayJourney(page: Page, collector: Collector, path: Reco
         break;
       }
       done++;
-      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(700);
-      await collector.snapshot(page).catch(() => {});
+      await cur.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+      await cur.waitForTimeout(700);
+      await collector.snapshot(cur).catch(() => {});
     }
     // l'ultima pagina del percorso resta aperta qualche secondo, come farebbe una persona
-    await page.waitForTimeout(3000);
-    await collector.snapshot(page).catch(() => {});
+    await cur.waitForTimeout(3000).catch(() => {});
+    await collector.snapshot(cur).catch(() => {});
   } finally {
-    page.off('framenavigated', onNav);
+    context.off('page', onPage);
   }
-  return { pages, stepsDone: done, stepsTotal: path.steps.length, ...(stoppedAt ? { stoppedAt } : {}), seconds: Math.round((Date.now() - started) / 1000) };
+  return { pages, stepsDone: done, stepsTotal: path.steps.length, ...(stoppedAt ? { stoppedAt } : {}), seconds: Math.round((Date.now() - started) / 1000), lastPage: cur };
 }

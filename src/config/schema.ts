@@ -68,7 +68,13 @@ const siteSchema = z
 
 export const configSchema = z
   .object({
+    /** Nome del cliente: il titolare dei siti verificati (dà il nome alle cartelle delle esecuzioni). */
     cliente: z.string(),
+    /**
+     * Chi ha commissionato la verifica, se diverso dal titolare dei siti (es. lo studio legale del cliente).
+     * Nel rapporto: "Committente" è questo valore; "Titolare dei siti verificati" è il cliente.
+     */
+    committente: z.string().optional(),
     /** Cartella in cui creare le esecuzioni. */
     output: z.string().default('./runs'),
     browser: z
@@ -167,11 +173,11 @@ export const configSchema = z
          * affidabile); revoca = accetta, poi revoca il consenso dal link nella pagina e rifiuta.
          */
         attivi: z
-          .array(z.enum(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca']))
-          .default(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca']),
+          .array(z.enum(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi']))
+          .default(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi']),
       })
       .strict()
-      .default({ modalita: 'percorso', pagineDopoScelta: 3, ripetizioni: 1, attivi: ['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca'] }),
+      .default({ modalita: 'percorso', pagineDopoScelta: 3, ripetizioni: 1, attivi: ['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi'] }),
     campionamento: z
       .object({
         /** Pagine per tipo nel primo giro di campionamento; se i tipi sono pochi, il campione si completa fino a maxPagine. */
