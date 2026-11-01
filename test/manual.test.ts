@@ -126,6 +126,45 @@ test('riquadro "Ho finito": formattato e cliccabile con CSP restrittiva e finest
   }
 });
 
+test('navigazione manuale: schede aperte dal sito, pagina di errore e ritorno indietro', async () => {
+  const browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext();
+    await ctx.route('http://schede.test/**', (r) => {
+      const u = new URL(r.request().url());
+      if (u.pathname === '/') return r.fulfill({ contentType: 'text/html', body: '<!doctype html><body><a id="nuova" href="/seconda" target="_blank">Apri</a> <a id="rotto" href="/manca">Rotto</a></body>' });
+      if (u.pathname === '/seconda') return r.fulfill({ contentType: 'text/html', body: '<!doctype html><body><h1>Seconda</h1></body>' });
+      return r.fulfill({ status: 404, contentType: 'text/html', body: '<!doctype html><body>404</body>' });
+    });
+    const page = await ctx.newPage();
+    await page.goto('http://schede.test/');
+    const collector = { snapshot: async () => {}, currentUrl: '' } as unknown as Collector;
+    const journey = manualJourney(page, collector, { instructions: 'Prova', maxMs: 30000, siteHost: 'altro.test' });
+    await page.locator('#scookie-operatore').waitFor({ state: 'attached' });
+    // il riquadro avvisa che la pagina non è sul sito del controllo
+    assert.ok(await page.locator('#scookie-operatore >> text=/non su altro\\.test/').count());
+    // pagina sbagliata (404), poi indietro con il pulsante del browser
+    await page.click('#rotto');
+    await page.waitForURL(/manca/);
+    await page.goBack();
+    await page.waitForTimeout(500);
+    // link in una nuova scheda: la navigazione continua lì; chiudere la prima scheda non chiude la sessione
+    const [tab] = await Promise.all([ctx.waitForEvent('page'), page.click('#nuova')]);
+    await tab.waitForLoadState();
+    await page.close();
+    await tab.locator('#scookie-operatore >> text=Ho finito').click({ timeout: 10000 });
+    const out = await journey;
+    assert.equal(out.endedBy, 'operatore');
+    assert.ok(out.pages.some((p) => p.endsWith('/seconda')), out.pages.join(', '));
+    assert.equal(out.extraTabs, 1);
+    assert.deepEqual(out.errorPages?.map((e) => e.status), [404]);
+    assert.ok(out.steps.some((st) => st.type === 'indietro'), JSON.stringify(out.steps));
+    assert.equal(out.lastPage, tab);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('percorso manuale registrato e rigiocato in automatico nella prova successiva', async () => {
   const rec = recordingFile(cfgPath, url('sito-a.test'));
   assert.ok(existsSync(rec), 'percorso salvato accanto alla configurazione');

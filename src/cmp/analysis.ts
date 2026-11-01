@@ -6,7 +6,7 @@ import { findRevokeControl } from './revoke.js';
 import type { CmpAdapter } from './types.js';
 
 const POLICY_TEXT = /cookie|privacy|informativa|policy|trattamento dei dati/i;
-const CLOSE_LIKE = /^(×|✕|✖|x|chiudi|close|dismiss)$/i;
+const CLOSE_LIKE = TEXTS.close;
 
 /** Classifica i pulsanti del primo livello del banner per funzione. */
 function classify(candidates: Candidate[]) {
@@ -181,8 +181,9 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
     };
     const known = KNOWN.flatMap((sel) => Array.from(document.querySelectorAll(sel))).filter(shown);
     const CONSENT_UI = /cookie|consent|onetrust|optanon|\bot-|\bcmp|privacy|gdpr|hs-eu|hs-banner|hs-modal|cky|cmplz|didomi|usercentrics|\buc-|iubenda|cc_div|cc-main|cybot|klaro|tarteaucitron/i;
+    let useKnown = known.length > 0;
     const inConsentUi = (el: Element): boolean => {
-      if (known.length) {
+      if (useKnown) {
         // dentro un contenitore noto (anche attraverso lo shadow DOM)
         for (let n: Node | null = el; n; n = (n as Element).parentElement ?? ((n.getRootNode() as ShadowRoot).host || null)) {
           if (known.includes(n as Element)) return true;
@@ -204,7 +205,9 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
     const all: Element[] = [];
     const walk = (root: Document | ShadowRoot) => {
       // anche interruttori fatti con pulsanti (aria-pressed), come in alcuni banner HubSpot
-      for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"], button[aria-pressed], button[aria-checked]'))) {
+      // e interruttori grafici con solo aria-checked o con classe "toggle"/"switch" focalizzabili (es. preferenze HubSpot)
+      for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"], button[aria-pressed], [aria-checked]:not([role="radio"]):not([role="option"]):not([role="menuitemradio"]), [class*="toggle"][tabindex]:not(:has(input, [role="switch"], [aria-checked])), [class*="switch"][tabindex]:not(:has(input, [role="switch"], [aria-checked]))'))) {
+        if (all.includes(el)) continue;
         // marcature di una lettura precedente: andrebbero a confondersi con quelle nuove
         el.removeAttribute('data-scookie-t');
         all.push(el);
@@ -238,11 +241,19 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
       return '(senza etichetta)';
     };
     // Gli interruttori sono marcati (data-scookie-t) per poterli poi impostare nello scenario "personalizza"
+    // Il pannello delle preferenze può stare fuori dal contenitore noto del banner (es. HubSpot: banner in
+    // #hs-banner-parent, preferenze in un'altra finestra): se lì non c'è nessun interruttore si usa il riconoscimento generico
+    if (useKnown && isMain && !all.some((el) => visible(el) && inConsentUi(el))) useKnown = false;
     const toggles: { label: string; checked: boolean; disabled: boolean; index?: number }[] = all
       .filter((el) => visible(el) && (!isMain || inConsentUi(el)))
       .map((el, index) => {
         const input = el as HTMLInputElement;
-        const checked = input.type === 'checkbox' ? input.checked : el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-pressed') === 'true';
+        const checked =
+          input.type === 'checkbox'
+            ? input.checked
+            : el.hasAttribute('aria-checked') || el.hasAttribute('aria-pressed')
+              ? el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-pressed') === 'true'
+              : /(^|[\s_-])(checked|active|on|enabled|selected)($|[\s_-])/i.test(typeof el.className === 'string' ? el.className : '');
         const disabled = input.disabled || el.getAttribute('aria-disabled') === 'true';
         el.setAttribute('data-scookie-t', String(index));
         return { label: labelOf(el).replace(/\s+/g, ' ').slice(0, 80), checked, disabled, index };

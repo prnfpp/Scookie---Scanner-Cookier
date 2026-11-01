@@ -158,7 +158,12 @@ export async function exploreByClicks(browser: Browser, seeds: string[], opts: E
     await closeSafely(ctx, 20000, 'chiusura contesto di esplorazione');
   }
   if (unreachable.length) notes.push(`Esplorazione: ${unreachable.length} pagine non raggiungibili, es. ${unreachable[0]}`);
-  if (outOfBudget() && !stopped) notes.push(`Esplorazione fermata al limite (${clicks} clic, ${visited.size} pagine, ${Math.round((Date.now() - started) / 1000)} s)`);
+  if (outOfBudget() && !stopped) {
+    const limit = clicks >= opts.maxClicks ? `${opts.maxClicks} clic` : visited.size >= opts.maxPages ? `${opts.maxPages} pagine aperte` : `${Math.round(opts.budgetMs / 1000)} secondi`;
+    notes.push(
+      `Esplorazione fermata al limite di ${limit}: ${clicks} clic, ${visited.size} pagine aperte (comprese quelle già note e di altri sottodomini), ${Math.round((Date.now() - started) / 1000)} s`,
+    );
+  }
   return { urls: [...found].sort(), clicks, notes };
 }
 

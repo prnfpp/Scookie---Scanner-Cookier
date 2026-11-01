@@ -21,10 +21,12 @@ import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult }
 import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
 import { TOOL_COMMIT, TOOL_VERSION } from './version.js';
 import { ProgressTracker, type Progress } from './progress.js';
-import { setTestData } from './util/pii.js';
+import { registerTypedValue, setTestData, typedTestData } from './util/pii.js';
 import { keepAwake } from './util/awake.js';
 import type { RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
+import { attributeByHost, checkDeclared } from './report/attribution.js';
+import { enrichRequests, reclassify } from './classify/enrich.js';
 
 const SEV_ORDER = ['alta', 'media', 'bassa', 'informativa'];
 
@@ -126,7 +128,7 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
         plans.push({ id: rid('nessuna-azione'), site: discovery.site, siteConfig: site, scenario: 'nessuna-azione', pageType: p.type, pages: [p.url], analyzeBanner: k === 0, repeat });
       }
     }
-    const choiceScenarios = (['rifiuta', 'accetta', 'personalizza', 'revoca'] as const).filter((s) => active.has(s));
+    const choiceScenarios = (['rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi'] as const).filter((s) => active.has(s));
     const starts = cfg.scenari.modalita === 'per-pagina' ? sample.map((_, i) => i) : [0];
     for (const i of starts) {
       for (const scenario of choiceScenarios) {
@@ -146,9 +148,7 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
   // Navigazione manuale: una sessione per scenario richiesto, dalla pagina di partenza indicata
   const m = site.navigazioneManuale;
   if (m) {
-    // "www.esempio.it/preventivo" senza https:// è un indirizzo, non un percorso del sito
-    const partenza = m.partenza && /^[\w-]+(\.[\w-]+)+(\/|$)/.test(m.partenza) ? `https://${m.partenza}` : m.partenza;
-    const start = partenza ? new URL(partenza, discovery.site).toString() : sample[0].url;
+    const start = manualStart(m.partenza, discovery.site, sample[0].url);
     // Percorso già registrato in un audit precedente: si rigioca in automatico, in ogni ripetizione
     if (recording?.steps.length) {
       for (let r = 1; r <= reps; r++) {
@@ -175,7 +175,7 @@ export function planSessions(cfg: AuditConfig, discovery: DiscoveryResult, siteI
         scenario,
         pageType: 'navigazione manuale',
         pages: [start],
-        manual: { instructions: m.istruzioni, maxMs: m.maxMinuti * 60000 },
+        manual: { instructions: m.istruzioni, maxMs: m.maxMinuti * 60000, siteHost: host },
       });
     }
   }
@@ -200,6 +200,33 @@ export function recordingFile(configPath: string, siteUrl: string): string {
   return join(dirname(configPath), 'percorsi', `${name}_${new URL(siteUrl).hostname}.json`);
 }
 const recordingPath = (loaded: LoadedConfig, siteUrl: string) => recordingFile(loaded.path, siteUrl);
+
+/** Valori inseriti dall'operatore nei campi (ultimo valore per campo), da mostrare come promemoria. */
+function typedValues(steps: RecordedPath['steps']): string[] {
+  const byField = new Map<string, string>();
+  for (const st of steps) if (st.type === 'fill' && st.value?.trim()) byField.set(st.css, `${st.text && st.text !== st.value ? `${st.text}: ` : ''}${st.value.trim()}`);
+  return [...byField.values()].slice(0, 8);
+}
+
+/** Almeno una delle pagine è sul sito (stesso host, con o senza www)? */
+export function entersSite(urls: string[], siteUrl: string): boolean {
+  const bare = (h: string) => h.replace(/^www\./, '');
+  const own = bare(new URL(siteUrl).hostname);
+  return urls.some((u) => {
+    try {
+      return bare(new URL(u).hostname) === own;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Pagina di partenza della navigazione manuale, come indirizzo completo. */
+export function manualStart(partenza: string | undefined, site: string, fallback: string): string {
+  // "www.esempio.it/preventivo" senza https:// è un indirizzo, non un percorso del sito
+  const p = partenza && /^[\w-]+(\.[\w-]+)+(\/|$)/.test(partenza) ? `https://${partenza}` : partenza;
+  return p ? new URL(p, site).toString() : fallback;
+}
 
 function readRecording(path: string): RecordedPath | null {
   try {
@@ -259,6 +286,11 @@ function compressHars(runDir: string, sessions: SessionResult[], findings: Findi
   const renamed = new Map<string, string>();
   for (const s of sessions) {
     if (!s.har?.endsWith('.har')) continue;
+    // stessa sessione divisa tra due siti (attribuzione per host): il file è già stato compresso
+    if (renamed.has(s.har)) {
+      s.har = renamed.get(s.har)!;
+      continue;
+    }
     const path = join(runDir, s.har);
     if (!existsSync(path)) continue;
     try {
@@ -380,7 +412,23 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
         decl.note = 'Elenco fornito nella configurazione (prevale sulla lettura dal CMP).';
       }
       declared.push(decl);
-      const plans = planSessions(config, d, i, nextId, site.navigazioneManuale ? readRecording(recordingPath(loaded, site.url)) : null);
+      let recording = site.navigazioneManuale ? readRecording(recordingPath(loaded, site.url)) : null;
+      // Percorso registrato che non entra mai nel sito (es. registrato da una navigazione rimasta su www): descriverebbe
+      // un altro sito, non si rigioca e si torna alla navigazione manuale.
+      if (recording && !entersSite([recording.start, ...recording.steps.map((x) => x.url)], site.url)) {
+        log(`  percorso registrato ignorato: non entra mai in ${new URL(site.url).hostname}; la navigazione manuale va rifatta`);
+        d.notes.push(`Percorso registrato in precedenza ignorato: non entrava mai in ${new URL(site.url).hostname}.`);
+        recording = null;
+      }
+      if (site.navigazioneManuale && !recording) {
+        const start = manualStart(site.navigazioneManuale.partenza, site.url, site.url);
+        if (!entersSite([start], site.url)) {
+          const warn = `La navigazione manuale parte da ${new URL(start).hostname}, fuori da ${new URL(site.url).hostname}: i fatti osservati su quelle pagine saranno attribuiti a ${new URL(start).hostname}. Il percorso deve arrivare su ${new URL(site.url).hostname}.`;
+          log(`  ATTENZIONE: ${warn}`);
+          d.notes.push(warn);
+        }
+      }
+      const plans = planSessions(config, d, i, nextId, recording);
       nextId += plans.length;
       jobs.push({ i, site, d, decl, plans, manual: [] });
     }
@@ -422,7 +470,15 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       log(`\nNavigazioni manuali (${manualPlans.length}): si fanno adesso, poi l'audit prosegue da solo.`);
       progress.phase('manuale');
       try {
-        for (const { j, p } of manualPlans) j.manual.push(await exec(j, p));
+        // Le navigazioni successive alla prima riusano gli stessi dati: il riquadro li ricorda all'operatore
+        let previous: string[] = [];
+        for (const { j, p } of manualPlans) {
+          const plan = previous.length && p.manual ? { ...p, manual: { ...p.manual, hint: `Usa gli stessi dati della navigazione precedente: ${previous.join('; ')}.` } } : p;
+          const res = await exec(j, plan);
+          j.manual.push(res);
+          const typed = typedValues(res.manual?.steps ?? []);
+          if (typed.length) previous = typed;
+        }
       } finally {
         // assegnato dentro exec: TypeScript non lo vede
         await (manualBrowser as Browser | null)?.close().catch(() => {});
@@ -432,8 +488,11 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       // La navigazione più completa di ogni sito diventa il percorso registrato: dalla prossima esecuzione si
       // rigioca in automatico, in ogni ripetizione, senza operatore.
       for (const j of jobs) {
-        const best = j.manual.filter((r) => r.manual?.endedBy === 'operatore' && r.manual.steps?.length).sort((a, b) => b.manual!.steps!.length - a.manual!.steps!.length)[0];
-        if (!best) continue;
+        const best = j.manual.filter((r) => r.manual?.endedBy === 'operatore' && r.manual.steps?.length && entersSite(r.manual.pages, j.site.url)).sort((a, b) => b.manual!.steps!.length - a.manual!.steps!.length)[0];
+        if (!best) {
+          if (j.manual.some((r) => r.manual?.steps?.length)) log(`Percorso di ${new URL(j.site.url).hostname} non salvato: la navigazione manuale non è entrata nel sito.`);
+          continue;
+        }
         const rec: RecordedPath = { site: j.site.url, start: j.plans.find((p) => p.manual)!.pages[0], savedAt: new Date().toISOString(), fromSession: best.id, steps: best.manual!.steps! };
         const path = recordingPath(loaded, j.site.url);
         mkdirSync(dirname(path), { recursive: true });
@@ -569,7 +628,26 @@ async function finishRun(
   collected: Collected,
   o: { pdf?: boolean; log: (m: string) => void; progress?: ProgressTracker; regeneratedAt?: string },
 ): Promise<RunResult> {
-  const { startedAt, userAgent, browserVersion, exit, discovery, sessions, discarded, declared } = collected;
+  const { startedAt, userAgent, browserVersion, exit, discovery, discarded } = collected;
+  // I valori digitati dall'operatore nelle navigazioni manuali valgono come dati di prova, anche se in configurazione
+  // ne erano stati dichiarati altri: vengono riconosciuti e riportati in chiaro.
+  for (const s of collected.sessions) for (const st of s.manual?.steps ?? []) if (st.type === 'fill' && st.value) registerTypedValue(st.value, `${st.css} ${st.text}`);
+  try {
+    const extraTrackers: TrackerEntry[] = config.trackerExtra ? Classifier.loadExtraTrackers(loaded.resolvePath(config.trackerExtra)) : [];
+    reclassify(collected.sessions, new Classifier(extraTrackers));
+  } catch (e) {
+    o.log(`Classificazioni non aggiornate (${(e as Error).message.split('\n')[0]}): restano quelle della rilevazione.`);
+  }
+  enrichRequests(collected.sessions);
+  // Ogni fatto appartiene al sito della pagina in cui avviene (es. navigazione manuale partita da www che prosegue
+  // su app): le parti delle sessioni su altri host diventano sessioni di quei siti. L'elenco dichiarato letto dal
+  // gestore di un'altra pagina non vale per il sito.
+  const attributed = attributeByHost(collected.sessions);
+  const sessions = attributed.sessions;
+  const checked = checkDeclared(collected.declared, sessions);
+  const declared = checked.declared;
+  const attributionNotes = [...attributed.notes, ...checked.notes];
+  for (const n of attributionNotes) o.log(`Attribuzione: ${n}`);
   const log = o.log;
   const progress = o.progress ?? new ProgressTracker(() => {}, 0);
   const opts = { pdf: o.pdf };
@@ -634,7 +712,7 @@ async function finishRun(
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
   const endedAt = new Date().toISOString();
 
-  writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ discovery, sessions, sessioniScartate: discarded, declared, comparison, findings }, null, 2));
+  writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ discovery, sessions, sessioniScartate: discarded, declared, comparison, findings, noteAttribuzione: attributionNotes, datiDigitati: typedTestData() }, null, 2));
   const csvs = writeCsvs(runDir, sessions, comparison, findings);
   // Riepilogo leggero per l'interfaccia (l'elenco delle esecuzioni non deve leggere dati.json, che può essere grande)
   const unreachableSites = [...new Set(sessions.filter((s) => s.unreachable).map((s) => s.site))].filter((site) =>
@@ -676,6 +754,8 @@ async function finishRun(
     declared,
     comparison,
     findings,
+    attributionNotes,
+    typedData: typedTestData(),
     files: evidenceFiles,
     normsPath: basename(normsPath),
     exit,

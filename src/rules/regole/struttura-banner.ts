@@ -53,12 +53,15 @@ function prominenceText(p: Prom): { lines: string[]; sentence: string; asymmetri
     ? `"${p.accept.text}" è un ${p.accept.kind}${p.accept.background ? ` con sfondo pieno ${p.accept.background}` : ''}${pos(p.accept)}; ` +
       `"${p.reject.text}" è un ${p.reject.kind}${p.reject.background ? ` con sfondo ${p.reject.background}` : ' senza sfondo'}${pos(p.reject)}` +
       `${d !== null && d > 40 ? `, a ${d} px dal comando di accettazione` : ''}. ` +
-      `La superficie del comando di accettazione è ${fmtNum(ratio)} volte quella del comando di rifiuto (testo ${p.accept.fontSize} px contro ${p.reject.fontSize} px).`
+      `La superficie del comando di accettazione è ${fmtNum(ratio)} volte quella del comando di rifiuto (${p.accept.fontSize === p.reject.fontSize ? `testo della stessa dimensione, ${p.accept.fontSize} px` : `testo ${p.accept.fontSize} px contro ${p.reject.fontSize} px`}).`
     : 'I comandi di accettazione e di rifiuto hanno aspetto e dimensioni simili.';
   return { lines, sentence, asymmetric, ratio };
 }
 
 /** Struttura del banner al primo livello: quali comandi offre, link all'informativa, modo per rivedere la scelta. */
+/** Esito dello scenario "personalizza" quando il gestore non ha una categoria statistica separata e rifiutabile. */
+export const NO_STATS_CATEGORY = /nessuna categoria statistica separata e rifiutabile/;
+
 export const strutturaBanner: Rule = {
   id: 'struttura-banner',
   title: 'Struttura del banner',
@@ -68,6 +71,8 @@ export const strutturaBanner: Rule = {
     return analyses(sessions).map(({ s, a }): RawFinding => {
       const f = a.firstLayer;
       const prom = prominenceText(a.prominence);
+      // Scelta per categoria impossibile per come è configurato il gestore: è un fatto della struttura, non un limite
+      const noStats = sessions.some((x) => x.site === s.site && x.scenario === 'personalizza' && x.interaction.outcome !== 'eseguito' && NO_STATS_CATEGORY.test(x.interaction.detail));
       return {
         site: s.site,
         scenario: s.scenario,
@@ -78,7 +83,10 @@ export const strutturaBanner: Rule = {
           `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura (X) ${f.close.length ? list(f.close) : 'assente'}. ` +
           `Link all'informativa nel banner: ${a.policyLink ? `"${a.policyLink.text}"` : 'non trovato'}. ` +
           `Modo per rivedere la scelta nella pagina: ${a.revokeLink ? `"${a.revokeLink.text}"` : 'non trovato'}.` +
-          (prom.sentence ? ` ${prom.asymmetric ? 'Evidenza dei comandi: vedi la scheda dedicata.' : prom.sentence}` : ''),
+          (prom.sentence ? ` ${prom.asymmetric ? 'Evidenza dei comandi: vedi la scheda dedicata.' : prom.sentence}` : '') +
+          (noStats
+            ? " Non è possibile accettare o rifiutare la sola statistica: nella configurazione del gestore non esiste una categoria statistica separata e rifiutabile (gli strumenti di statistica sono nella categoria sempre attiva). Per questo lo scenario \"personalizza\" non è applicabile."
+            : ''),
         details: [
           `Tutti i comandi rilevati nel banner: ${list(f.all)}`,
           ...prom.lines,

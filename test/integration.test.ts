@@ -61,6 +61,21 @@ test('sito-a: banner sconosciuto gestito con l\'euristica', () => {
   assert.equal(session('sito-a.test', 'accetta').interaction.method, 'euristica');
 });
 
+test('sito-a: chiusura con la X, banner che ricompare, tracciamenti dopo la X', () => {
+  const x = session('sito-a.test', 'chiudi').interaction;
+  assert.equal(x.outcome, 'eseguito');
+  assert.equal(x.layer, 'chiusura-x');
+  assert.match(x.detail, /X di chiusura/);
+  assert.equal(x.bannerOnNextPage, true);
+  const esito = result.findings.find((f) => f.ruleId === 'esito-chiusura-x' && f.site.includes('sito-a.test'))!;
+  assert.ok(esito, 'scheda sulla chiusura con la X');
+  assert.match(esito.description, /il banner ricompare/);
+  assert.ok(result.findings.some((f) => f.ruleId === 'attivazione-dopo-chiusura' && f.site.includes('sito-a.test')));
+  // la struttura del banner riconosce la X dall'etichetta
+  const s = result.findings.find((f) => f.ruleId === 'struttura-banner' && f.site.includes('sito-a.test'));
+  if (s) assert.doesNotMatch(s.description, /chiusura \(X\) assente/);
+});
+
 test('sito-a: campione da robots.txt e sitemap, PDF escluso', () => {
   const pages = result.sessions.filter((s) => s.site.includes('sito-a.test') && s.scenario === 'nessuna-azione').map((s) => s.pages[0]);
   assert.ok(pages.some((p) => p.includes('/prodotti/')));

@@ -1,6 +1,8 @@
-import { attivazioneDopoRifiuto } from './regole/attivazione-dopo-rifiuto.js';
+import { attivazioneDopoChiusura, attivazioneDopoRifiuto } from './regole/attivazione-dopo-rifiuto.js';
+import { esitoChiusuraX } from './regole/chiusura-x.js';
 import { accessoBloccato, bannerAssente, bannerIntermittente, sottodominiDisomogenei } from './regole/banner-e-sottodomini.js';
 import { categoriaIncoerente, dichiaratiNonOsservati, nonDichiarati, tecnicoDopoConsenso } from './regole/confronto-dichiarati.js';
+import { consensoConcessoDopoRifiuto } from './regole/consenso-concesso-dopo-rifiuto.js';
 import { consentModeSenzaConsenso } from './regole/consent-mode-senza-consenso.js';
 import { cookiePrimaDelConsenso } from './regole/cookie-prima-del-consenso.js';
 import { rifiutoNonAlPrimoLivello, sceltaNonVerificata } from './regole/interazione-banner.js';
@@ -18,7 +20,10 @@ export const RULES: Rule[] = [
   cookiePrimaDelConsenso,
   richiestaTrackerPrimaDelConsenso,
   consentModeSenzaConsenso,
+  consensoConcessoDopoRifiuto,
   attivazioneDopoRifiuto,
+  attivazioneDopoChiusura,
+  esitoChiusuraX,
   attivazioneDopoRevoca,
   personalizzazioneNonRispettata,
   esitoRevoca,

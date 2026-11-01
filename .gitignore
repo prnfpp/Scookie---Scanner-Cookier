@@ -12,3 +12,4 @@ clienti/
 
 # Percorso di node registrato dall'installazione dell'icona
 .scookie-env
+.build-check/

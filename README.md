@@ -82,7 +82,7 @@ cp config/esempio.yaml clienti/rossi.yaml
 
 (su Windows al posto di `cp` si usa `copy`). La cartella `clienti/` resta solo sul computer: non viene mai pubblicata su GitHub.
 
-Aprire `clienti/rossi.yaml` con l'editor e modificare almeno `cliente:` e l'elenco `siti:`. **Attenzione ai rientri**: usare spazi (non tabulazioni) e mantenere l'allineamento dell'esempio.
+Aprire `clienti/rossi.yaml` con l'editor e modificare almeno `cliente:` (il titolare dei siti verificati) e l'elenco `siti:`. Se la verifica è commissionata da altri (es. lo studio legale del cliente) indicarlo in `committente:`: il rapporto li distingue. **Attenzione ai rientri**: usare spazi (non tabulazioni) e mantenere l'allineamento dell'esempio.
 
 #### Scegliere il dominio e i sottodomini
 
@@ -160,6 +160,10 @@ Come funziona: il browser si apre in una finestra, il tool esegue la scelta sul 
       maxMinuti: 10                    # poi la sessione si chiude da sola
 ```
 
+**Riquadro, schede, errori.** Il riquadro sta dentro la finestra anche su schermi piccoli: il pulsante "Ho finito" è in alto, il testo scorre, e con i pulsanti **–** e **↕** si riduce a una barra o si sposta in alto se copre il contenuto. Il riquadro dice anche **su quale sito ti trovi**: se la pagina non è il sito del controllo (es. sei ancora su www mentre il sito è app) lo segnala in arancione. Le pagine che il sito apre **in un'altra scheda** fanno parte della stessa navigazione: pagine, azioni e cookie si registrano anche lì, e chiudere una scheda non chiude la sessione (la chiude "Ho finito", il tempo massimo o la chiusura di tutte le schede). Se apri per errore una pagina che non esiste (404) o sbagli strada, **torna indietro** con il pulsante del browser: il ritorno viene registrato e rigiocato; le pagine con errore compaiono tra le anomalie del report, i fatti osservati lì valgono come gli altri.
+
+**Attribuzione per sito.** Ogni cookie e ogni richiesta appartiene al sito della pagina in cui avviene, non al sito della sessione. Se la navigazione parte da un altro sito (es. `partenza: https://www.esempio.it/` per un preventivo su app) i fatti osservati su www sono attribuiti a www, che compare nel report come sito visitato durante il percorso; una navigazione che non entra mai nel sito non lo descrive (il report lo dice e chiede di rifarla). L'interfaccia avvisa quando la partenza è su un altro sito. L'elenco dichiarato si legge solo dal gestore del consenso mostrato sul sito stesso.
+
 **Percorso registrato.** Durante la navigazione manuale il tool registra i tuoi clic e i campi che compili (non le azioni sul banner dei cookie). Alla fine il percorso si salva accanto alla configurazione (`clienti/percorsi/`): **dalle esecuzioni successive si rigioca da solo**, dopo la scelta sul banner, in ogni ripetizione e senza operatore. Così anche il flusso del preventivo risulta "osservato in 3 su 3". Il report dice in quante sessioni il percorso è stato completato; se il sito cambia e un passo non si trova più, la sessione lo segnala. Per rifarlo: nell'interfaccia, scheda del sito, **Registra di nuovo** (oppure si elimina il file in `clienti/percorsi/`).
 
 **Dati di prova.** Indica nella configurazione i dati che inserisci nei moduli (nell'interfaccia: passo Opzioni, "Dati di prova delle navigazioni manuali"):
@@ -173,6 +177,8 @@ datiDiProva:
 ```
 
 Il tool li riconosce in ogni forma (es. la data come `01/01/1990` o `1990-01-01`, anche dentro un indirizzo codificato) come **prova certa** che quei dati arrivano a un terzo, e li riporta in chiaro (sono fittizi o concordati). I valori che soltanto somigliano a dati personali restano mascherati e hanno certezza più bassa.
+
+**Anche i dati che digiti valgono come dati di prova.** Il tool registra i valori che inserisci nei campi durante la navigazione manuale (email, date, targhe, telefoni, codici fiscali e nomi nei campi "nome"/"cognome") e li tratta come dati di prova, anche se in configurazione ne avevi dichiarati altri o non ne avevi dichiarati: così il rapporto li riconosce, li riporta in chiaro e li elenca nel metodo. Riconosce anche il **codice fiscale che il sito calcola** da nome, cognome e data di nascita di prova. Dalla seconda navigazione manuale in poi il riquadro ricorda i dati usati nella prima, da reinserire uguali. Rigenerando il rapporto di una rilevazione passata, i valori mascherati che corrispondono ai dati digitati tornano in chiaro e certi.
 
 Non toccare il banner dei cookie durante la navigazione manuale. **Usa una targa e dati concordati col cliente o palesemente fittizi**: i moduli inviati arrivano davvero al sito, e se il sito li mette negli indirizzi delle pagine possono finire a terze parti (la regola `dati-personali-a-terzi` lo rileva). Nel report e nei CSV i valori compaiono solo mascherati (es. `AB•••CD`); in chiaro restano solo nei file HAR. Nell'interfaccia il campo è nella scheda del sito, sotto le pagine da includere.
 
@@ -221,7 +227,7 @@ L'audit richiede alcuni minuti per sito (circa 3-5 minuti con le impostazioni de
 Ogni esecuzione crea una cartella in `runs/` con data, ora e nome del cliente:
 
 - **`report.html`** (si apre con doppio clic) e **`report.pdf`**: il **Rapporto tecnico di verifica sull'uso di cookie e altri strumenti di tracciamento**, con il sottotitolo indicato nella configurazione (es. "Verifica post-intervento su esempio.it e sottodomini"). Dopo una premessa sulla natura del documento (tecnico e descrittivo, senza valutazioni di conformità né indicazioni correttive) contiene:
-  1. **Sintesi**: i fatti principali, raggruppati per causa e ordinati per priorità di verifica;
+  1. **Sintesi**: i fatti principali, raggruppati per causa (dati dei moduli verso terzi, consenso concesso dopo il rifiuto, strumenti dichiarati tecnici, tracciamenti prima della scelta, dopo il rifiuto, dopo la X, dopo la revoca, banner) con i fornitori coinvolti, e ordinati per priorità di verifica. Le prove deboli (solo script scaricati) e i fatti visti in meno della metà delle ripetizioni stanno in coda, separati;
   2. **Perimetro e metodo**: domini, pagine e percorsi campionati, scenari di consenso, ripetizioni, data, browser, paese di uscita, dati di prova, versione dello strumento e impronta della configurazione;
   3. **Rilievi**: uno per fatto (R-001…), con cosa succede, dove, forza della prova, ripetibilità, prove e norme di riferimento;
   4. **Inventario** di cookie e terze parti, con il confronto con l'elenco dichiarato;
@@ -271,7 +277,7 @@ Alcuni siti grandi bloccano i browser automatici. Il report lo segnala (sessioni
 
 ## Cosa fa (dettaglio tecnico)
 
-Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte a mano e, se servono, esplorazione con clic), ne estrae un campione per tipo e lo visita con un browser pulito in cinque scenari (si possono ridurre con `scenari.attivi`):
+Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte a mano e, se servono, esplorazione con clic), ne estrae un campione per tipo e lo visita con un browser pulito in sei scenari (si possono ridurre con `scenari.attivi`):
 
 | Scenario | Cosa succede |
 | --- | --- |
@@ -279,6 +285,7 @@ Per ogni sito: scopre le pagine (robots.txt, sitemap, link interni, URL aggiunte
 | `rifiuta` | click su "Rifiuta", poi navigazione di altre pagine per vedere se la scelta è rispettata |
 | `accetta` | click su "Accetta", poi navigazione di altre pagine |
 | `personalizza` | dalle preferenze si attiva solo la categoria statistica e si verifica che non partano marketing e simili (adattatori per OneTrust, Cookiebot, vanilla-cookieconsent; per gli altri banner, compreso HubSpot, dall'interfaccia con l'euristica) |
+| `chiudi` | si chiude il banner con la X (non "Continua senza accettare", che è un rifiuto): si registra cosa salva il gestore (rifiuto, consenso o nessuna scelta), se il banner ricompare alla pagina successiva e se dopo la X il sito si comporta come dopo il rifiuto o come dopo l'accettazione. Se il banner non ha una X lo scenario non è applicabile |
 | `revoca` | si accetta, si naviga, poi si riapre il banner dal comando "preferenze cookie" (testo, icona del CMP o link a una pagina come `/preferenze-cookies`, anche trovata nella sitemap) e si rifiuta. Se nessun comando c'è, la revoca è simulata via API del CMP e il report lo dichiara come prova più debole; se dopo la revoca succede lo stesso che dopo il rifiuto, non è contato come fatto nuovo |
 
 **Percorso identico**: in tutti gli scenari, dopo la scelta si ricarica la pagina di partenza e si visitano le stesse pagine, nello stesso ordine. Nella revoca, dopo aver revocato, si rifà lo stesso percorso. Così "dopo il rifiuto", "dopo l'accettazione" e "dopo la revoca" confrontano le stesse pagine. Dopo la revoca si distingue l'**invio residuo** (richieste partite dalla pagina in cui si è revocato, entro pochi istanti: gravità bassa) dalla **nuova raccolta** nelle pagine visitate dopo.
@@ -289,7 +296,7 @@ Il report descrive sempre l'elemento esatto cliccato (es. `pulsante "Rifiuta tut
 
 **Analisi del banner**: pulsanti presenti al primo livello (accetta, rifiuta, preferenze, chiusura), link alla cookie policy, categorie già attive quando si aprono le preferenze (comprese quelle "sempre attive"), presenza di un comando per riaprire le preferenze fuori dal banner (cercato in tutta la pagina; il fondo pagina viene fotografato come prova). Per i comandi di accettazione e rifiuto misura l'**evidenza visiva**, al primo livello e nel pannello delle preferenze: pulsante con sfondo pieno o link, superficie (es. "4,3 volte più grande"), dimensione del testo e posizione nel banner. Il contrasto (formula WCAG) è riportato solo come leggibilità del testo, non come misura di evidenza. Gli interruttori delle preferenze si leggono solo dentro il contenitore del CMP (es. `#onetrust-pc-sdk`), non dai moduli della pagina. Le preferenze vengono aperte a fine sessione, dopo aver fermato la registrazione, quindi non alterano i dati raccolti.
 
-**Classificazione**: un cookie è riconosciuto per nome **e** dominio (es. `sessionId` di Stonly non viene scambiato per quello di Instagram; `__cf_bm` e `cf_clearance` sono cookie tecnici di Cloudflare). Prima si consulta l'elenco curato [`data/cookies.yaml`](data/cookies.yaml), poi Open Cookie Database filtrato per dominio. Un nome sconosciuto scritto sul dominio di un fornitore noto **non** viene attribuito a quel fornitore: resta "da valutare", con il fornitore del dominio come indizio (es. una chiave di Cloudflare dentro il lettore Vimeo). I percorsi `/cdn-cgi/` di Cloudflare (verifica anti-bot) sono tecnici su qualsiasi sito. Una terza parte sconosciuta contattata prima della scelta è segnalata con gravità media.
+**Classificazione**: un cookie è riconosciuto per nome **e** dominio (es. `sessionId` di Stonly non viene scambiato per quello di Instagram; `__cf_bm` e `cf_clearance` sono cookie tecnici di Cloudflare). Prima si consulta l'elenco curato [`data/cookies.yaml`](data/cookies.yaml), poi Open Cookie Database filtrato per dominio. Un nome sconosciuto scritto sul dominio di un fornitore noto **non** viene attribuito a quel fornitore: resta "da valutare", con il fornitore del dominio come indizio (es. una chiave di Cloudflare dentro il lettore Vimeo). I percorsi `/cdn-cgi/` di Cloudflare (verifica anti-bot) sono tecnici su qualsiasi sito. Alcune richieste si riconoscono dall'indirizzo: l'invio del **Session Replay di Dynatrace** (`contentType=sr…`, registrazione della sessione), l'agente **New Relic caricato dal widget di chat Genesys** (`ref=apps.mypurecloud…`), il **Consent Mode di Microsoft UET** (`evt=consent`, `asc=D` negato / `asc=G` concesso), i **contenuti incorporati** di X e LinkedIn (post, distinti dai pixel pubblicitari). Le classificazioni si riapplicano anche quando si rigenera il rapporto di una rilevazione passata. Una terza parte sconosciuta contattata prima della scelta è segnalata con gravità media.
 
 **Consent Mode nella sintesi**: per le richieste a Google il titolo dice se avvengono con `ad_storage` negato (senza cookie pubblicitari) o senza alcun segnale di consenso (Consent Mode non impostato). Per i cookie prima della scelta dice se il sito li dichiara "sempre attivi" o non li dichiara.
 
@@ -383,6 +390,9 @@ Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Coo
 | `tecnico-solo-dopo-consenso` | elementi dichiarati **solo** tecnici "sempre attivi" che compaiono solo dopo l'accettazione (es. Dynatrace); non scatta se l'elemento è dichiarato anche in una categoria soggetta a consenso |
 | `evidenza-asimmetrica` | al primo livello o nelle preferenze "Accetta" e "Rifiuta" hanno forma diversa (pulsante pieno contro link) o superficie molto diversa |
 | `dati-personali-a-terzi` | targa, data di nascita, email, codice fiscale o telefono negli indirizzi o nei corpi delle richieste verso terze parti. Certezza alta (gravità alta) se coincidono con i `datiDiProva`; media se trovati per nome del parametro; bassa se somigliano solo per forma. L'invio di un modulo al servizio che lo gestisce (es. HubSpot Forms) è informativo; le email pubblicate dal sito stesso e le PEC non contano |
+| `consenso-concesso-dopo-rifiuto` | dopo un rifiuto eseguito, richieste a Google che dichiarano il consenso pubblicitario come concesso (gcs=G11x, o gcd con ad_storage concesso): il fornitore riceve un segnale opposto alla scelta |
+| `attivazione-dopo-chiusura` | dopo la chiusura del banner con la X, cookie non tecnici o richieste di tracciamento (non scatta se la X registra un consenso) |
+| `esito-chiusura-x` | cosa registra la X, se il banner ricompare e se il sito si comporta come dopo il rifiuto o come dopo l'accettazione |
 | `revoca-non-trovata` | nessun link o pulsante per riaprire le preferenze fuori dal banner |
 | `link-informativa-assente` | nessun link alla cookie policy nel banner |
 | `personalizzazione-non-rispettata` | accettata solo la statistica, ma partono marketing o altre categorie |

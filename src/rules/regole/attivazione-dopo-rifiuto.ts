@@ -1,16 +1,26 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { choiceHow, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence } from '../helpers.js';
+import { choiceHow, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
-/** Dopo "Rifiuta": nuovi cookie non tecnici o richieste a tracker, anche nelle pagine successive. */
-export const attivazioneDopoRifiuto: Rule = {
-  id: 'attivazione-dopo-rifiuto',
-  title: 'Tracciamenti attivi dopo il rifiuto',
+/** Testi della regola per lo scenario: rifiuto o chiusura del banner con la X. */
+const WORDS = {
+  rifiuta: { after: 'Dopo il rifiuto', how: (h: string) => `eseguito ${h}` },
+  chiudi: { after: 'Dopo la chiusura del banner con la X', how: (h: string) => `eseguita ${h}` },
+};
+
+/** Dopo "Rifiuta" (o dopo la X): nuovi cookie non tecnici o richieste a tracker, anche nelle pagine successive. */
+function afterChoice(scenario: 'rifiuta' | 'chiudi', id: string, title: string): Rule {
+  const w = WORDS[scenario];
+  return {
+  id,
+  title,
   defaultSeverity: 'alta',
   defaultNorms: ['art122', 'eprivacy53', 'garante2021', 'gdpr4_11', 'gdpr7'],
   evaluate({ sessions }) {
     const out: RawFinding[] = [];
-    for (const s of sessions.filter((x) => x.scenario === 'rifiuta' && x.interaction.outcome === 'eseguito')) {
+    // Se la X registra un consenso, i tracciamenti dopo la chiusura sono quelli del consenso: li descrive la scheda
+    // sull'esito della chiusura, non questa
+    for (const s of sessions.filter((x) => x.scenario === scenario && x.interaction.outcome === 'eseguito' && x.interaction.closeEffect !== 'consenso')) {
       // Lo stesso cookie già scritto prima della scelta (nella sessione, con altro dominio o percorso, o nella
       // sessione senza azione dello stesso sito): dopo il rifiuto è un aggiornamento, non un identificativo nuovo.
       const preSame = new Set(s.cookies.filter((c) => c.phase === 'prima').map((c) => c.name));
@@ -37,7 +47,8 @@ export const attivazioneDopoRifiuto: Rule = {
         const sample = rs.length ? strongestRequest(rs) : undefined;
         const consent = sample ? describeGoogleConsent(sample.consentParams) : null;
         const summary = googleConsentSummary(rs);
-        const consentShort = summary.short;
+        const uet = uetConsentSummary(rs);
+        const consentShort = summary.short ?? uet.short;
         out.push({
           site: s.site,
           scenario: s.scenario,
@@ -46,11 +57,11 @@ export const attivazioneDopoRifiuto: Rule = {
           evidenceLevel: level,
           subjects: [key],
           groupKey: `${key}|${cat}`,
-          headline: `Dopo il rifiuto, ${key} continua a ${cs.length ? 'scrivere identificativi nel browser' : level === 'raccolta' ? 'ricevere dati di navigazione' : 'essere caricato dal sito'}${!cs.length && consentShort ? `, ${consentShort}` : ''}`,
+          headline: `${w.after}, ${key} continua a ${cs.length ? 'scrivere identificativi nel browser' : level === 'raccolta' ? 'ricevere dati di navigazione' : 'essere caricato dal sito'}${!cs.length && consentShort ? `, ${consentShort}` : ''}`,
           description:
-            `Dopo il rifiuto (eseguito ${choiceHow(s.interaction)}), per ${key} (${CATEGORY_LABEL[cat!]}) ${parts.join(' e ')}.` +
+            `${w.after} (${w.how(choiceHow(s.interaction))}), per ${key} (${CATEGORY_LABEL[cat!]}) ${parts.join(' e ')}.` +
             (cs.length && cs.every((c) => preSame.has(c.name))
-              ? ' Gli stessi cookie erano già presenti prima della scelta: dopo il rifiuto continuano a essere scritti o aggiornati, non sono identificativi nuovi.'
+              ? ` Gli stessi cookie erano già presenti prima della scelta: ${w.after.toLowerCase()} continuano a essere scritti o aggiornati, non sono identificativi nuovi.`
               : ''),
           details: [
             `Pagine in cui si osserva: ${pages.join(', ')}`,
@@ -59,6 +70,8 @@ export const attivazioneDopoRifiuto: Rule = {
             ...(sample ? [`Richiesta di esempio: ${sample.msFromChoice} ms dopo la scelta — ${sample.url.slice(0, 200)}`] : []),
             ...(consent ? [`Consenso Google dichiarato nella richiesta di esempio: ${consent}${sample?.fromServiceWorker ? ' (richiesta inviata da un service worker del sito)' : ''}`] : []),
             ...(summary.detail ? [summary.detail] : []),
+            ...(uet.detail ? [uet.detail] : []),
+            ...[...new Set(rs.map((x) => x.purpose).filter(Boolean))].map((x) => `Natura delle richieste: ${x}`),
           ],
           evidence: sessionEvidence(s, ['2-dopo-scelta', '3-fine']),
           requestExcerpt: sample ? requestExcerpt(sample, s) : undefined,
@@ -68,3 +81,7 @@ export const attivazioneDopoRifiuto: Rule = {
     return out;
   },
 };
+}
+
+export const attivazioneDopoRifiuto = afterChoice('rifiuta', 'attivazione-dopo-rifiuto', 'Tracciamenti attivi dopo il rifiuto');
+export const attivazioneDopoChiusura = afterChoice('chiudi', 'attivazione-dopo-chiusura', 'Tracciamenti attivi dopo la chiusura del banner con la X');
