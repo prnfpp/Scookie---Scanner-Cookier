@@ -55,6 +55,8 @@ export function launchOptions(cfg: AuditConfig, headless = cfg.browser.headless)
     // bloccherebbe le letture di robots.txt e sitemap fatte dal documento fittizio (vedi discovery).
     args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`, '--disable-features=LocalNetworkAccessChecks');
   }
+  // Esecuzione di controllo: navigator.webdriver resta false, come in un browser comune
+  if (cfg.browser.uaNormale) args.push('--disable-blink-features=AutomationControlled');
   return {
     headless,
     args,

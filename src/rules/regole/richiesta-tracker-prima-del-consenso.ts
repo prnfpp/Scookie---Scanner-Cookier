@@ -50,7 +50,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
           `Richiesta di esempio: ${firstAtLoad.method} ${firstAtLoad.url.slice(0, 200)}`,
           ...(consent ? [`Consenso Google dichiarato nella richiesta di esempio: ${consent}${firstAtLoad.fromServiceWorker ? ' (richiesta inviata da un service worker del sito)' : ''}`] : []),
           ...(summary.detail ? [summary.detail] : []),
-          `Al caricamento: ${reqs.filter((x) => x.stage === 'caricamento').length}; solo dopo lo scroll: ${reqs.filter((x) => x.stage === 'scroll').length}`,
+          `Al caricamento: ${reqs.filter((x) => x.stage === 'caricamento').length}; solo dopo lo scroll e il movimento del mouse: ${reqs.filter((x) => x.stage === 'scroll').length}`,
           `Pagine: ${pages.slice(0, 10).join(', ')}`,
           `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`,
         ],
