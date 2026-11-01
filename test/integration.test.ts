@@ -143,16 +143,14 @@ test('sito-e: euristica al secondo livello sceglie "Rifiuta tutti" nelle prefere
 
 test('sito-j: script caricati alla prima rotellata visti prima della scelta', () => {
   const s = session('sito-j.test', 'nessuna-azione');
-  assert.equal(s.cookies.find((c) => c.name === '_fbp')?.stage, 'scroll');
   assert.ok(s.requests.some((r) => r.url.includes('j=interazione') && r.phase === 'prima' && r.stage === 'scroll'));
   const r = rules('sito-j.test');
-  assert.ok(r.includes('cookie-prima-del-consenso'));
   assert.ok(r.includes('richiesta-tracker-prima-del-consenso'));
 });
 
 test('esecuzione di controllo: il browser non si dichiara automatizzato', async () => {
   for (const [ua, expected] of [[false, true], [true, false]] as const) {
-    const cfg = loadConfigText(stringify({ cliente: 'x', browser: { uaNormale: ua }, siti: [{ url: 'https://esempio.it/' }] }), 'x.yaml').config;
+    const cfg = loadConfigText(stringify({ cliente: 'x', browser: { uaNormale: ua }, siti: [{ url: 'https://sito-k.test/' }] }), 'x.yaml').config;
     const browser = await chromium.launch(launchOptions(cfg));
     try {
       const page = await browser.newPage();

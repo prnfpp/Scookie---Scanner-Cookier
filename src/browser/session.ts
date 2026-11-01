@@ -53,7 +53,7 @@ const DEFAULT_BANNER_WAIT = 6000;
 /**
  * Scorre la pagina a passi come un visitatore: movimento del mouse e rotella reali (eventi mousemove e wheel),
  * non solo lo scroll via script, che genera solo l'evento scroll. Alcuni siti caricano gli script alla prima
- * interazione e li attivano anche con la rotella (es. "Delay JS" di WP Rocket, Perfmatters). Se la rotella non
+ * interazione e li attivano anche con la rotella (es. plugin di ottimizzazione che ritardano gli script). Se la rotella non
  * sposta la pagina (cursore su un riquadro scorrevole, scroll bloccato) si scorre via script. Alla fine torna in cima.
  */
 async function scrollPage(page: Page) {
