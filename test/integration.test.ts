@@ -91,9 +91,11 @@ test('sito-a: tracciamenti prima della scelta e dopo il rifiuto', () => {
   assert.ok(r.includes('cookie-prima-del-consenso'), 'cookie _ga prima della scelta');
   assert.ok(r.includes('richiesta-tracker-prima-del-consenso'), 'pixel AdTest prima della scelta');
   assert.ok(r.includes('consent-mode-senza-consenso'), 'ping gcs=G100');
-  const after = result.findings.find((f) => f.site.includes('sito-a.test') && f.ruleId === 'attivazione-dopo-rifiuto');
+  const afterAll = result.findings.filter((f) => f.site.includes('sito-a.test') && f.ruleId === 'attivazione-dopo-rifiuto');
+  const after = afterAll.find((f) => /SessionTest|Hotjar/.test(f.description));
   assert.ok(after, 'registrazione sessioni dopo il rifiuto');
-  assert.match(after.description, /SessionTest|Hotjar/);
+  // il sito riscrive _ga a ogni pagina anche dopo il rifiuto: cookie già presente e rinnovato, è un'attività dopo la scelta
+  assert.ok(afterAll.some((f) => /riscritto 1 cookie già presente.*\(_ga\)/.test(f.description)), afterAll.map((f) => f.description).join(' | '));
   const rej = session('sito-a.test', 'rifiuta');
   assert.ok(rej.cookies.some((c) => c.name === '_hjSessionUser_1' && c.phase === 'dopo'));
   assert.ok(rej.pages.length >= 3, 'navigazione di altre pagine dopo la scelta');
@@ -106,7 +108,11 @@ test('www.sito-b: adattatore OneTrust, rifiuto solo al secondo livello, stato ve
   assert.equal(r.layer, 'secondo-livello');
   assert.equal(r.verification, 'verificato');
   assert.ok(rules('www.sito-b.test').includes('rifiuto-non-al-primo-livello'));
-  assert.ok(!rules('www.sito-b.test').includes('attivazione-dopo-rifiuto'));
+  // Hotjar (dichiarato necessario) riscrive il suo cookie a ogni pagina anche dopo il rifiuto: unico fatto dopo la scelta,
+  // nessun cookie nuovo né richiesta a tracker
+  const afterReject = result.findings.filter((f) => f.site.includes('www.sito-b.test') && f.ruleId === 'attivazione-dopo-rifiuto');
+  assert.deepEqual(afterReject.map((f) => f.subjects), [['Hotjar']]);
+  assert.match(afterReject[0].description, /riscritto 1 cookie già presente prima della scelta.*_hjSessionUser_42/);
   assert.equal(session('www.sito-b.test', 'accetta').interaction.verification, 'verificato');
 });
 
@@ -296,7 +302,9 @@ test('scenario revoca: link nel footer e cookie rimasti; sito senza modo di revo
   assert.equal(b.revocation?.outcome, 'eseguita');
   assert.match(b.revocation!.how, /Impostazioni cookie/);
   assert.ok(b.revocation!.remaining.some((c) => c.startsWith('_ga')));
-  assert.ok(!rules('www.sito-b.test').includes('attivazione-dopo-revoca'));
+  // dopo la revoca si ripete solo il comportamento del rifiuto (cookie Hotjar riscritto): accorpato, priorità bassa
+  const afterRevoke = result.findings.filter((f) => f.ruleId === 'attivazione-dopo-revoca' && f.site.includes('www.sito-b.test'));
+  assert.ok(afterRevoke.every((f) => f.severity === 'bassa' && /si comporta come dopo il rifiuto/.test(f.headline ?? '')), afterRevoke.map((f) => f.headline).join(' | '));
   assert.ok(result.findings.some((f) => f.ruleId === 'esito-revoca' && f.site.includes('www.sito-b.test')));
   const a = session('sito-a.test', 'revoca');
   assert.equal(a.revocation?.outcome, 'non-trovata');

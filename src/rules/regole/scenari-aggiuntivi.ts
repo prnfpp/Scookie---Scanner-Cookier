@@ -36,7 +36,7 @@ export const attivazioneDopoRevoca: Rule = {
         const newC = cs.filter((c) => cookieActivity(c, 'revoca') === 'nuovo');
         const again = cs.filter((c) => cookieActivity(c, 'revoca') === 'rinnovato');
         if (newC.length) parts.push(`${newC.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${newC.length} cookie`} (${newC.map((c) => c.name).join(', ')})`);
-        if (again.length) parts.push(`${again.length === 1 ? 'viene riscritto 1 cookie' : `vengono riscritti ${again.length} cookie`} già presenti, con scadenza o valore aggiornati (${again.map((c) => c.name).join(', ')})`);
+        if (again.length) parts.push(`${again.length === 1 ? 'viene riscritto 1 cookie già presente' : `vengono riscritti ${again.length} cookie già presenti`}, con scadenza o valore aggiornati (${again.map((c) => c.name).join(', ')})`);
         if (fresh.length) parts.push(`sulle pagine visitate dopo la revoca ${fresh.length === 1 ? 'parte' : 'partono'} ${nReq(fresh.length)} a ${hostsSummary(fresh)}`);
         if (residual.length) {
           const first = Math.min(...residual.map((r) => r.msFromRevoke ?? Infinity));

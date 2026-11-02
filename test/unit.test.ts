@@ -291,7 +291,7 @@ test('revisione manuale: modulo, precompilazione dalla revisione precedente, rep
   assert.equal(readReview(a)!.get('r1|vimeo|a.test')!.esito, 'falso positivo');
   const r = await applyReview(a, { pdf: false });
   const html = readFileSync(r.html, 'utf8');
-  assert.match(html, /Rapporto rivisto\.<\/strong>.*1 confermati, 1 esclusi come falso positivo/);
+  assert.match(html, /Rapporto rivisto\.<\/strong>.*1 confermato, 1 escluso come falso positivo/);
   assert.match(html, /Rilievi esclusi dopo la revisione manuale/);
   assert.match(html, /challenge Cloudflare, non Vimeo/);
   assert.ok(existsSync(join(a, 'revisione-applicata.json')));
