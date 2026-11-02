@@ -170,3 +170,21 @@ test('fix 8: testi senza errori di concordanza né elenchi vuoti dopo i due punt
   assert.doesNotMatch(html, /: \(/, 'elenco vuoto prima di una parentesi');
   assert.doesNotMatch(html, /anche: —|anche: \(|attivi: \(/);
 });
+
+test('fix 6: con "rigenera" le rilevazioni precedenti si riattribuiscono dal frame registrato nel HAR', async () => {
+  const { reattributeFromHar } = await import('../src/browser/har-frames.js');
+  const rej = structuredClone(session('rifiuta'));
+  const second = rej.pages.find((p) => /chi-siamo/.test(p))!;
+  // come una rilevazione fatta con la 0.1.0: nessuna marcatura e l'evento d'uscita attribuito alla pagina successiva
+  const moved = rej.requests.filter((r) => r.sentOnExit && /ev=uscita/.test(r.url));
+  assert.ok(moved.length);
+  for (const r of rej.requests) delete r.sentOnExit;
+  for (const r of moved) r.pageUrl = second;
+  const n = reattributeFromHar(result.runDir, [rej]);
+  assert.ok((n.get(rej.id) ?? 0) >= 1);
+  const last = moved.at(-1)!;
+  assert.equal(last.pageUrl, rej.pages[0]);
+  assert.equal(last.sentOnExit, true);
+  // le richieste della pagina principale non si toccano
+  assert.ok(rej.requests.filter((r) => /matomo\.php/.test(r.url)).every((r) => !r.sentOnExit));
+});

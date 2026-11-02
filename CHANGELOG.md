@@ -48,8 +48,9 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   verso cui si sta navigando. Le richieste partite da un documento che si sta lasciando (tra l'inizio della navigazione
   e il commit della nuova pagina, o da un frame già staccato) sono marcate `sentOnExit` ("inviata all'uscita"):
   restano attribuite alla pagina che ospita il contenuto e i rilievi le elencano a parte ("Invii all'uscita dalla
-  pagina"). `richieste.csv` ha la colonna `inviata_all_uscita`. Vale per le nuove rilevazioni: quelle già raccolte
-  non contengono il frame di origine.
+  pagina"). `richieste.csv` ha la colonna `inviata_all_uscita`. Per le rilevazioni già raccolte, `rigenera` ricostruisce
+  il frame di origine dal campo `_frameref` del file HAR e riattribuisce le richieste degli iframe partite all'uscita
+  dalla pagina che li ospitava (quelle del frame principale restano come registrate).
 - **Domini non classificati (R-008).** `data/trackers.yaml`: accessiBe (`acsbapp.com`, `acswapp.com`) come widget di
   accessibilità di terza parte, categoria funzionalità, con nota "da valutare se raccoglie dati"; Google Calendar
   appuntamenti (`calendar.google.com` solo per `/calendar/appointments/`, `calendar-pa.clients6.google.com`) come

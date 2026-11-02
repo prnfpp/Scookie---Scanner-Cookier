@@ -27,6 +27,7 @@ import type { RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
 import { attributeByHost, checkDeclared } from './report/attribution.js';
 import { enrichRequests, reclassify } from './classify/enrich.js';
+import { reattributeFromHar } from './browser/har-frames.js';
 import { nWords, plural } from './util/text.js';
 
 const SEV_ORDER = ['alta', 'media', 'bassa', 'informativa'];
@@ -640,6 +641,17 @@ async function finishRun(
     o.log(`Classificazioni non aggiornate (${(e as Error).message.split('\n')[0]}): restano quelle della rilevazione.`);
   }
   enrichRequests(collected.sessions);
+  // Rilevazioni raccolte prima della 0.1.1: le richieste degli iframe partite all'uscita da una pagina si riattribuiscono
+  // alla pagina che li ospitava, con il frame di origine registrato nel file HAR
+  if (o.regeneratedAt) {
+    try {
+      const moved = reattributeFromHar(runDir, collected.sessions);
+      const total = [...moved.values()].reduce((a, b) => a + b, 0);
+      if (total) o.log(`Attribuzione dal file HAR: ${total === 1 ? '1 richiesta di un iframe riattribuita' : `${total} richieste di iframe riattribuite`} alla pagina che li ospitava (inviate all'uscita), in ${moved.size === 1 ? '1 sessione' : `${moved.size} sessioni`}.`);
+    } catch (e) {
+      o.log(`Attribuzione dal file HAR non eseguita (${(e as Error).message.split('\n')[0]}): restano le pagine della rilevazione.`);
+    }
+  }
   // Ogni fatto appartiene al sito della pagina in cui avviene (es. navigazione manuale partita da www che prosegue
   // su app): le parti delle sessioni su altri host diventano sessioni di quei siti. L'elenco dichiarato letto dal
   // gestore di un'altra pagina non vale per il sito.
