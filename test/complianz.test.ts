@@ -162,3 +162,11 @@ test('fix 6: evento inviato dal video all\'uscita attribuito alla pagina che lo 
   assert.doesNotMatch(pagesLine, /chi-siamo/);
   assert.ok(f.details.some((d) => /^Invii all'uscita dalla pagina/.test(d)), f.details.join(' | '));
 });
+
+test('fix 8: testi senza errori di concordanza né elenchi vuoti dopo i due punti', () => {
+  const html = readFileSync(join(result.runDir, 'report.html'), 'utf8').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  assert.doesNotMatch(html, /\b1 (sessioni|categorie|rilievi|elementi|richieste|voci|chiavi|domini)\b/);
+  assert.doesNotMatch(html, /\b1 categoria risulta già attive|attiva e modificabili/);
+  assert.doesNotMatch(html, /: \(/, 'elenco vuoto prima di una parentesi');
+  assert.doesNotMatch(html, /anche: —|anche: \(|attivi: \(/);
+});

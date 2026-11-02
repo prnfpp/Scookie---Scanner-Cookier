@@ -8,6 +8,7 @@ import { repeatsText } from './repeats.js';
 import { summaryItems } from './summary.js';
 import { NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
 import type { TestEntry } from '../util/pii.js';
+import { nWords, plural } from '../util/text.js';
 
 export interface ReportInput {
   config: AuditConfig;
@@ -140,7 +141,7 @@ export function renderHtml(r: ReportInput): string {
 ${config.report.sottotitolo ? `<p class="subtitle">${esc(config.report.sottotitolo)}</p>` : ''}
 <p class="muted">${config.committente ? `Committente: ${esc(config.committente)} · ` : ''}Titolare dei siti verificati: ${esc(config.cliente)} · rilevazione del ${esc(fmt(r.startedAt))} · siti: ${esc(sites.map(host).join(', '))} · strumento Scookie ${esc(r.toolVersion)}</p>
 ${r.regeneratedAt ? `<p class="muted"><strong>Rapporto rigenerato</strong> il ${esc(fmt(r.regeneratedAt))} con Scookie ${esc(r.toolVersion)}, dai dati raccolti nella rilevazione del ${esc(fmt(r.startedAt))}: le sessioni, le prove e i file di traffico sono quelli originali.</p>` : ''}
-${r.review ? `<p class="warn"><strong>Rapporto rivisto.</strong> È stata applicata la revisione manuale dei rilievi (file <code>revisione.csv</code>): ${r.findings.filter((f) => reviewOf(f)?.esito === 'confermato').length} confermati, ${excluded.length} esclusi come falso positivo (elencati in fondo alla sezione 3), ${r.findings.filter((f) => !reviewOf(f)?.esito).length} non revisionati. I dati raccolti e le prove non cambiano.</p>` : ''}
+${r.review ? `<p class="warn"><strong>Rapporto rivisto.</strong> È stata applicata la revisione manuale dei rilievi (file <code>revisione.csv</code>): ${nWords(r.findings.filter((f) => reviewOf(f)?.esito === 'confermato').length, 'confermato', 'confermati')}, ${nWords(excluded.length, 'escluso', 'esclusi')} come falso positivo (elencati in fondo alla sezione 3), ${nWords(r.findings.filter((f) => !reviewOf(f)?.esito).length, 'non revisionato', 'non revisionati')}. I dati raccolti e le prove non cambiano.</p>` : ''}
 ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.exit.note)}</p>` : ''}
 <h2>Natura del documento</h2>
 <p>Il rapporto documenta, con metodo tecnico ripetibile, il comportamento dei siti indicati rispetto alle scelte dell'utente sul banner di consenso: quali cookie, archivi locali e comunicazioni verso terze parti vengono attivati ${esc(listIt(config.scenari.attivi.map((a) => SCENARIO_TEXT[a] ?? a)))}. Confronta quanto osservato con quanto dichiarato nel banner e nella cookie policy, e segnala gli elementi che meritano verifica, ciascuno con le relative prove (screenshot, registrazioni del traffico, dati grezzi) e i riferimenti normativi pertinenti.</p>
@@ -172,9 +173,9 @@ ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.e
   parts.push(`<h2>1. Sintesi</h2>
 ${top.length ? `<p>I fatti principali, raggruppati per causa e ordinati per priorità di verifica, forza della prova e ripetibilità. I rilievi che derivano dallo stesso fatto sono riuniti in un punto; il dettaglio e le prove sono nei rilievi indicati.</p>
 <ol>${top.map((i) => `<li>${esc(i.title)} <span class="muted">(${esc(i.hosts.join(', '))}${i.repeats ? ` · ${esc(i.repeats)}` : ''})</span> — ${sevBadge(i.severity)} ${i.findings.map((f) => `<a href="#${f.id}">${f.id}</a>`).join(', ')}</li>`).join('')}</ol>` : '<p>Nessun rilievo con priorità di verifica alta o media.</p>'}
-${findings.length > inTop.size ? `<p class="muted">Altri ${findings.length - inTop.size} rilievi, di priorità minore o di contesto, sono nella sezione 3.</p>` : ''}
+${findings.length > inTop.size ? `<p class="muted">${findings.length - inTop.size === 1 ? 'Un altro rilievo, di priorità minore o di contesto, è nella sezione 3.' : `Altri ${findings.length - inTop.size} rilievi, di priorità minore o di contesto, sono nella sezione 3.`}</p>` : ''}
 ${blockedSites.length ? `<p class="warn"><strong>Accesso intercettato.</strong> Su ${esc(blockedSites.join(', '))} la navigazione è stata intercettata da un sistema anti-bot: le sessioni coinvolte non sono valide e non sono state usate per i rilievi.</p>` : ''}
-${unreachable.length ? `<p class="warn"><strong>Pagine non caricate.</strong> ${unreachable.length} sessioni non hanno potuto caricare il sito (${esc(unreachableSites.join(', '))}), per esempio per connessione assente o computer in stop: non sono valide e non sono state usate per i rilievi.${allUnreachable.length ? ` Per ${esc(allUnreachable.join(', '))} non ci sono dati: il rapporto non descrive ${allUnreachable.length === 1 ? 'questo sito' : 'questi siti'}.` : ''}</p>` : ''}
+${unreachable.length ? `<p class="warn"><strong>Pagine non caricate.</strong> ${plural(unreachable.length, '1 sessione non ha potuto caricare il sito', `${unreachable.length} sessioni non hanno potuto caricare il sito`)} (${esc(unreachableSites.join(', '))}), per esempio per connessione assente o computer in stop: ${plural(unreachable.length, 'non è valida e non è stata usata', 'non sono valide e non sono state usate')} per i rilievi.${allUnreachable.length ? ` Per ${esc(allUnreachable.join(', '))} non ci sono dati: il rapporto non descrive ${allUnreachable.length === 1 ? 'questo sito' : 'questi siti'}.` : ''}</p>` : ''}
 <h3>Rilievi per sito e priorità di verifica</h3>
 <table><tr><th>Sito / dominio</th>${SEV.map((s) => `<th>${sevBadge(s)}</th>`).join('')}<th>Totale</th></tr>
 ${[...bySite].map(([site, fs]) => `<tr><td>${esc(site)}</td>${SEV.map((s) => `<td>${fs.filter((f) => f.severity === s).length}</td>`).join('')}<td>${fs.length}</td></tr>`).join('')}</table>
@@ -232,7 +233,7 @@ ${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`)
     if (replays.length) {
       const rp = replays[0].replay!;
       const ok = replays.filter((x) => !x.replay!.stoppedAt).length;
-      parts.push(`<p><strong>Percorso registrato</strong> — registrato il ${esc(new Date(rp.recordedAt).toLocaleDateString('it-IT'))} (sessione ${esc(rp.fromSession)}, ${rp.stepsTotal} azioni dell'operatore) e rigiocato in automatico dopo la scelta in ${replays.length} sessioni: completo in ${ok} su ${replays.length}.${ok < replays.length ? ` Interruzioni: ${esc([...new Set(replays.filter((x) => x.replay!.stoppedAt).map((x) => x.replay!.stoppedAt!))].join('; '))}.` : ''}</p>
+      parts.push(`<p><strong>Percorso registrato</strong> — registrato il ${esc(new Date(rp.recordedAt).toLocaleDateString('it-IT'))} (sessione ${esc(rp.fromSession)}, ${rp.stepsTotal} azioni dell'operatore) e rigiocato in automatico dopo la scelta in ${nWords(replays.length, 'sessione', 'sessioni')}: completo in ${ok} su ${replays.length}.${ok < replays.length ? ` Interruzioni: ${esc([...new Set(replays.filter((x) => x.replay!.stoppedAt).map((x) => x.replay!.stoppedAt!))].join('; '))}.` : ''}</p>
 <ol class="muted">${rp.pages.map((u) => `<li>${esc(u)}</li>`).join('')}</ol>`);
     }
   }

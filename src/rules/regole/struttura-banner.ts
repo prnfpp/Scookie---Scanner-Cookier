@@ -1,6 +1,7 @@
 import type { BannerAnalysis, CommandLook, SessionResult } from '../../types.js';
 import { sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+import { nWords, plural } from '../../util/text.js';
 
 const analyses = (sessions: SessionResult[]) =>
   sessions.filter((s) => s.bannerAnalysis?.bannerVisible).map((s) => ({ s, a: s.bannerAnalysis as BannerAnalysis }));
@@ -143,8 +144,8 @@ export const categoriePreattivate: Rule = {
         scenario: s.scenario,
         pageUrl: s.pages[0],
         groupKey: on.map((t) => t.label).join('|'),
-        headline: `Nel secondo livello del banner ${on.length === 1 ? '1 categoria risulta' : `${on.length} categorie risultano`} già attive prima di qualsiasi scelta`,
-        description: `Aprendo le preferenze (${a.preferences!.via}) prima di qualsiasi scelta, ${on.length === 1 ? 'la categoria' : 'le categorie'} ${on.map((t) => `"${t.label}"`).join(', ')} ${on.length === 1 ? 'risulta già attiva' : 'risultano già attive'} e modificabili.`,
+        headline: `Nel secondo livello del banner ${nWords(on.length, 'categoria risulta già attiva', 'categorie risultano già attive')} prima di qualsiasi scelta`,
+        description: `Aprendo le preferenze (${a.preferences!.via}) prima di qualsiasi scelta, ${plural(on.length, 'la categoria', 'le categorie')} ${on.map((t) => `"${t.label}"`).join(', ')} ${plural(on.length, 'risulta già attiva e modificabile', 'risultano già attive e modificabili')}.`,
         details: a.preferences!.toggles.map((t) => `${t.label}: ${t.checked ? 'attiva' : 'non attiva'}${t.disabled ? ' (non modificabile)' : ''}`),
         evidence: sessionEvidence(s, ['4-preferenze']).filter((e) => !e.file.endsWith('.har')),
       });

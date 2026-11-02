@@ -1,5 +1,6 @@
 import type { Finding, Severity } from '../types.js';
 import { repeatsShort } from './repeats.js';
+import { labelled } from '../util/text.js';
 
 const SEV: Record<Severity, number> = { alta: 3, media: 2, bassa: 1, informativa: 0 };
 const STRENGTH: Record<string, number> = { identificativo: 2, raccolta: 1.5, risorsa: 0.5 };
@@ -115,7 +116,7 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
   if (pii.length) {
     const certain = pii.filter((f) => f.severity === 'alta');
     const base = certain.length ? certain : pii;
-    const who = vendors(base);
+    const who = vendors(base) || 'terze parti';
     const afterReject = base.some((f) => /dopo il rifiuto/.test(f.headline ?? ''));
     const replay = base.some((f) => /Session Replay/.test(f.headline ?? ''));
     items.push(
@@ -153,24 +154,25 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
   const mkt = before.filter(isMkt);
   if (mkt.length) {
     const ids = mkt.some((f) => f.evidenceLevel === 'identificativo');
-    items.push(item(`${ids ? 'Identificativi e raccolte pubblicitarie' : 'Raccolte pubblicitarie'} prima di qualsiasi scelta sul banner: ${vendors(mkt)}`, mkt));
+    items.push(item(labelled(`${ids ? 'Identificativi e raccolte pubblicitarie' : 'Raccolte pubblicitarie'} prima di qualsiasi scelta sul banner`, vendors(mkt)), mkt));
     take(mkt);
   }
   const stats = before.filter((f) => !isMkt(f));
   if (stats.length) {
-    items.push(item(`Statistica e registrazione delle sessioni prima di qualsiasi scelta sul banner: ${vendors(stats)}`, stats));
+    items.push(item(labelled('Statistica e registrazione delle sessioni prima di qualsiasi scelta sul banner', vendors(stats)), stats));
     take(stats);
   }
 
-  for (const [rule, label] of [
-    ['attivazione-dopo-rifiuto', 'Dopo il rifiuto restano attivi'],
-    ['attivazione-dopo-chiusura', 'Dopo la chiusura del banner con la X sono attivi'],
-    ['attivazione-dopo-revoca', 'Dopo la revoca del consenso restano attivi'],
-    ['personalizzazione-non-rispettata', 'Con il consenso alle sole statistiche sono attivi anche'],
+  // Senza fornitori identificati il punto non lascia un elenco vuoto dopo i due punti: usa il testo alternativo
+  for (const [rule, label, empty] of [
+    ['attivazione-dopo-rifiuto', 'Dopo il rifiuto restano attivi', 'Dopo il rifiuto restano attivi strumenti non tecnici'],
+    ['attivazione-dopo-chiusura', 'Dopo la chiusura del banner con la X sono attivi', 'Dopo la chiusura del banner con la X sono attivi strumenti non tecnici'],
+    ['attivazione-dopo-revoca', 'Dopo la revoca del consenso restano attivi', 'Dopo la revoca del consenso restano attivi strumenti non tecnici'],
+    ['personalizzazione-non-rispettata', 'Con il consenso alle sole statistiche sono attivi anche', 'Con il consenso alle sole statistiche sono attivi anche strumenti di altre categorie'],
   ] as const) {
     const fs = findings.filter((f) => free(f) && f.ruleId === rule && !weak(f) && !rare(f));
     if (!fs.length) continue;
-    items.push(item(`${label}: ${vendors(fs)}`, fs));
+    items.push(item(labelled(label, vendors(fs), empty), fs));
     take(fs);
   }
 
@@ -183,7 +185,8 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
   // Prove più deboli o fatti poco ripetuti: restano in sintesi ma in coda, separati dagli altri
   const weakOnes = findings.filter((f) => free(f) && TRACKING.includes(f.ruleId) && weak(f));
   if (weakOnes.length) {
-    items.push(boost(item(`Script e contenuti scaricati da ${vendors(weakOnes)} prima della scelta o dopo il rifiuto, senza raccolta di dati osservata`, weakOnes), -15));
+    const who = vendors(weakOnes);
+    items.push(boost(item(`Script e contenuti scaricati ${who ? `da ${who} ` : ''}prima della scelta o dopo il rifiuto, senza raccolta di dati osservata`, weakOnes), -15));
     take(weakOnes);
   }
   const rareOnes = findings.filter((f) => free(f) && TRACKING.includes(f.ruleId) && rare(f));

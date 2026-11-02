@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import { parse } from 'yaml';
 import type { Finding, Severity } from '../types.js';
 import { CSS, esc, fmt, sevBadge } from './html.js';
+import { nWords } from '../util/text.js';
 
 const SEV: Severity[] = ['alta', 'media', 'bassa', 'informativa'];
 
@@ -120,8 +121,8 @@ export function renderComparison(c: RunComparison): string {
 <h1>Confronto tra due rilevazioni</h1>
 <p class="muted">Committente: ${esc(cliente)}</p>
 <table class="kv">
-<tr><td>Rilevazione precedente</td><td>${esc(when(c.prima))} — <code>${esc(c.prima.name)}</code> (${c.prima.findings.length} rilievi)</td></tr>
-<tr><td>Rilevazione successiva</td><td>${esc(when(c.dopo))} — <code>${esc(c.dopo.name)}</code> (${c.dopo.findings.length} rilievi)</td></tr>
+<tr><td>Rilevazione precedente</td><td>${esc(when(c.prima))} — <code>${esc(c.prima.name)}</code> (${nWords(c.prima.findings.length, 'rilievo', 'rilievi')})</td></tr>
+<tr><td>Rilevazione successiva</td><td>${esc(when(c.dopo))} — <code>${esc(c.dopo.name)}</code> (${nWords(c.dopo.findings.length, 'rilievo', 'rilievi')})</td></tr>
 <tr><td>Esito</td><td><strong>${c.risolte.length}</strong> non più osservati · <strong>${c.rimaste.length}</strong> ancora presenti · <strong>${c.nuove.length}</strong> nuovi</td></tr>
 </table>
 <h2>Condizioni delle due rilevazioni</h2>

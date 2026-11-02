@@ -27,6 +27,7 @@ import type { RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
 import { attributeByHost, checkDeclared } from './report/attribution.js';
 import { enrichRequests, reclassify } from './classify/enrich.js';
+import { nWords, plural } from './util/text.js';
 
 const SEV_ORDER = ['alta', 'media', 'bassa', 'informativa'];
 
@@ -557,9 +558,9 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       }
       siteResults.push(...job.manual);
       const blockedCount = siteResults.filter((s) => s.blocked).length;
-      if (blockedCount) log(`    ${blockedCount} sessioni su ${siteResults.length} bloccate da un sistema anti-bot: escluse dalle regole`);
+      if (blockedCount) log(`    ${nWords(blockedCount, 'sessione', 'sessioni')} su ${siteResults.length} ${plural(blockedCount, 'bloccata', 'bloccate')} da un sistema anti-bot: ${plural(blockedCount, 'esclusa', 'escluse')} dalle regole`);
       const unreachableCount = siteResults.filter((s) => s.unreachable).length;
-      if (unreachableCount) log(`    ${unreachableCount} sessioni su ${siteResults.length} senza accesso al sito: escluse dalle regole`);
+      if (unreachableCount) log(`    ${nWords(unreachableCount, 'sessione', 'sessioni')} su ${siteResults.length} senza accesso al sito: ${plural(unreachableCount, 'esclusa', 'escluse')} dalle regole`);
       sessions.push(...siteResults);
       if (!decl.source) {
         // Ultima fonte: le tabelle della cookie policy (indirizzo configurato, link nel banner, pagina "cookie" scoperta).

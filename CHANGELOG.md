@@ -55,3 +55,8 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   appuntamenti (`calendar.google.com` solo per `/calendar/appointments/`, `calendar-pa.clients6.google.com`) come
   contenuto incorporato di Google. Le classificazioni si riapplicano con `rigenera`. Gli altri domini Google del
   rilievo restano non classificati in attesa della verifica sui HAR (proposta nel messaggio del commit).
+- **Testi del rapporto.** Nuova `src/util/text.ts` (`plural`, `nWords`, `labelled`) usata nei template e nelle regole
+  con numeri: niente più "1 categoria risulta già attive", "attiva e modificabili", "1 sessioni non hanno potuto…",
+  "1 sessioni su 3", "1 chiavi", "1 voci", "1 rilievi" ecc. La sintesi non lascia elenchi vuoti dopo i due punti:
+  il rilievo `personalizzazione-non-rispettata` ora indica il fornitore e, se l'elenco resta vuoto, il punto usa un
+  testo alternativo. Test di regola aggiunti in `test/correzioni-0.1.1.test.ts` per i casi generali dei fix 2–5.

@@ -1,6 +1,7 @@
 import { NON_TECHNICAL, type Category } from '../../types.js';
 import { activeAfterReject, cookieActivity, pagesOf, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+import { nWords, plural } from '../../util/text.js';
 
 /** Dopo la revoca del consenso: nuovi cookie non tecnici o richieste a tracker. */
 export const attivazioneDopoRevoca: Rule = {
@@ -109,7 +110,7 @@ export const esitoRevoca: Rule = {
           pageUrl: s.pages[0],
           severity: 'informativa',
           groupKey: `cookie-rimasti|${r.via ?? 'link'}`,
-          description: `Dopo la revoca (${r.how}) restano nel browser ${r.remaining.length} cookie non tecnici scritti durante il consenso. La revoca impedisce nuovi trattamenti; la rimozione dei cookie già scritti dipende dal gestore del consenso.`,
+          description: `Dopo la revoca (${r.how}) restano nel browser ${nWords(r.remaining.length, 'cookie non tecnico scritto', 'cookie non tecnici scritti')} durante il consenso. La revoca impedisce nuovi trattamenti; la rimozione dei cookie già scritti dipende dal gestore del consenso.`,
           details: r.remaining,
           evidence: sessionEvidence(s, ['4-dopo-revoca']).filter((e) => !e.file.endsWith('.har')),
         });

@@ -2,6 +2,7 @@ import { normalizeDeclaredCategory } from '../../classify/classifier.js';
 import type { ComparisonRow } from '../../types.js';
 import { CATEGORY_LABEL, groupBy } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+import { nWords, plural } from '../../util/text.js';
 
 const label = (r: ComparisonRow) =>
   `${r.kind === 'servizio' ? 'servizio' : r.kind === 'storage' ? 'chiave di storage' : 'cookie'} "${r.name}"${r.domain ? ` (${r.domain})` : ''}`;
@@ -31,10 +32,10 @@ export const nonDichiarati: Rule = {
         pageUrl: null,
         groupKey: 'tutti',
         severity: doubtful ? 'bassa' : undefined,
-        headline: nonTech.length && !doubtful ? `${nonTech.length} elementi di tracciamento osservati non compaiono nell'elenco dichiarato` : undefined,
+        headline: nonTech.length && !doubtful ? `${plural(nonTech.length, "1 elemento di tracciamento osservato non compare nell'elenco dichiarato", `${nonTech.length} elementi di tracciamento osservati non compaiono nell'elenco dichiarato`)}` : undefined,
         description:
           (doubtful
-            ? `Attenzione: l'elenco dichiarato è stato ricavato in automatico dalle tabelle della cookie policy (${set!.items.length} voci) e può essere incompleto; verificare a vista la cookie policy prima di considerare questi elementi non dichiarati. `
+            ? `Attenzione: l'elenco dichiarato è stato ricavato in automatico dalle tabelle della cookie policy (${nWords(set!.items.length, 'voce', 'voci')}) e può essere incompleto; verificare a vista la cookie policy prima di considerare questi elementi non dichiarati. `
             : '') +
           `${rows.length === 1 ? '1 elemento osservato non compare' : `${rows.length} elementi osservati non compaiono`} nell'elenco dichiarato (${src}), di cui ${nonTech.length} di categoria non tecnica.`,
         // prima gli elementi di tracciamento, poi i non classificati, in fondo i tecnici
