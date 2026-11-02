@@ -170,6 +170,12 @@ tracker:
   - { dominio: trustpilot.com, azienda: Trustpilot, categoria: funzionalita, nota: "Widget recensioni" }
   - { dominio: stape.io, azienda: Stape, categoria: marketing, nota: "Tagging lato server" }
 
+  # --- Widget e contenuti incorporati ---
+  - { dominio: acsbapp.com, azienda: accessiBe, categoria: funzionalita, nota: "Widget di accessibilità di terza parte (accessiBe): da valutare se raccoglie dati" }
+  - { dominio: acswapp.com, azienda: accessiBe, categoria: funzionalita, nota: "Widget di accessibilità di terza parte (accessiBe): da valutare se raccoglie dati" }
+  - { dominio: calendar.google.com, azienda: Google Calendar (contenuti incorporati), categoria: funzionalita, percorsi: ["^/calendar/appointments/"], nota: "Prenotazione di appuntamenti di Google Calendar incorporata nella pagina: contenuto di Google" }
+  - { dominio: calendar-pa.clients6.google.com, azienda: Google Calendar (contenuti incorporati), categoria: funzionalita, nota: "Servizio usato dal widget di prenotazione di appuntamenti di Google Calendar incorporato: contenuto di Google" }
+
   # --- Infrastruttura: CDN, pagamenti, protezione anti-bot ---
   # Classificate per ridurre il rumore della regola "elementi non classificati". Restano visibili nell'inventario.
   - { dominio: cdnjs.cloudflare.com, azienda: Cloudflare, categoria: tecnico, nota: CDN }

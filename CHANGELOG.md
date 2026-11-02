@@ -50,3 +50,8 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   restano attribuite alla pagina che ospita il contenuto e i rilievi le elencano a parte ("Invii all'uscita dalla
   pagina"). `richieste.csv` ha la colonna `inviata_all_uscita`. Vale per le nuove rilevazioni: quelle già raccolte
   non contengono il frame di origine.
+- **Domini non classificati (R-008).** `data/trackers.yaml`: accessiBe (`acsbapp.com`, `acswapp.com`) come widget di
+  accessibilità di terza parte, categoria funzionalità, con nota "da valutare se raccoglie dati"; Google Calendar
+  appuntamenti (`calendar.google.com` solo per `/calendar/appointments/`, `calendar-pa.clients6.google.com`) come
+  contenuto incorporato di Google. Le classificazioni si riapplicano con `rigenera`. Gli altri domini Google del
+  rilievo restano non classificati in attesa della verifica sui HAR (proposta nel messaggio del commit).
