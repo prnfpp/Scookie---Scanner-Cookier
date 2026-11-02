@@ -42,3 +42,6 @@ cookie:
   # --- Funzionalità di terze parti ---
   - { nome: "^stonly", fornitore: Stonly, categoria: funzionalita, nota: "Guide interattive / assistenza" }
   - { nome: "^(tp_|_tp_)", dominio: trustpilot.com, fornitore: Trustpilot, categoria: funzionalita, nota: "Widget recensioni" }
+  # --- Statistica ospitata sul sito ---
+  - { nome: "^_pk_(id|ses|ref|cvar|hsr|testcookie)(\\.|$)", fornitore: Matomo, categoria: statistica, nota: "Matomo (già Piwik): identificativo del visitatore e della visita" }
+  - { nome: "^(MATOMO_SESSID|mtm_consent|mtm_consent_removed|mtm_cookie_consent)$", fornitore: Matomo, categoria: tecnico, nota: "Matomo: sessione o registrazione della scelta sul consenso" }

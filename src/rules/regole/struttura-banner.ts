@@ -1,6 +1,7 @@
 import type { BannerAnalysis, CommandLook, SessionResult } from '../../types.js';
 import { sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+import { nWords, plural } from '../../util/text.js';
 
 const analyses = (sessions: SessionResult[]) =>
   sessions.filter((s) => s.bannerAnalysis?.bannerVisible).map((s) => ({ s, a: s.bannerAnalysis as BannerAnalysis }));
@@ -58,6 +59,39 @@ function prominenceText(p: Prom): { lines: string[]; sentence: string; asymmetri
   return { lines, sentence, asymmetric, ratio };
 }
 
+/**
+ * Modo per rivedere la scelta, da tutte le osservazioni del sito: nella pagina prima della scelta (analisi del banner),
+ * nella pagina dopo la scelta (sessioni con scelta), o usato davvero nello scenario "revoca" con un comando della
+ * pagina (non con l'API del gestore). Se la revoca è riuscita con un comando della pagina, il comando esiste.
+ */
+export function revokeFound(sessions: SessionResult[], site: string, before: BannerAnalysis['revokeLink']): { text: string; how: string; afterChoiceOnly: boolean } | null {
+  if (before) return { ...before, afterChoiceOnly: false };
+  const after = sessions.find((x) => x.site === site && x.revokeAfterChoice)?.revokeAfterChoice;
+  if (after) return { text: after.text, how: after.how, afterChoiceOnly: true };
+  const used = sessions.find((x) => x.site === site && x.scenario === 'revoca' && x.revocation?.outcome === 'eseguita' && x.revocation.via === 'link');
+  if (used) {
+    const label = /^click su (.+?)(, poi|$)/.exec(used.revocation!.how)?.[1] ?? used.revocation!.how;
+    return { text: /"([^"]+)"/.exec(label)?.[1] ?? label, how: `${label}, usato nello scenario "revoca"`, afterChoiceOnly: true };
+  }
+  return null;
+}
+
+/** Oltre questo numero di "categorie" l'interfaccia letta non è un elenco di categorie di consenso. */
+const MAX_CATEGORIES = 12;
+
+/**
+ * Anomalia nella lettura delle categorie del secondo livello: dichiarata durante la raccolta o, per le rilevazioni
+ * precedenti, ricavata qui dal numero di interruttori letti.
+ */
+export function categoriesUnreliable(a: BannerAnalysis): string | undefined {
+  const p = a.preferences;
+  if (!p?.opened) return undefined;
+  if (p.unreliable) return p.unreliable;
+  return p.toggles.length > MAX_CATEGORIES
+    ? `analisi delle categorie non affidabile: ${p.toggles.length} interruttori letti nel secondo livello, più delle ${MAX_CATEGORIES} categorie plausibili (probabili elementi di un'altra interfaccia della pagina); le categorie vanno lette sullo screenshot "4-preferenze"`
+    : undefined;
+}
+
 /** Struttura del banner al primo livello: quali comandi offre, link all'informativa, modo per rivedere la scelta. */
 /** Esito dello scenario "personalizza" quando il gestore non ha una categoria statistica separata e rifiutabile. */
 export const NO_STATS_CATEGORY = /nessuna categoria statistica separata e rifiutabile/;
@@ -72,17 +106,22 @@ export const strutturaBanner: Rule = {
       const f = a.firstLayer;
       const prom = prominenceText(a.prominence);
       // Scelta per categoria impossibile per come è configurato il gestore: è un fatto della struttura, non un limite
+      // Coerenza con lo scenario "chiudi": se lì la X è stata trovata e cliccata, il banner ha una X
+      const xSession = sessions.find((x) => x.site === s.site && x.scenario === 'chiudi' && x.interaction.outcome === 'eseguito' && x.interaction.layer === 'chiusura-x');
+      const rev = revokeFound(sessions, s.site, a.revokeLink);
+      const revText = rev ? `trovato, "${rev.text}" (${rev.how}${rev.afterChoiceOnly ? '; visibile solo dopo la scelta' : ''})` : 'non trovato';
+      const close = f.close.length ? list(f.close) : xSession ? `presente (${xSession.interaction.clicked?.[0] ?? 'X di chiusura'}, usata nello scenario "chiudi")` : 'assente';
       const noStats = sessions.some((x) => x.site === s.site && x.scenario === 'personalizza' && x.interaction.outcome !== 'eseguito' && NO_STATS_CATEGORY.test(x.interaction.detail));
       return {
         site: s.site,
         scenario: s.scenario,
         pageUrl: s.pages[0],
-        groupKey: [f.all.join('|'), !!a.policyLink, !!a.revokeLink].join('#'),
+        groupKey: [f.all.join('|'), !!a.policyLink, !!rev].join('#'),
         description:
           `Al primo livello il banner${a.cmp.length ? ` (${a.cmp.join(', ')})` : ''} offre: accettazione ${list(f.accept)}; ` +
-          `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura (X) ${f.close.length ? list(f.close) : 'assente'}. ` +
+          `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura (X) ${close}. ` +
           `Link all'informativa nel banner: ${a.policyLink ? `"${a.policyLink.text}"` : 'non trovato'}. ` +
-          `Modo per rivedere la scelta nella pagina: ${a.revokeLink ? `"${a.revokeLink.text}"` : 'non trovato'}.` +
+          `Modo per rivedere la scelta nella pagina: ${revText}.` +
           (prom.sentence ? ` ${prom.asymmetric ? 'Evidenza dei comandi: vedi la scheda dedicata.' : prom.sentence}` : '') +
           (noStats
             ? " Non è possibile accettare o rifiutare la sola statistica: nella configurazione del gestore non esiste una categoria statistica separata e rifiutabile (gli strumenti di statistica sono nella categoria sempre attiva). Per questo lo scenario \"personalizza\" non è applicabile."
@@ -91,7 +130,8 @@ export const strutturaBanner: Rule = {
           `Tutti i comandi rilevati nel banner: ${list(f.all)}`,
           ...prom.lines,
           ...(a.policyLink ? [`Informativa: ${a.policyLink.href}`] : []),
-          ...(a.preferences?.opened
+          ...(categoriesUnreliable(a) ? [`Secondo livello aperto con ${a.preferences!.via}: ${categoriesUnreliable(a)}`] : []),
+          ...(a.preferences?.opened && !categoriesUnreliable(a)
             ? [`Secondo livello aperto con ${a.preferences.via}: ${a.preferences.toggles.map((t) => `${t.label} ${t.checked ? 'attiva' : 'non attiva'}${t.disabled ? ' (non modificabile)' : ''}`).join('; ') || 'nessuna categoria leggibile'}`]
             : []),
         ],
@@ -111,6 +151,8 @@ export const categoriePreattivate: Rule = {
     const out: RawFinding[] = [];
     for (const { s, a } of analyses(sessions)) {
       // Attive e modificabili: quelle bloccate attive sono di norma i cookie necessari.
+      // Interruttori non plausibili come categorie: il fatto non è accertato (l'anomalia è nei Limiti)
+      if (categoriesUnreliable(a)) continue;
       const on = (a.preferences?.toggles ?? []).filter((t) => t.checked && !t.disabled);
       if (!on.length) continue;
       out.push({
@@ -118,8 +160,8 @@ export const categoriePreattivate: Rule = {
         scenario: s.scenario,
         pageUrl: s.pages[0],
         groupKey: on.map((t) => t.label).join('|'),
-        headline: `Nel secondo livello del banner ${on.length === 1 ? '1 categoria risulta' : `${on.length} categorie risultano`} già attive prima di qualsiasi scelta`,
-        description: `Aprendo le preferenze (${a.preferences!.via}) prima di qualsiasi scelta, ${on.length === 1 ? 'la categoria' : 'le categorie'} ${on.map((t) => `"${t.label}"`).join(', ')} ${on.length === 1 ? 'risulta già attiva' : 'risultano già attive'} e modificabili.`,
+        headline: `Nel secondo livello del banner ${nWords(on.length, 'categoria risulta già attiva', 'categorie risultano già attive')} prima di qualsiasi scelta`,
+        description: `Aprendo le preferenze (${a.preferences!.via}) prima di qualsiasi scelta, ${plural(on.length, 'la categoria', 'le categorie')} ${on.map((t) => `"${t.label}"`).join(', ')} ${plural(on.length, 'risulta già attiva e modificabile', 'risultano già attive e modificabili')}.`,
         details: a.preferences!.toggles.map((t) => `${t.label}: ${t.checked ? 'attiva' : 'non attiva'}${t.disabled ? ' (non modificabile)' : ''}`),
         evidence: sessionEvidence(s, ['4-preferenze']).filter((e) => !e.file.endsWith('.har')),
       });
@@ -135,8 +177,9 @@ export const revocaNonTrovata: Rule = {
   defaultSeverity: 'bassa',
   defaultNorms: ['gdpr7', 'garante2021'],
   evaluate({ sessions, discovery }) {
+    // Un comando trovato dopo la scelta, o usato nello scenario "revoca", esclude il fatto
     return analyses(sessions)
-      .filter(({ a }) => !a.revokeLink)
+      .filter(({ s, a }) => !revokeFound(sessions, s.site, a.revokeLink))
       .map(({ s }): RawFinding => {
         // Una pagina dedicata (es. /preferenze-cookies) trovata tra le URL del sito è probabilmente il meccanismo di revoca.
         const page = discovery?.find((d) => d.site === s.site)?.revokePages?.[0];

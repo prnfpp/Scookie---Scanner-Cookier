@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { DeclaredItem } from '../../types.js';
-import { anyVisible, clickFirst, waitFor, type ClickedElement } from '../dom.js';
+import { clickFirst, waitFor, type ClickedElement } from '../dom.js';
+import { anyShown } from '../visibility.js';
 import { TEXTS } from '../heuristic.js';
 import type { CmpAdapter, Choice, ChoiceResult, ConsentCheck } from '../types.js';
 
@@ -17,6 +18,11 @@ export interface SelectorCmpSpec {
   detectSelectors: string[];
   /** Selettori di un banner visibile (primo livello). */
   bannerSelectors: string[];
+  /**
+   * Espressione JS che dice se il banner è mostrato secondo lo stato del gestore (true/false), o null se non lo
+   * si può leggere. Se vale true si controlla comunque che un elemento di `bannerSelectors` sia sullo schermo.
+   */
+  bannerStateExpr?: string;
   reject: {
     firstLayer: string[];
     /** Pulsante X / "continua senza accettare". */
@@ -30,6 +36,11 @@ export interface SelectorCmpSpec {
     firstLayer: string[];
     api?: string;
   };
+  /**
+   * Espressione JS che restituisce le categorie del secondo livello lette dagli interruttori del gestore,
+   * come [{ label, checked, disabled }] (solo quelle visibili, con il pannello delle preferenze aperto).
+   */
+  categoriesExpr?: string;
   /** Espressione JS che restituisce lo stato del consenso (serializzabile). */
   stateExpr: string;
   check(state: unknown, choice: Choice): ConsentCheck;
@@ -47,7 +58,7 @@ async function evalExpr<T>(page: Page, expr: string): Promise<T | null> {
 }
 
 export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
-  const bannerVisible = (page: Page) => anyVisible(page, spec.bannerSelectors);
+  const bannerVisible = (page: Page) => anyShown(page, spec.bannerSelectors);
 
   const clicked = (layer: ChoiceResult['layer'], ...els: ClickedElement[]): ChoiceResult => ({
     ok: true,
@@ -66,6 +77,15 @@ export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
       return (await page.locator(spec.detectSelectors.join(', ')).count().catch(() => 0)) > 0;
     },
     bannerVisible,
+    ...(spec.bannerStateExpr
+      ? {
+          async isBannerVisible(page: Page) {
+            const st = await evalExpr<boolean | null>(page, `(() => { try { return ${spec.bannerStateExpr}; } catch { return null; } })()`);
+            if (st === null || st === undefined) return null;
+            return st ? bannerVisible(page) : false;
+          },
+        }
+      : {}),
     ...(spec.reopenExpr
       ? {
           async reopen(page: Page) {
@@ -110,6 +130,15 @@ export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
       return evalExpr(page, `(() => { try { return ${spec.stateExpr}; } catch (e) { return { errore: String(e) }; } })()`);
     },
     checkConsent: spec.check,
+    ...(spec.reject.close ? { closeSelectors: spec.reject.close } : {}),
+    ...(spec.categoriesExpr
+      ? {
+          async categories(page: Page) {
+            const v = await evalExpr<{ label: string; checked: boolean; disabled: boolean }[]>(page, `(() => { try { return ${spec.categoriesExpr}; } catch { return null; } })()`);
+            return Array.isArray(v) ? v : null;
+          },
+        }
+      : {}),
     declared: spec.declared,
   };
 }

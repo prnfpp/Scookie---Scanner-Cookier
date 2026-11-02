@@ -3,7 +3,7 @@ import type { BannerConfig } from '../config/schema.js';
 import type { InteractionReport } from '../types.js';
 import { describeElement, frames, waitFor } from './dom.js';
 import { PERSONALIZERS, genericPersonalizer } from './personalize.js';
-import { findRevokeControl } from './revoke.js';
+import { findRevokeControl, findRevokeInPage } from './revoke.js';
 import { TEXTS, clickCandidate, heuristicBannerVisible, heuristicChoose, scan } from './heuristic.js';
 import { hasManual, manualBannerVisible, manualChoose } from './manual.js';
 import { ADAPTERS } from './registry.js';
@@ -15,11 +15,30 @@ export async function detectCmps(page: Page): Promise<CmpAdapter[]> {
   return found;
 }
 
+/**
+ * Funzione unica di visibilità del banner, usata prima della scelta, dopo la scelta e alla pagina successiva.
+ * Ordine: selettori della configurazione; stato del gestore (`isBannerVisible`, ha la precedenza: un banner chiuso
+ * per il gestore ma ancora nel DOM non è visibile); elementi del banner del gestore realmente sullo schermo;
+ * infine, solo se nessun gestore ha deciso, il riconoscimento generico.
+ */
 export async function bannerVisible(page: Page, adapters: CmpAdapter[], banner?: BannerConfig): Promise<boolean> {
   if (banner && (await manualBannerVisible(page, banner))) return true;
-  for (const a of adapters) if (await a.bannerVisible(page).catch(() => false)) return true;
+  let decided = false;
+  for (const a of adapters) {
+    const state = a.isBannerVisible ? await a.isBannerVisible(page).catch(() => null) : null;
+    if (state === true) return true;
+    if (state === false) {
+      decided = true;
+      continue;
+    }
+    if (await a.bannerVisible(page).catch(() => false)) return true;
+  }
+  if (decided) return false;
   return heuristicBannerVisible(page);
 }
+
+/** Esito sul banner da riportare dopo la scelta: il fatto osservato, non la sola presenza nel DOM. */
+export const bannerOutcome = (visible: boolean) => (visible ? 'banner ancora visibile' : 'banner chiuso');
 
 async function readStates(page: Page, adapters: CmpAdapter[]): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
@@ -139,7 +158,7 @@ export async function performChoice(
       ? 'stato del consenso non leggibile e banner ancora visibile dopo il click'
       : 'banner non più visibile, ma stato del consenso non leggibile dal CMP';
   }
-  if (stillVisible) verificationDetail += ' (banner ancora visibile dopo la scelta)';
+  if (verification !== 'non-verificabile') verificationDetail += ` (dopo la scelta: ${bannerOutcome(stillVisible)})`;
 
   return {
     method,
@@ -255,18 +274,18 @@ export async function performRevocation(
 ): Promise<{ outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null }> {
   // Prima il comando nella pagina, come farebbe un utente; se manca o non funziona, la pagina dedicata; infine l'API.
   const notes: string[] = [];
-  for (const f of frames(page)) {
-    const found = await findRevokeControl(f);
-    if (!found) continue;
-    const link = f.locator('[data-scookie-revoke]').first();
-    const label = await describeElement(link);
-    await link.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
-    await link.click({ timeout: 5000 }).catch(() => link.click({ timeout: 5000, force: true }).catch(() => {}));
-    await page.waitForTimeout(1000);
-    const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
-    if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'link', how: `click su ${label}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
-    notes.push(`click su ${label}, ma rifiuto non eseguito (${r.detail})`);
-    break;
+  {
+    const found = await findRevokeInPage(page);
+    const link = found?.frame.locator('[data-scookie-revoke]').first();
+    if (found && link) {
+      const label = await describeElement(link);
+      await link.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+      await link.click({ timeout: 5000 }).catch(() => link.click({ timeout: 5000, force: true }).catch(() => {}));
+      await page.waitForTimeout(1000);
+      const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
+      if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'link', how: `click su ${label}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
+      notes.push(`click su ${label}, ma rifiuto non eseguito (${r.detail})`);
+    }
   }
   if (revokePage) {
     await page.goto(revokePage, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
@@ -392,7 +411,7 @@ export async function performClose(
     clicked: [label],
     detail: `click su ${label}`,
     verification: effect === 'non-verificabile' ? 'non-verificabile' : 'verificato',
-    verificationDetail: `${effectText[effect]}${notes.length ? ` (${notes.join('; ')})` : ''}${stillVisible ? '; banner ancora visibile dopo il click' : ''}`,
+    verificationDetail: `${effectText[effect]}${notes.length ? ` (${notes.join('; ')})` : ''}; dopo il click: ${bannerOutcome(stillVisible)}`,
     closeEffect: effect,
     consentStateAfter: after,
     bannerVisibleAfter: stillVisible,

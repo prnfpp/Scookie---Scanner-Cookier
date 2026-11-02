@@ -8,10 +8,13 @@ import { hostMatches } from '../util/domains.js';
 const DATA_DIR = fileURLToPath(new URL('../../../data/', import.meta.url));
 
 export interface TrackerEntry {
+  /** Host o dominio; "*" = qualsiasi host (anche il sito stesso), solo insieme a percorsi o parametri. */
   dominio: string;
   azienda: string;
   categoria: Category;
   percorsi?: string[];
+  /** Espressioni regolari sulla query (senza "?"): devono corrispondere tutte. */
+  parametri?: string[];
   nota?: string;
 }
 
@@ -81,6 +84,9 @@ export class Classifier {
     const base = (parse(readFileSync(`${DATA_DIR}trackers.yaml`, 'utf8')) as { tracker: TrackerEntry[] }).tracker;
     // Le voci extra vengono prima: a parità di specificità prevalgono su quelle incluse.
     this.trackers = [...extraTrackers, ...base];
+    for (const t of this.trackers) {
+      if (t.dominio === '*' && !t.percorsi?.length && !t.parametri?.length) throw new Error(`Voce tracker con dominio "*" senza percorsi né parametri (${t.azienda}): varrebbe per qualsiasi richiesta`);
+    }
   }
 
   static loadExtraTrackers(path: string): TrackerEntry[] {
@@ -148,8 +154,12 @@ export class Classifier {
     return this.curated.find((c) => c.re.test(name) && (!c.dominio || hostMatches(domain, c.dominio)));
   }
 
-  /** Categoria di un host (e opzionalmente di un path) secondo l'elenco tracker. */
-  classifyHost(host: string, path = '/'): TrackerEntry | undefined {
+  /**
+   * Categoria di un host (e opzionalmente di path e query) secondo l'elenco tracker. Le voci con dominio "*"
+   * riconoscono un endpoint di raccolta dal percorso o dai parametri su qualsiasi host, anche il sito stesso
+   * (es. Matomo ospitato sul sito: /matomo.php?idsite=1&rec=1).
+   */
+  classifyHost(host: string, path = '/', query = ''): TrackerEntry | undefined {
     // Percorsi dell'infrastruttura Cloudflare, su qualsiasi sito: verifica anti-bot, protezione email, analytics di rete.
     if (path.startsWith('/cdn-cgi/challenge-platform/')) {
       return { dominio: host, azienda: 'Cloudflare', categoria: 'tecnico', nota: 'Verifica anti-bot Cloudflare (si attiva soprattutto con browser automatici)' };
@@ -161,12 +171,16 @@ export class Classifier {
     if (path.startsWith('/cdn-cgi/') && !path.startsWith('/cdn-cgi/zaraz/')) {
       return { dominio: host, azienda: 'Cloudflare', categoria: 'tecnico', nota: 'Infrastruttura Cloudflare (/cdn-cgi/)' };
     }
+    const q = query.replace(/^\?/, '');
     const candidates = this.trackers.filter(
-      (t) => hostMatches(host, t.dominio) && (!t.percorsi || t.percorsi.some((p) => new RegExp(p).test(path))),
+      (t) =>
+        (t.dominio === '*' || hostMatches(host, t.dominio)) &&
+        (!t.percorsi || t.percorsi.some((p) => new RegExp(p).test(path))) &&
+        (!t.parametri || t.parametri.every((p) => new RegExp(p).test(q))),
     );
-    candidates.sort(
-      (a, b) => b.dominio.length - a.dominio.length || Number(!!b.percorsi) - Number(!!a.percorsi),
-    );
+    // il dominio più specifico vince; le voci per qualsiasi host ("*") valgono solo se nessun'altra corrisponde
+    const len = (t: TrackerEntry) => (t.dominio === '*' ? 0 : t.dominio.length);
+    candidates.sort((a, b) => len(b) - len(a) || Number(!!b.percorsi || !!b.parametri) - Number(!!a.percorsi || !!a.parametri));
     return candidates[0];
   }
 

@@ -1,6 +1,7 @@
 import type { Classification, ScenarioName } from '../../types.js';
 import { groupBy, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+import { nWords, plural } from '../../util/text.js';
 
 /** Fornitore del dominio come indizio, quando il nome non è riconosciuto. */
 const hint = (c: Classification) => (c.source === 'dominio-del-fornitore' && c.platform ? ` — dominio di ${c.platform}` : '');
@@ -43,8 +44,8 @@ export const elementiNonClassificati: Rule = {
         groupKey: 'tutti',
         headline: unknownBefore ? `${unknownBefore} terze parti non classificate vengono contattate prima della scelta` : undefined,
         description:
-          `${unique.length} elementi osservati prima della scelta o dopo il rifiuto non sono riconosciuti dalle fonti di classificazione ` +
-          `(${count('cookie')} cookie, ${count('storage')} chiavi di storage di terze parti, ${count('host', 'host-prima')} domini di terze parti, di cui ${unknownBefore} contattati prima della scelta). ` +
+          `${plural(unique.length, '1 elemento osservato prima della scelta o dopo il rifiuto non è riconosciuto', `${unique.length} elementi osservati prima della scelta o dopo il rifiuto non sono riconosciuti`)} dalle fonti di classificazione ` +
+          `(${count('cookie')} cookie, ${nWords(count('storage'), 'chiave di storage', 'chiavi di storage')} di terze parti, ${nWords(count('host', 'host-prima'), 'dominio', 'domini')} di terze parti, di cui ${nWords(unknownBefore, 'contattato', 'contattati')} prima della scelta). ` +
           `Non sono stati valutati dalle altre regole: la loro natura (tecnica o di tracciamento) va verificata.`,
         details: unique.map((u) => `${u.key} — scenari: ${[...new Set(list.filter((l) => l.key === u.key).map((l) => l.s.scenario))].join(', ')}`),
         evidence: sessionEvidence(first, ['1-banner']).filter((e) => !e.file.endsWith('.har')),

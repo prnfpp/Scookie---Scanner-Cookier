@@ -9,6 +9,7 @@ import { PartyResolver, registrableDomain } from '../util/domains.js';
 import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { detectBotChallenge, type BotBlock } from './antibot.js';
 import { Collector } from './collector.js';
+import { findRevokeInPage } from '../cmp/revoke.js';
 import { trimHar } from './har.js';
 import { maskPii } from '../util/pii.js';
 import { manualJourney, type ManualPlan } from './manual.js';
@@ -121,7 +122,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let blocked: BotBlock | null = null;
   const visit = async (url: string): Promise<boolean> => {
     stage = `caricamento di ${maskPii(url)}`;
-    collector.currentUrl = url;
+    collector.beginNavigation(url);
     let response: Response | null = null;
     try {
       response = await page.goto(url, { waitUntil: 'load', timeout: p.timeoutNavigazione });
@@ -129,6 +130,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
       const msg = (e as Error).message.split('\n')[0];
       const hint = /ERR_NETWORK_IO_SUSPENDED/.test(msg) ? ' — il computer è andato in stop durante l\'audit' : /ERR_INTERNET_DISCONNECTED/.test(msg) ? ' — connessione a internet assente' : '';
       errors.push(`navigazione non riuscita su ${url}: ${msg}${hint}`);
+      collector.endNavigation();
       return false;
     }
     collector.currentUrl = page.url();
@@ -183,6 +185,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let choiceAt: string | null = null;
   let bannerAnalysis: BannerAnalysis | undefined;
   let revocation: SessionResult['revocation'];
+  let revokeAfterChoice: SessionResult['revokeAfterChoice'];
   let manual: SessionResult['manual'];
   let unreachable: string | undefined;
   let replay: SessionResult['replay'];
@@ -300,10 +303,14 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         const journey = async () => {
           for (const [k, url] of [first, ...rest].entries()) {
             if (await visit(url)) {
-              // Dopo la X: il banner ricompare alla pagina successiva? (la chiusura non viene ricordata)
-              if (k === 0 && plan.scenario === 'chiudi' && interaction.outcome === 'eseguito') {
+              // Dopo la scelta (o la X): il banner ricompare alla pagina successiva? Stessa funzione di visibilità
+              // usata prima e dopo la scelta, dopo il caricamento e l'attesa standard della pagina
+              if (k === 0 && interaction.outcome === 'eseguito' && interaction.bannerOnNextPage === undefined) {
                 const again = await bannerVisible(page, await detectCmps(page), banner).catch(() => false);
                 interaction = { ...interaction, bannerOnNextPage: again };
+                // Comando per rivedere la scelta: molti gestori lo mostrano solo dopo la scelta
+                const rev = await findRevokeInPage(page).catch(() => null);
+                if (rev) revokeAfterChoice = { text: rev.text, how: rev.how, url: maskPii(page.url()) };
               }
               await settle();
             } else if (blocked) break;
@@ -373,6 +380,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     ...(blocked ? { blocked } : {}),
     ...(bannerAnalysis ? { bannerAnalysis } : {}),
     ...(revocation ? { revocation } : {}),
+    ...(revokeAfterChoice ? { revokeAfterChoice } : {}),
     ...(manual ? { manual } : {}),
     ...(replay ? { replay, pages: replay.pages } : {}),
     ...(unreachable ? { unreachable } : {}),

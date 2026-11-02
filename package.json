@@ -1,6 +1,6 @@
 {
   "name": "scookie",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Audit tecnico di cookie e tracciamenti rispetto al consenso dell'utente, con evidenze ripetibili.",
   "license": "UNLICENSED",
   "private": true,

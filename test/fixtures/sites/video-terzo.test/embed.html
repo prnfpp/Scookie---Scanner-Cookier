@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Video</title></head>
+<body style="margin:0;background:#000;color:#fff"><div style="padding:20px">Lettore video di prova</div>
+<script>
+// Come un lettore video incorporato: invia un evento al caricamento e uno quando si lascia la pagina che lo ospita.
+// L'invio su beforeunload parte tra l'inizio della navigazione verso la pagina successiva e il suo caricamento;
+// quello su pagehide (sendBeacon) di solito non è visibile al browser automatizzato in un iframe di un altro host.
+fetch('/log_event?alt=json&ev=load', { method: 'POST', body: 'load' });
+addEventListener('beforeunload', function () { fetch('/log_event?alt=json&ev=uscita', { method: 'POST', body: 'uscita', keepalive: true }); });
+addEventListener('pagehide', function () { navigator.sendBeacon('/log_event?alt=json&ev=uscita', 'uscita'); });
+</script></body></html>

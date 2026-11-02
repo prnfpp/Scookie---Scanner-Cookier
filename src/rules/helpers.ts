@@ -1,4 +1,4 @@
-import { STAGE_LABEL, type Category, type InteractionReport, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
+import { NON_TECHNICAL, STAGE_LABEL, type Category, type CookieRecord, type RequestRecord as Req, type InteractionReport, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   tecnico: 'tecnico',
@@ -41,6 +41,7 @@ export function requestExcerpt(r: RequestRecord, s: SessionResult): Record<strin
     tipo: r.resourceType,
     stato: r.status,
     pagina: r.pageUrl,
+    ...(r.sentOnExit ? { inviataAllUscita: true } : {}),
     ...(r.fromServiceWorker ? { daServiceWorker: true } : {}),
     ...(r.purpose ? { natura: r.purpose } : {}),
     ...(r.consentParams ? { parametriConsenso: r.consentParams } : {}),
@@ -242,3 +243,61 @@ export function describeGoogleConsent(params: Record<string, string> | undefined
   if (params.npa === '1') parts.push('npa=1: annunci non personalizzati richiesti');
   return parts.length ? parts.join('; ') : null;
 }
+
+/**
+ * Fornitori non tecnici attivi dopo il rifiuto, per sito: cookie scritti dopo la scelta e richieste a tracker
+ * (esclusi i ping di Consent Mode con consenso negato). Serve ad accorpare i fatti degli altri scenari (revoca,
+ * personalizza) che ripetono lo stesso comportamento del rifiuto.
+ */
+export function activeAfterReject(sessions: SessionResult[]): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const s of sessions.filter((x) => x.scenario === 'rifiuta' && x.interaction.outcome === 'eseguito')) {
+    const set = out.get(s.site) ?? new Set<string>();
+    for (const c of s.cookies) if (cookieActivity(c, 'scelta')) set.add(cookieVendor(c));
+    for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r)) set.add(requestVendor(r));
+    out.set(s.site, set);
+  }
+  return out;
+}
+
+/**
+ * Rimando ai rilievi di un'altra regola sullo stesso fornitore, risolto dopo la numerazione (es. "vedi R-004").
+ * Se non c'è un rilievo corrispondente diventa il titolo della regola.
+ */
+export const refTo = (ruleId: string, subject: string) => `{{rilievi:${ruleId}:${subject}}}`;
+
+/**
+ * Cookie non tecnico attivo dopo la scelta (stage "scelta") o dopo la revoca (stage "revoca"): scritto per la prima
+ * volta in quel momento ("nuovo") o già presente e riscritto, cioè con valore o scadenza cambiati ("rinnovato").
+ */
+export function cookieActivity(c: CookieRecord, stage: 'scelta' | 'revoca'): 'nuovo' | 'rinnovato' | null {
+  if (!NON_TECHNICAL.has(c.classification.category)) return null;
+  if (stage === 'scelta' ? c.phase === 'dopo' : c.stage === 'revoca') return 'nuovo';
+  return c.renewals?.some((r) => r.stage === stage) ? 'rinnovato' : null;
+}
+
+/**
+ * Pagine di un gruppo di richieste: quelle che ospitano il contenuto che le ha inviate e, a parte, quelle da cui
+ * sono partite richieste all'uscita (es. evento inviato da un video incorporato mentre si passa alla pagina successiva).
+ */
+export function pagesOf(reqs: RequestRecord[]): { pages: string[]; exitLine: string | null } {
+  const pages = [...new Set(reqs.map((r) => r.pageUrl))];
+  const exits = groupBy(reqs.filter((r) => r.sentOnExit), (r) => r.pageUrl);
+  const exitLine = exits.size
+    ? `Invii all'uscita dalla pagina (inviati mentre si passava alla pagina successiva, attribuiti alla pagina che ospita il contenuto): ${[...exits].map(([p, l]) => `${p} (${nReq(l.length)})`).join(', ')}`
+    : null;
+  return { pages, exitLine };
+}
+
+/**
+ * Fornitore canonico: lo stesso fornitore con nomi diversi nelle fonti conta una volta. I cookie del lettore YouTube
+ * sono "Youtube" in Open Cookie Database, le sue richieste sono "Google" nell'elenco dei domini: è lo stesso
+ * contenuto incorporato e lo stesso fornitore.
+ */
+const VENDOR_ALIASES: [RegExp, string][] = [[/^you ?tube$/i, 'Google']];
+export function canonicalVendor(name: string): string {
+  for (const [re, v] of VENDOR_ALIASES) if (re.test(name.trim())) return v;
+  return name;
+}
+export const cookieVendor = (c: CookieRecord) => canonicalVendor(c.classification.platform ?? c.domain);
+export const requestVendor = (r: Req) => canonicalVendor(r.tracker!.company);

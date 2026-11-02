@@ -69,6 +69,13 @@ export interface CookieRecord {
   firstSeenAt: string;
   valuePreview: string;
   classification: Classification;
+  /**
+   * Cookie già presente prima della scelta e ancora presente in una fotografia successiva alla scelta. Assente nelle
+   * rilevazioni fatte con versioni precedenti alla 0.1.1 (dato non raccolto).
+   */
+  presentAfterChoice?: boolean;
+  /** Cookie già presente prima della scelta e riscritto dopo (valore o scadenza cambiati): una voce per momento. */
+  renewals?: { stage: Stage; at: string; url: string; expires: string | null }[];
 }
 
 export interface StorageRecord {
@@ -104,7 +111,13 @@ export interface RequestRecord {
   party: Party;
   phase: Phase;
   stage: Stage;
+  /** Pagina che ospita il contenuto che ha inviato la richiesta (documento del frame al momento della richiesta). */
   pageUrl: string;
+  /**
+   * Richiesta inviata all'uscita dalla pagina `pageUrl` (pagehide/unload, o tra l'inizio della navigazione verso la
+   * pagina successiva e il suo caricamento): non è stata generata dalla pagina successiva.
+   */
+  sentOnExit?: boolean;
   status: number | null;
   tracker?: { company: string; category: Category };
   /** Parametri di consenso Google (gcs, gcd, npa) se presenti. */
@@ -141,7 +154,7 @@ export interface InteractionReport {
   clicked?: string[];
   /** Scenario "chiudi": cosa registra il gestore dopo la X. */
   closeEffect?: 'rifiuto' | 'consenso' | 'nessuna-scelta' | 'non-verificabile';
-  /** Scenario "chiudi": il banner ricompare alla pagina successiva (la chiusura non è stata ricordata). */
+  /** Dopo la scelta (o la X): il banner ricompare alla pagina successiva (la scelta non è stata ricordata). */
   bannerOnNextPage?: boolean;
 }
 
@@ -158,6 +171,8 @@ export interface BannerAnalysis {
     opened: boolean;
     via: string;
     toggles: { label: string; checked: boolean; disabled: boolean }[];
+    /** Interruttori letti non plausibili come categorie (es. troppi): il rilievo sulle categorie attive non si produce. */
+    unreliable?: string;
     /** Evidenza di "Consenti tutti" e "Rifiuta tutti" nel pannello delle preferenze. */
     prominence?: { accept: CommandLook | null; reject: CommandLook | null };
   } | null;
@@ -217,6 +232,8 @@ export interface SessionResult {
   manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; steps?: import('./browser/replay.js').RecordedStep[]; errorPages?: { url: string; status: number }[]; extraTabs?: number };
   /** Sessione automatica che ha rigiocato un percorso registrato in una navigazione manuale. */
   replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string };
+  /** Comando per rivedere la scelta trovato nella pagina dopo la scelta (molti gestori lo mostrano solo allora). */
+  revokeAfterChoice?: { text: string; how: string; url: string };
   /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */
   bannerAnalysis?: BannerAnalysis;
   /**
@@ -292,6 +309,8 @@ export interface Finding {
   requestExcerpt?: Record<string, unknown>;
   /** Forza della prova: risorsa scaricata, raccolta inviata, identificativo memorizzato. */
   evidenceLevel?: 'risorsa' | 'raccolta' | 'identificativo';
+  /** Altra prova osservata insieme a quella principale (es. identificativo memorizzato e anche dati inviati). */
+  evidenceExtra?: string;
   /** Frase breve e in linguaggio semplice per la sintesi iniziale. */
   headline?: string;
   /** Fornitori o piattaforme di cui parla la scheda. */

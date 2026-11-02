@@ -1,6 +1,7 @@
 import { NON_TECHNICAL } from '../../types.js';
 import { groupBy, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+import { nWords, plural } from '../../util/text.js';
 
 /** Nessun banner rilevato sulla home di un sito. */
 export const bannerAssente: Rule = {
@@ -131,7 +132,7 @@ export const bannerIntermittente: Rule = {
         scenario: null,
         pageUrl: without[0].pages[0],
         description:
-          `Il banner non è comparso in ${without.length} sessioni su ${list.length}` +
+          `Il banner non è comparso in ${nWords(without.length, 'sessione', 'sessioni')} su ${list.length}` +
           `${without.some((s) => s.retryOf) ? ', anche dopo una ripetizione automatica' : ''}. Nelle altre sessioni lo stesso sito lo mostra.`,
         details: without.map((s) => {
           const failed = [...new Set(s.requests.filter((r) => r.failure).map((r) => `${r.host} (${r.failure})`))];
@@ -160,9 +161,9 @@ export const accessoBloccato: Rule = {
         site,
         scenario: null,
         pageUrl: list[0].blocked!.url,
-        headline: `${list.length === total ? 'Sito non analizzabile' : `${list.length} sessioni su ${total} non valide`}: accesso bloccato da ${providers.join(', ')}`,
+        headline: `${list.length === total ? 'Sito non analizzabile' : `${nWords(list.length, 'sessione', 'sessioni')} su ${total} non ${plural(list.length, 'valida', 'valide')}`}: accesso bloccato da ${providers.join(', ')}`,
         description:
-          `${list.length} sessioni su ${total} sono state intercettate da ${providers.join(', ')} con una pagina di verifica anti-bot. ` +
+          `${nWords(list.length, 'sessione', 'sessioni')} su ${total} ${plural(list.length, 'è stata intercettata', 'sono state intercettate')} da ${providers.join(', ')} con una pagina di verifica anti-bot. ` +
           (all
             ? 'Il sito non è stato analizzabile: nessun rilievo è stato ricavato da queste sessioni.'
             : 'Queste sessioni sono escluse dalle regole: i rilievi del sito derivano solo dalle sessioni valide.') +

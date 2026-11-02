@@ -6,8 +6,9 @@ import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } fro
 import { NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
 import { summaryItems } from './summary.js';
-import { NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
+import { categoriesUnreliable, NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
 import type { TestEntry } from '../util/pii.js';
+import { nWords, plural } from '../util/text.js';
 
 export interface ReportInput {
   config: AuditConfig;
@@ -140,7 +141,7 @@ export function renderHtml(r: ReportInput): string {
 ${config.report.sottotitolo ? `<p class="subtitle">${esc(config.report.sottotitolo)}</p>` : ''}
 <p class="muted">${config.committente ? `Committente: ${esc(config.committente)} · ` : ''}Titolare dei siti verificati: ${esc(config.cliente)} · rilevazione del ${esc(fmt(r.startedAt))} · siti: ${esc(sites.map(host).join(', '))} · strumento Scookie ${esc(r.toolVersion)}</p>
 ${r.regeneratedAt ? `<p class="muted"><strong>Rapporto rigenerato</strong> il ${esc(fmt(r.regeneratedAt))} con Scookie ${esc(r.toolVersion)}, dai dati raccolti nella rilevazione del ${esc(fmt(r.startedAt))}: le sessioni, le prove e i file di traffico sono quelli originali.</p>` : ''}
-${r.review ? `<p class="warn"><strong>Rapporto rivisto.</strong> È stata applicata la revisione manuale dei rilievi (file <code>revisione.csv</code>): ${r.findings.filter((f) => reviewOf(f)?.esito === 'confermato').length} confermati, ${excluded.length} esclusi come falso positivo (elencati in fondo alla sezione 3), ${r.findings.filter((f) => !reviewOf(f)?.esito).length} non revisionati. I dati raccolti e le prove non cambiano.</p>` : ''}
+${r.review ? `<p class="warn"><strong>Rapporto rivisto.</strong> È stata applicata la revisione manuale dei rilievi (file <code>revisione.csv</code>): ${nWords(r.findings.filter((f) => reviewOf(f)?.esito === 'confermato').length, 'confermato', 'confermati')}, ${nWords(excluded.length, 'escluso', 'esclusi')} come falso positivo (elencati in fondo alla sezione 3), ${nWords(r.findings.filter((f) => !reviewOf(f)?.esito).length, 'non revisionato', 'non revisionati')}. I dati raccolti e le prove non cambiano.</p>` : ''}
 ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.exit.note)}</p>` : ''}
 <h2>Natura del documento</h2>
 <p>Il rapporto documenta, con metodo tecnico ripetibile, il comportamento dei siti indicati rispetto alle scelte dell'utente sul banner di consenso: quali cookie, archivi locali e comunicazioni verso terze parti vengono attivati ${esc(listIt(config.scenari.attivi.map((a) => SCENARIO_TEXT[a] ?? a)))}. Confronta quanto osservato con quanto dichiarato nel banner e nella cookie policy, e segnala gli elementi che meritano verifica, ciascuno con le relative prove (screenshot, registrazioni del traffico, dati grezzi) e i riferimenti normativi pertinenti.</p>
@@ -172,9 +173,9 @@ ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.e
   parts.push(`<h2>1. Sintesi</h2>
 ${top.length ? `<p>I fatti principali, raggruppati per causa e ordinati per priorità di verifica, forza della prova e ripetibilità. I rilievi che derivano dallo stesso fatto sono riuniti in un punto; il dettaglio e le prove sono nei rilievi indicati.</p>
 <ol>${top.map((i) => `<li>${esc(i.title)} <span class="muted">(${esc(i.hosts.join(', '))}${i.repeats ? ` · ${esc(i.repeats)}` : ''})</span> — ${sevBadge(i.severity)} ${i.findings.map((f) => `<a href="#${f.id}">${f.id}</a>`).join(', ')}</li>`).join('')}</ol>` : '<p>Nessun rilievo con priorità di verifica alta o media.</p>'}
-${findings.length > inTop.size ? `<p class="muted">Altri ${findings.length - inTop.size} rilievi, di priorità minore o di contesto, sono nella sezione 3.</p>` : ''}
+${findings.length > inTop.size ? `<p class="muted">${findings.length - inTop.size === 1 ? 'Un altro rilievo, di priorità minore o di contesto, è nella sezione 3.' : `Altri ${findings.length - inTop.size} rilievi, di priorità minore o di contesto, sono nella sezione 3.`}</p>` : ''}
 ${blockedSites.length ? `<p class="warn"><strong>Accesso intercettato.</strong> Su ${esc(blockedSites.join(', '))} la navigazione è stata intercettata da un sistema anti-bot: le sessioni coinvolte non sono valide e non sono state usate per i rilievi.</p>` : ''}
-${unreachable.length ? `<p class="warn"><strong>Pagine non caricate.</strong> ${unreachable.length} sessioni non hanno potuto caricare il sito (${esc(unreachableSites.join(', '))}), per esempio per connessione assente o computer in stop: non sono valide e non sono state usate per i rilievi.${allUnreachable.length ? ` Per ${esc(allUnreachable.join(', '))} non ci sono dati: il rapporto non descrive ${allUnreachable.length === 1 ? 'questo sito' : 'questi siti'}.` : ''}</p>` : ''}
+${unreachable.length ? `<p class="warn"><strong>Pagine non caricate.</strong> ${plural(unreachable.length, '1 sessione non ha potuto caricare il sito', `${unreachable.length} sessioni non hanno potuto caricare il sito`)} (${esc(unreachableSites.join(', '))}), per esempio per connessione assente o computer in stop: ${plural(unreachable.length, 'non è valida e non è stata usata', 'non sono valide e non sono state usate')} per i rilievi.${allUnreachable.length ? ` Per ${esc(allUnreachable.join(', '))} non ci sono dati: il rapporto non descrive ${allUnreachable.length === 1 ? 'questo sito' : 'questi siti'}.` : ''}</p>` : ''}
 <h3>Rilievi per sito e priorità di verifica</h3>
 <table><tr><th>Sito / dominio</th>${SEV.map((s) => `<th>${sevBadge(s)}</th>`).join('')}<th>Totale</th></tr>
 ${[...bySite].map(([site, fs]) => `<tr><td>${esc(site)}</td>${SEV.map((s) => `<td>${fs.filter((f) => f.severity === s).length}</td>`).join('')}<td>${fs.length}</td></tr>`).join('')}</table>
@@ -232,7 +233,7 @@ ${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`)
     if (replays.length) {
       const rp = replays[0].replay!;
       const ok = replays.filter((x) => !x.replay!.stoppedAt).length;
-      parts.push(`<p><strong>Percorso registrato</strong> — registrato il ${esc(new Date(rp.recordedAt).toLocaleDateString('it-IT'))} (sessione ${esc(rp.fromSession)}, ${rp.stepsTotal} azioni dell'operatore) e rigiocato in automatico dopo la scelta in ${replays.length} sessioni: completo in ${ok} su ${replays.length}.${ok < replays.length ? ` Interruzioni: ${esc([...new Set(replays.filter((x) => x.replay!.stoppedAt).map((x) => x.replay!.stoppedAt!))].join('; '))}.` : ''}</p>
+      parts.push(`<p><strong>Percorso registrato</strong> — registrato il ${esc(new Date(rp.recordedAt).toLocaleDateString('it-IT'))} (sessione ${esc(rp.fromSession)}, ${rp.stepsTotal} azioni dell'operatore) e rigiocato in automatico dopo la scelta in ${nWords(replays.length, 'sessione', 'sessioni')}: completo in ${ok} su ${replays.length}.${ok < replays.length ? ` Interruzioni: ${esc([...new Set(replays.filter((x) => x.replay!.stoppedAt).map((x) => x.replay!.stoppedAt!))].join('; '))}.` : ''}</p>
 <ol class="muted">${rp.pages.map((u) => `<li>${esc(u)}</li>`).join('')}</ol>`);
     }
   }
@@ -266,7 +267,7 @@ ${sessionRows(sessions)
 <p class="muted">Priorità di verifica: ${sevBadge(f.severity)}</p>
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 <p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
-${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}.</p>` : ''}
+${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}${f.evidenceExtra ? `; inoltre ${esc(f.evidenceExtra)}` : ''}.</p>` : ''}
 ${f.repeats ? `<p><strong>Ripetibilità.</strong> ${esc(repeatsText(f.repeats))}</p>` : ''}
 ${reviewOf(f)?.esito ? `<p><strong>Revisione manuale.</strong> ${esc(reviewOf(f)!.esito)}${reviewOf(f)!.nota ? ` — ${esc(reviewOf(f)!.nota)}` : ''}</p>` : ''}
 ${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo negli allegati: dati.json e CSV)</li>` : ''}</ul>` : ''}
@@ -296,15 +297,20 @@ ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.
   for (const site of sites) {
     // L'inventario usa solo le sessioni valide (non intercettate da sistemi anti-bot).
     const ss = sessions.filter((s) => s.site === site && !s.blocked && !s.unreachable);
-    const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: '' | 'al caricamento' | 'dopo scroll'; afterReject: boolean }>();
+    // Dopo il rifiuto: scritto dopo la scelta ("sì"), già presente e riscritto ("rinnovato"), solo rimasto ("ancora presente")
+    const AFTER = ['', 'ancora presente', 'rinnovato', 'sì'] as const;
+    const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: '' | 'al caricamento' | 'dopo scroll'; afterReject: (typeof AFTER)[number] }>();
     for (const s of ss) {
       for (const c of s.cookies) {
         const k = `${c.name}|${c.domain}`;
-        const cur = cookies.get(k) ?? { c, scen: new Set<string>(), pre: '', afterReject: false };
+        const cur = cookies.get(k) ?? { c, scen: new Set<string>(), pre: '', afterReject: '' as (typeof AFTER)[number] };
         cur.scen.add(s.scenario);
         // "al caricamento" prevale su "dopo scroll" se il cookie compare in entrambi i modi
         if (c.phase === 'prima' && cur.pre !== 'al caricamento') cur.pre = c.stage === 'caricamento' ? 'al caricamento' : 'dopo scroll';
-        if (s.scenario === 'rifiuta' && c.phase === 'dopo') cur.afterReject = true;
+        if (s.scenario === 'rifiuta' && s.interaction.outcome === 'eseguito') {
+          const v = c.phase === 'dopo' ? 'sì' : c.renewals?.some((x) => x.stage === 'scelta') ? 'rinnovato' : c.presentAfterChoice ? 'ancora presente' : '';
+          if (AFTER.indexOf(v) > AFTER.indexOf(cur.afterReject)) cur.afterReject = v;
+        }
         cookies.set(k, cur);
       }
     }
@@ -313,10 +319,25 @@ ${[...cookies.values()]
   .sort((a, b) => a.c.name.localeCompare(b.c.name))
   .map(({ c, scen, pre, afterReject }) => {
     const d = declaredStatus.get(`${site}|${c.name}|${c.domain.replace(/^\./, '')}`);
-    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${esc(pre)}</td><td>${afterReject ? 'sì' : ''}</td><td>${esc([...scen].join(', '))}</td></tr>`;
+    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${esc(pre)}</td><td>${esc(afterReject)}</td><td>${esc([...scen].join(', '))}</td></tr>`;
   })
   .join('')}</table>`);
 
+    // Strumenti di tracciamento ospitati sul dominio del sito (es. Matomo): non sono terze parti ma raccolgono dati
+    const own = groupBy(
+      ss.flatMap((s) => s.requests.filter((q) => q.party === 'prima' && q.tracker && NON_TECHNICAL.has(q.tracker.category)).map((q) => ({ s, q }))),
+      (x) => `${x.q.host}${(() => { try { return new URL(x.q.url).pathname; } catch { return ''; } })()}`,
+    );
+    if (own.size) {
+      parts.push(`<h3>${esc(site)} — raccolte sul dominio del sito (${own.size})</h3><table><tr><th>Indirizzo</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
+${[...own]
+  .sort((a, b) => a[0].localeCompare(b[0]))
+  .map(([h, list]) => {
+    const t = list[0].q.tracker!;
+    return `<tr><td>${esc(h)}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
+  })
+  .join('')}</table>`);
+    }
     const third = groupBy(
       ss.flatMap((s) => s.requests.filter((q) => q.party === 'terza').map((q) => ({ s, q }))),
       (x) => x.q.host,
@@ -349,6 +370,10 @@ ${[...third]
       } else {
         notSeen.push(`${host(site)}: scenario "${sc}" non eseguito in ${list.length} ${list.length === 1 ? 'sessione' : 'sessioni'} (${list[0].interaction.detail.replace(/\s+/g, ' ').slice(0, 160)}).`);
       }
+    }
+    // una riga per sito, con le sessioni in cui si è vista l'anomalia (con le ripetizioni sarebbe ripetuta identica)
+    for (const [msg, list] of groupBy(ss.filter((x) => x.bannerAnalysis && categoriesUnreliable(x.bannerAnalysis)), (x) => categoriesUnreliable(x.bannerAnalysis!)!)) {
+      notSeen.push(`${host(site)}: ${msg} (${list.length === 1 ? 'sessione' : 'sessioni'} ${list.map((x) => x.id).join(', ')}).`);
     }
     const rev = ss.filter((s) => s.scenario === 'revoca' && s.revocation && s.revocation.outcome !== 'eseguita');
     if (rev.length) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);

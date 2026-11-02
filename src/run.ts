@@ -16,7 +16,7 @@ import { runSession, type SessionPlan } from './browser/session.js';
 import { renderHtml } from './report/html.js';
 import { writeCsvs } from './report/csv.js';
 import { REVIEW_FILE, writeReviewTemplate } from './report/review.js';
-import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms } from './rules/engine.js';
+import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms, resolveRefs } from './rules/engine.js';
 import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult } from './types.js';
 import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
 import { TOOL_COMMIT, TOOL_VERSION } from './version.js';
@@ -27,6 +27,8 @@ import type { RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
 import { attributeByHost, checkDeclared } from './report/attribution.js';
 import { enrichRequests, reclassify } from './classify/enrich.js';
+import { reattributeFromHar } from './browser/har-frames.js';
+import { nWords, plural } from './util/text.js';
 
 const SEV_ORDER = ['alta', 'media', 'bassa', 'informativa'];
 
@@ -557,9 +559,9 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       }
       siteResults.push(...job.manual);
       const blockedCount = siteResults.filter((s) => s.blocked).length;
-      if (blockedCount) log(`    ${blockedCount} sessioni su ${siteResults.length} bloccate da un sistema anti-bot: escluse dalle regole`);
+      if (blockedCount) log(`    ${nWords(blockedCount, 'sessione', 'sessioni')} su ${siteResults.length} ${plural(blockedCount, 'bloccata', 'bloccate')} da un sistema anti-bot: ${plural(blockedCount, 'esclusa', 'escluse')} dalle regole`);
       const unreachableCount = siteResults.filter((s) => s.unreachable).length;
-      if (unreachableCount) log(`    ${unreachableCount} sessioni su ${siteResults.length} senza accesso al sito: escluse dalle regole`);
+      if (unreachableCount) log(`    ${nWords(unreachableCount, 'sessione', 'sessioni')} su ${siteResults.length} senza accesso al sito: ${plural(unreachableCount, 'esclusa', 'escluse')} dalle regole`);
       sessions.push(...siteResults);
       if (!decl.source) {
         // Ultima fonte: le tabelle della cookie policy (indirizzo configurato, link nel banner, pagina "cookie" scoperta).
@@ -639,6 +641,17 @@ async function finishRun(
     o.log(`Classificazioni non aggiornate (${(e as Error).message.split('\n')[0]}): restano quelle della rilevazione.`);
   }
   enrichRequests(collected.sessions);
+  // Rilevazioni raccolte prima della 0.1.1: le richieste degli iframe partite all'uscita da una pagina si riattribuiscono
+  // alla pagina che li ospitava, con il frame di origine registrato nel file HAR
+  if (o.regeneratedAt) {
+    try {
+      const moved = reattributeFromHar(runDir, collected.sessions);
+      const total = [...moved.values()].reduce((a, b) => a + b, 0);
+      if (total) o.log(`Attribuzione dal file HAR: ${total === 1 ? '1 richiesta di un iframe riattribuita' : `${total} richieste di iframe riattribuite`} alla pagina che li ospitava (inviate all'uscita), in ${moved.size === 1 ? '1 sessione' : `${moved.size} sessioni`}.`);
+    } catch (e) {
+      o.log(`Attribuzione dal file HAR non eseguita (${(e as Error).message.split('\n')[0]}): restano le pagine della rilevazione.`);
+    }
+  }
   // Ogni fatto appartiene al sito della pagina in cui avviene (es. navigazione manuale partita da www che prosegue
   // su app): le parti delle sessioni su altri host diventano sessioni di quei siti. L'elenco dichiarato letto dal
   // gestore di un'altra pagina non vale per il sito.
@@ -707,6 +720,8 @@ async function finishRun(
   // Ordine delle schede: gravità, poi forza della prova e ripetibilità
   findings.sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || findingScore(b) - findingScore(a));
   findings.forEach((f, i) => (f.id = `R-${String(i + 1).padStart(3, '0')}`));
+  // rimandi tra rilievi ("vedi R-004"): con i numeri definitivi
+  findings.splice(0, findings.length, ...resolveRefs(findings));
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));

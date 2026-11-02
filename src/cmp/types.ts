@@ -27,8 +27,13 @@ export interface CmpAdapter {
   name: string;
   /** True se il CMP è presente sulla pagina (API JavaScript o elementi DOM). */
   detect(page: Page): Promise<boolean>;
-  /** True se il banner del CMP è visibile. */
+  /** True se il banner del CMP è visibile (elementi del banner visibili sullo schermo). */
   bannerVisible(page: Page): Promise<boolean>;
+  /**
+   * Visibilità del banner letta dallo stato del CMP (es. classi che il gestore mette al banner mostrato o chiuso).
+   * Ha la precedenza sugli altri controlli: true/false = deciso dal gestore, null = stato non leggibile.
+   */
+  isBannerVisible?(page: Page): Promise<boolean | null>;
   /**
    * Esegue la scelta. In modalità "click" usa i pulsanti reali (come farebbe l'utente);
    * in modalità "api" chiama l'API del CMP, usata solo come ultimo ripiego.
@@ -41,6 +46,10 @@ export interface CmpAdapter {
   checkConsent(state: unknown, choice: Choice): ConsentCheck;
   /** Elenco dichiarato letto dal CMP, se disponibile. */
   declared?(page: Page): Promise<DeclaredItem[] | null>;
+  /** Selettori della X di chiusura del banner del gestore. */
+  closeSelectors?: string[];
+  /** Categorie del secondo livello lette dagli interruttori del gestore (pannello delle preferenze aperto). */
+  categories?(page: Page): Promise<{ label: string; checked: boolean; disabled: boolean }[] | null>;
   /** Riapre il banner con l'API del CMP (es. HubSpot showBanner), per poi rifiutare con un click. */
   reopen?(page: Page): Promise<boolean>;
 }

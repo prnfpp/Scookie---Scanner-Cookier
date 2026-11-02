@@ -27,6 +27,8 @@ export interface RawFinding {
   evidence: Evidence[];
   requestExcerpt?: Record<string, unknown>;
   evidenceLevel?: 'risorsa' | 'raccolta' | 'identificativo';
+  /** Altra prova osservata insieme a quella principale (es. identificativo memorizzato e anche dati inviati). */
+  evidenceExtra?: string;
   /** Frase breve in linguaggio semplice per la sintesi iniziale. */
   headline?: string;
   /** Fornitori o piattaforme di cui parla la scheda (per raggruppare la sintesi per causa). */
