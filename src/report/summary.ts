@@ -159,7 +159,11 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
   }
   const stats = before.filter((f) => !isMkt(f));
   if (stats.length) {
-    items.push(item(labelled('Statistica e registrazione delle sessioni prima di qualsiasi scelta sul banner', vendors(stats)), stats));
+    // il titolo nomina solo ciò che c'è: statistica, registrazione delle sessioni o entrambe
+    const rec = stats.some((f) => /registrazione sessioni/.test(f.description));
+    const st = stats.some((f) => !/registrazione sessioni/.test(f.description));
+    const what = rec && st ? 'Statistica e registrazione delle sessioni' : rec ? 'Registrazione delle sessioni' : 'Statistica';
+    items.push(item(labelled(`${what} prima di qualsiasi scelta sul banner`, vendors(stats)), stats));
     take(stats);
   }
 

@@ -45,7 +45,12 @@ export const elementiNonClassificati: Rule = {
         headline: unknownBefore ? `${unknownBefore} terze parti non classificate vengono contattate prima della scelta` : undefined,
         description:
           `${plural(unique.length, '1 elemento osservato prima della scelta o dopo il rifiuto non è riconosciuto', `${unique.length} elementi osservati prima della scelta o dopo il rifiuto non sono riconosciuti`)} dalle fonti di classificazione ` +
-          `(${count('cookie')} cookie, ${nWords(count('storage'), 'chiave di storage', 'chiavi di storage')} di terze parti, ${nWords(count('host', 'host-prima'), 'dominio', 'domini')} di terze parti, di cui ${nWords(unknownBefore, 'contattato', 'contattati')} prima della scelta). ` +
+          // solo le voci presenti: niente "0 cookie" o "di cui 0 contattati"
+          `(${[
+            count('cookie') ? `${count('cookie')} cookie` : '',
+            count('storage') ? `${nWords(count('storage'), 'chiave di storage', 'chiavi di storage')} di terze parti` : '',
+            count('host', 'host-prima') ? `${nWords(count('host', 'host-prima'), 'dominio', 'domini')} di terze parti${unknownBefore ? `, di cui ${nWords(unknownBefore, 'contattato', 'contattati')} prima della scelta` : ''}` : '',
+          ].filter(Boolean).join(', ')}). ` +
           `Non sono stati valutati dalle altre regole: la loro natura (tecnica o di tracciamento) va verificata.`,
         details: unique.map((u) => `${u.key} — scenari: ${[...new Set(list.filter((l) => l.key === u.key).map((l) => l.s.scenario))].join(', ')}`),
         evidence: sessionEvidence(first, ['1-banner']).filter((e) => !e.file.endsWith('.har')),

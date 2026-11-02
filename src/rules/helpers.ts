@@ -264,7 +264,7 @@ export function activeAfterReject(sessions: SessionResult[]): Map<string, Set<st
  * Rimando ai rilievi di un'altra regola sullo stesso fornitore, risolto dopo la numerazione (es. "vedi R-004").
  * Se non c'è un rilievo corrispondente diventa il titolo della regola.
  */
-export const refTo = (ruleId: string, subject: string) => `{{rilievi:${ruleId}:${subject}}}`;
+export const refTo = (ruleId: string, subject: string, category?: string) => `{{rilievi:${ruleId}:${subject}${category ? `:${category}` : ''}}}`;
 
 /**
  * Cookie non tecnico attivo dopo la scelta (stage "scelta") o dopo la revoca (stage "revoca"): scritto per la prima

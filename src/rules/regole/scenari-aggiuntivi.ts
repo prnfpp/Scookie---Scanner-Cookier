@@ -163,7 +163,7 @@ export const personalizzazioneNonRispettata: Rule = {
           description:
             `Dopo aver accettato solo la categoria statistica (${s.interaction.detail}), si attiva ${label}: ${what}.` +
             (verified ? '' : ` La scelta non è stata verificata sullo stato registrato dal gestore del consenso (${s.interaction.verification}): non è accertato che sia stata accettata la sola statistica, il fatto va letto con questa cautela.`) +
-            (sameAsReject ? ` Lo stesso fornitore risulta attivo anche dopo il rifiuto (${refTo('attivazione-dopo-rifiuto', key)}): è lo stesso comportamento del rifiuto, non un'attivazione legata alle categorie scelte.` : ''),
+            (sameAsReject ? ` Lo stesso fornitore risulta attivo anche dopo il rifiuto (${refTo('attivazione-dopo-rifiuto', key, items[0].cat)}): è lo stesso comportamento del rifiuto, non un'attivazione legata alle categorie scelte.` : ''),
           details: [`Verifica dello stato del consenso: ${s.interaction.verification} — ${s.interaction.verificationDetail}`],
           evidence: sessionEvidence(s, ['2-dopo-scelta', '3-fine']),
           requestExcerpt: rs.length ? requestExcerpt(strongestRequest(rs), s) : undefined,
