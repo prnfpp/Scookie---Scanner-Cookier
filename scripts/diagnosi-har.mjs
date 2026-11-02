@@ -86,9 +86,14 @@ for (const s of sessions.filter((x) => x.choiceAt)) {
     return { r, doc, gap: doc ? t - Date.parse(doc.at) : Infinity };
   }).filter((x) => x.gap <= windowMs);
   if (!near.length) continue;
-  console.log(`${s.id} (${s.scenario}): ${near.length} richieste`);
-  for (const { r, doc, gap } of near.slice(0, 12)) {
-    const e = har?.entries.find((x) => x.request.url === r.url && Math.abs(Date.parse(x.startedDateTime) - Date.parse(r.at)) < 2000);
+  // solo le richieste partite da un iframe (documento del frame diverso dalla pagina appena richiesta): quelle della
+  // nuova pagina (font, script) non sono invii all'uscita
+  const rows = near
+    .map((x) => ({ ...x, e: har?.entries.find((y) => y.request.url === x.r.url && Math.abs(Date.parse(y.startedDateTime) - Date.parse(x.r.at)) < 2000) }))
+    .filter((x) => !x.e || frameDoc(har, x.e) !== x.doc.url);
+  if (!rows.length) continue;
+  console.log(`${s.id} (${s.scenario}): ${rows.length} richieste da iframe`);
+  for (const { r, doc, gap, e } of rows.slice(0, 12)) {
     console.log(`   seq ${r.seq} +${gap} ms dopo la richiesta di ${doc.url} — attribuita a ${r.pageUrl}`);
     console.log(`      ${r.method} ${short(r.url)}`);
     if (e) console.log(`      documento del frame: ${frameDoc(har, e) ?? '(non registrato)'}; Referer: ${header(e, 'referer') || '(assente)'}; pageref: ${e.pageref ?? '—'}`);
