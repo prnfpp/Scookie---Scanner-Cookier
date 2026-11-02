@@ -1,4 +1,4 @@
-import { NON_TECHNICAL, STAGE_LABEL, type Category, type InteractionReport, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
+import { NON_TECHNICAL, STAGE_LABEL, type Category, type CookieRecord, type InteractionReport, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   tecnico: 'tecnico',
@@ -252,7 +252,7 @@ export function activeAfterReject(sessions: SessionResult[]): Map<string, Set<st
   const out = new Map<string, Set<string>>();
   for (const s of sessions.filter((x) => x.scenario === 'rifiuta' && x.interaction.outcome === 'eseguito')) {
     const set = out.get(s.site) ?? new Set<string>();
-    for (const c of s.cookies) if (c.phase === 'dopo' && NON_TECHNICAL.has(c.classification.category)) set.add(c.classification.platform ?? c.domain);
+    for (const c of s.cookies) if (cookieActivity(c, 'scelta')) set.add(c.classification.platform ?? c.domain);
     for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r)) set.add(r.tracker.company);
     out.set(s.site, set);
   }
@@ -264,3 +264,13 @@ export function activeAfterReject(sessions: SessionResult[]): Map<string, Set<st
  * Se non c'è un rilievo corrispondente diventa il titolo della regola.
  */
 export const refTo = (ruleId: string, subject: string) => `{{rilievi:${ruleId}:${subject}}}`;
+
+/**
+ * Cookie non tecnico attivo dopo la scelta (stage "scelta") o dopo la revoca (stage "revoca"): scritto per la prima
+ * volta in quel momento ("nuovo") o già presente e riscritto, cioè con valore o scadenza cambiati ("rinnovato").
+ */
+export function cookieActivity(c: CookieRecord, stage: 'scelta' | 'revoca'): 'nuovo' | 'rinnovato' | null {
+  if (!NON_TECHNICAL.has(c.classification.category)) return null;
+  if (stage === 'scelta' ? c.phase === 'dopo' : c.stage === 'revoca') return 'nuovo';
+  return c.renewals?.some((r) => r.stage === stage) ? 'rinnovato' : null;
+}

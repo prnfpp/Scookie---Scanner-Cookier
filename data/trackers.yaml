@@ -6,6 +6,8 @@
 #   azienda:   fornitore
 #   categoria: tecnico | funzionalita | statistica | marketing | registrazione-sessioni | social
 #   percorsi:  (opzionale) regex sul path; se presenti, la voce vale solo per quei percorsi
+#   parametri: (opzionale) regex sulla query (senza "?"); se presenti devono corrispondere tutte
+#   dominio "*": qualsiasi host, anche il sito stesso (strumenti ospitati sul sito); richiede percorsi o parametri
 #   nota:      (opzionale) testo mostrato nel report
 #
 # Le voci con "percorsi" vengono valutate prima di quelle senza. Vince la voce con dominio più specifico.
@@ -105,6 +107,10 @@ tracker:
   - { dominio: imrworldwide.com, azienda: Nielsen, categoria: statistica }
   - { dominio: shinystat.com, azienda: ShinyStat, categoria: statistica }
   - { dominio: matomo.cloud, azienda: Matomo, categoria: statistica }
+  # Matomo/Piwik ospitato sul sito (es. plugin WordPress): riconosciuto dal percorso o dai parametri, su qualsiasi host
+  - { dominio: "*", azienda: Matomo, categoria: statistica, percorsi: ["/(matomo|piwik)\\.php$"], nota: "Matomo/Piwik: invio di un hit di statistica (anche ospitato sul dominio del sito)" }
+  - { dominio: "*", azienda: Matomo, categoria: statistica, percorsi: ["/(matomo|piwik)\\.js$"], nota: "Script di Matomo/Piwik (anche ospitato sul dominio del sito)" }
+  - { dominio: "*", azienda: Matomo, categoria: statistica, parametri: ["(^|&)idsite=\\d+(&|$)", "(^|&)rec=1(&|$)"], nota: "Hit di Matomo/Piwik riconosciuto dai parametri idsite e rec=1" }
   - { dominio: piwik.pro, azienda: Piwik PRO, categoria: statistica }
   - { dominio: plausible.io, azienda: Plausible, categoria: statistica }
   - { dominio: mc.yandex.ru, azienda: Yandex, categoria: statistica }

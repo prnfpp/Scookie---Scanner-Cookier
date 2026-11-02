@@ -1,5 +1,5 @@
 import { NON_TECHNICAL, type Category } from '../../types.js';
-import { activeAfterReject, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
+import { activeAfterReject, cookieActivity, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo la revoca del consenso: nuovi cookie non tecnici o richieste a tracker. */
@@ -13,7 +13,8 @@ export const attivazioneDopoRevoca: Rule = {
     // Fornitori ancora attivi dopo il rifiuto, per sito: se dopo la revoca succede lo stesso, non è un fatto nuovo.
     const afterReject = activeAfterReject(sessions);
     for (const s of sessions.filter((x) => x.scenario === 'revoca' && x.revocation?.outcome === 'eseguita')) {
-      const cookies = s.cookies.filter((c) => c.stage === 'revoca' && NON_TECHNICAL.has(c.classification.category));
+      // scritti dopo la revoca, oppure già presenti e riscritti dopo la revoca
+      const cookies = s.cookies.filter((c) => cookieActivity(c, 'revoca'));
       const reqs = s.requests.filter((r) => r.stage === 'revoca' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r));
       const keys = new Set([...cookies.map((c) => c.classification.platform ?? c.domain), ...reqs.map((r) => r.tracker!.company)]);
       for (const key of keys) {
@@ -31,7 +32,10 @@ export const attivazioneDopoRevoca: Rule = {
         const sameAsReject = afterReject.get(s.site)?.has(key) ?? false;
         const consentShort = googleConsentSummary(rs).short;
         const parts: string[] = [];
-        if (cs.length) parts.push(`${cs.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${cs.length} cookie`} (${cs.map((c) => c.name).join(', ')})`);
+        const newC = cs.filter((c) => cookieActivity(c, 'revoca') === 'nuovo');
+        const again = cs.filter((c) => cookieActivity(c, 'revoca') === 'rinnovato');
+        if (newC.length) parts.push(`${newC.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${newC.length} cookie`} (${newC.map((c) => c.name).join(', ')})`);
+        if (again.length) parts.push(`${again.length === 1 ? 'viene riscritto 1 cookie' : `vengono riscritti ${again.length} cookie`} già presenti, con scadenza o valore aggiornati (${again.map((c) => c.name).join(', ')})`);
         if (fresh.length) parts.push(`sulle pagine visitate dopo la revoca ${fresh.length === 1 ? 'parte' : 'partono'} ${nReq(fresh.length)} a ${hostsSummary(fresh)}`);
         if (residual.length) {
           const first = Math.min(...residual.map((r) => r.msFromRevoke ?? Infinity));

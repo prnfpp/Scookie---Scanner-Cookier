@@ -92,9 +92,15 @@ test('fix 3: personalizza con l\'adattatore Complianz, stato verificato, video a
   const f = findings('personalizzazione-non-rispettata').find((x) => x.subjects?.includes('VideoTest'));
   assert.ok(f, 'il video resta attivo con la sola statistica');
   assert.equal(f.severity, 'bassa');
-  const rej = findings('attivazione-dopo-rifiuto').find((x) => x.subjects?.includes('VideoTest'))!;
-  assert.match(f.description, new RegExp(`stesso comportamento del rifiuto`));
-  assert.match(f.description, new RegExp(`vedi ${rej.id}`));
+  assert.match(p.detail, /attivazione di "Statistiche"/);
+  assert.match(f.description, /stesso comportamento del rifiuto/);
+  const ids = /vedi (R-\d{3}(?:, R-\d{3})*)/.exec(f.description)?.[1].split(', ') ?? [];
+  assert.ok(ids.length, f.description);
+  for (const id of ids) {
+    const ref = result.findings.find((x) => x.id === id)!;
+    assert.equal(ref.ruleId, 'attivazione-dopo-rifiuto', id);
+    assert.ok(ref.subjects?.includes('VideoTest'), id);
+  }
 });
 
 test('fix 4: comando di revoca trovato dopo la scelta e usato nello scenario revoca', () => {
@@ -108,4 +114,33 @@ test('fix 4: comando di revoca trovato dopo la scelta e usato nello scenario rev
   assert.equal(findings('revoca-non-trovata').length, 0);
   const s = findings('struttura-banner')[0];
   assert.match(s.description, /Modo per rivedere la scelta nella pagina: trovato, "Gestisci consenso" \(.*visibile solo dopo la scelta\)/);
+});
+
+test('fix 5: tracker di prima parte (Matomo) attivo dopo il rifiuto e dopo la X, cookie rinnovati', () => {
+  const rej = session('rifiuta');
+  const hits = rej.requests.filter((r) => /\/matomo\.php/.test(r.url));
+  assert.ok(hits.length, 'hit a /matomo.php registrati');
+  assert.ok(hits.every((r) => r.party === 'prima' && r.tracker?.company === 'Matomo' && r.tracker.category === 'statistica'));
+  assert.ok(hits.some((r) => r.phase === 'dopo'));
+  const pk = rej.cookies.find((c) => c.name.startsWith('_pk_id.'))!;
+  assert.equal(pk.phase, 'prima');
+  assert.equal(pk.presentAfterChoice, true);
+  assert.ok(pk.renewals?.some((r) => r.stage === 'scelta'), 'cookie _pk_id rinnovato dopo la scelta');
+  for (const rule of ['attivazione-dopo-rifiuto', 'attivazione-dopo-chiusura']) {
+    const f = findings(rule).find((x) => x.subjects?.includes('Matomo'));
+    assert.ok(f, `${rule}: Matomo`);
+    assert.equal(f.severity, 'alta', rule);
+    assert.equal(f.evidenceLevel, 'identificativo');
+    assert.match(f.evidenceExtra ?? '', /dati di navigazione inviati/);
+    assert.match(f.description, /riscritti? .*_pk_/);
+    assert.match(f.description, /matomo|complianz-like/i);
+  }
+  // prima della scelta: cookie e dati inviati nello stesso rilievo, senza una scheda duplicata sulle richieste
+  const before = findings('cookie-prima-del-consenso').find((x) => x.subjects?.includes('Matomo'))!;
+  assert.match(before.evidenceExtra ?? '', /dati di navigazione inviati/);
+  assert.ok(!findings('richiesta-tracker-prima-del-consenso').some((x) => x.subjects?.includes('Matomo')));
+  // inventario: colonna "Dopo rifiuto" valorizzata per i cookie _pk_*
+  const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
+  assert.match(html, /<td>_pk_id\.1\.ab12<\/td>(?:(?!<\/tr>).)*<td>rinnovato<\/td>/s);
+  assert.match(html, /raccolte sul dominio del sito/);
 });

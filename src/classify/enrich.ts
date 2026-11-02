@@ -19,12 +19,15 @@ export function reclassify(sessions: SessionResult[], classifier: Classifier): v
     }
     for (const r of s.requests) {
       let path = '/';
+      let query = '';
       try {
-        path = new URL(r.url).pathname;
+        const u = new URL(r.url);
+        path = u.pathname;
+        query = u.search;
       } catch {
         // indirizzo non valido
       }
-      const t = classifier.classifyHost(r.host, path);
+      const t = classifier.classifyHost(r.host, path, query);
       if (t) r.tracker = { company: t.azienda, category: t.categoria };
       else delete r.tracker;
     }

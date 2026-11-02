@@ -69,6 +69,13 @@ export interface CookieRecord {
   firstSeenAt: string;
   valuePreview: string;
   classification: Classification;
+  /**
+   * Cookie già presente prima della scelta e ancora presente in una fotografia successiva alla scelta. Assente nelle
+   * rilevazioni fatte con versioni precedenti alla 0.1.1 (dato non raccolto).
+   */
+  presentAfterChoice?: boolean;
+  /** Cookie già presente prima della scelta e riscritto dopo (valore o scadenza cambiati): una voce per momento. */
+  renewals?: { stage: Stage; at: string; url: string; expires: string | null }[];
 }
 
 export interface StorageRecord {
@@ -296,6 +303,8 @@ export interface Finding {
   requestExcerpt?: Record<string, unknown>;
   /** Forza della prova: risorsa scaricata, raccolta inviata, identificativo memorizzato. */
   evidenceLevel?: 'risorsa' | 'raccolta' | 'identificativo';
+  /** Altra prova osservata insieme a quella principale (es. identificativo memorizzato e anche dati inviati). */
+  evidenceExtra?: string;
   /** Frase breve e in linguaggio semplice per la sintesi iniziale. */
   headline?: string;
   /** Fornitori o piattaforme di cui parla la scheda. */

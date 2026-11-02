@@ -9,9 +9,13 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
   defaultSeverity: 'alta',
   defaultNorms: ['art122', 'eprivacy53', 'garante2021', 'edpb2_2023'],
   evaluate({ sessions }) {
+    // Raccolte sul dominio del sito di un fornitore che ha già scritto cookie non tecnici prima della scelta: sono
+    // riportate (accorpate) nel rilievo sui cookie dello stesso fornitore, come dati inviati
+    const withCookies = new Set(sessions.flatMap((s) => s.cookies.filter((c) => c.phase === 'prima' && NON_TECHNICAL.has(c.classification.category) && c.classification.platform).map((c) => `${s.site}|${c.classification.platform}`)));
     const items = sessions.flatMap((s) =>
       s.requests
         .filter((r) => r.phase === 'prima' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r))
+        .filter((r) => !(r.party === 'prima' && withCookies.has(`${s.site}|${r.tracker!.company}`)))
         .map((r) => ({ s, r })),
     );
     const out: RawFinding[] = [];

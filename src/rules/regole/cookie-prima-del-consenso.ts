@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { CATEGORY_LABEL, fmtDate, groupBy, sessionEvidence, stageLabel, stageWhen } from '../helpers.js';
+import { CATEGORY_LABEL, fmtDate, groupBy, hostsSummary, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, stageLabel, stageWhen, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Cookie o storage non tecnici scritti prima di qualsiasi scelta sul banner. */
@@ -58,6 +58,13 @@ export const cookiePrimaDelConsenso: Rule = {
           : rows.every((r) => !r)
             ? ` (non dichiarat${names.length === 1 ? 'o' : 'i'} dal sito)`
             : '';
+      // Dati inviati allo stesso fornitore prima della scelta (es. hit di Matomo ospitato sul sito): la prova comprende
+      // anche la raccolta, non solo l'identificativo memorizzato
+      const vendor = first.cls.platform;
+      const sent = vendor
+        ? sessions.filter((x) => x.site === first.s.site).flatMap((x) => x.requests.filter((r) => r.phase === 'prima' && r.tracker?.company === vendor && NON_TECHNICAL.has(r.tracker.category) && requestEvidenceLevel([r]) === 'raccolta'))
+        : [];
+      const sentSample = sent.length ? strongestRequest(sent) : null;
       out.push({
         site: first.s.site,
         scenario: first.s.scenario,
@@ -65,16 +72,20 @@ export const cookiePrimaDelConsenso: Rule = {
         description:
           `${names.length === 1 ? (names[0].startsWith('chiave') ? `La ${names[0]} viene scritta` : `Il ${names[0]} viene scritto`) : `${names.length} elementi (${names.join(', ')}) vengono scritti`} ` +
           `${when}. Categoria: ${CATEGORY_LABEL[first.cls.category]}` +
-          `${first.cls.platform ? ` (${first.cls.platform})` : ''}, secondo ${first.cls.source}.`,
+          `${first.cls.platform ? ` (${first.cls.platform})` : ''}, secondo ${first.cls.source}.` +
+          (sent.length ? ` Prima della scelta il browser invia anche dati di navigazione a ${vendor}: ${nReq(sent.length)} di raccolta a ${hostsSummary(sent)}${sent.every((r) => r.party === 'prima') ? ' (endpoint sul dominio del sito)' : ''}.` : ''),
         details: [
           ...[...new Map(group.map((g) => [g.what, g])).values()].map((g) => {
             const decl = declaredAs(g.s.site, g.name);
             return `${g.what} — dominio/origine ${g.where}; ${g.extra}; ${stageLabel(g.stage)}${decl ? `; ${decl}` : ''}${g.cls.note ? ` — nota: ${g.cls.note}` : ''}`;
           }),
           `Pagine: ${pages.join(', ')}`,
+          ...(sentSample ? [`Dati inviati prima della scelta: ${nReq(sent.length)} di raccolta; richiesta di esempio: ${sentSample.method} ${sentSample.url.slice(0, 200)}`] : []),
           `Osservato negli scenari: ${scen.join(', ')} (fase precedente alla scelta)`,
         ],
         evidenceLevel: 'identificativo',
+        ...(sent.length ? { evidenceExtra: `dati di navigazione inviati al fornitore (${nReq(sent.length)} di raccolta)` } : {}),
+        ...(sentSample ? { requestExcerpt: requestExcerpt(sentSample, sessions.find((x) => x.requests.includes(sentSample))!) } : {}),
         subjects: [first.cls.platform ?? first.where],
         groupKey: `${first.cls.platform ?? first.where}|${first.cls.category}`,
         headline: `${first.cls.platform ?? `Un fornitore (${first.where})`} scrive ${names.length === 1 ? 'un identificativo' : 'identificativi'} nel browser ${onlyAfterScroll ? 'dopo lo scroll, ' : ''}prima di qualsiasi scelta sul banner${declNote}`,

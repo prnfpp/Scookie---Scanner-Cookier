@@ -32,3 +32,14 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   comando è stato trovato dopo la scelta, o lo scenario "revoca" ha riaperto le preferenze con un comando della pagina
   (non via API), `revoca-non-trovata` non scatta e la struttura del banner dice "trovato", quale comando e se è
   visibile solo dopo la scelta.
+- **Tracciamento di prima parte dopo il rifiuto e dopo la X (falso negativo Matomo).** Il classificatore riconosce gli
+  endpoint di raccolta anche per percorso e parametri su qualsiasi host (`dominio: "*"` con `percorsi`/`parametri` in
+  `data/trackers.yaml`): Matomo/Piwik `matomo.php`, `piwik.php`, `matomo.js`, e hit con `idsite=` e `rec=1`, anche via
+  `sendBeacon`/`fetch keepalive`. I cookie `_pk_*` sono attribuiti a Matomo (`data/cookies.yaml`). Il raccoglitore
+  registra se un cookie presente prima della scelta c'è ancora dopo (`presentAfterChoice`) e se è stato riscritto
+  (valore o scadenza cambiati: `renewals`, anche dopo la revoca). Le regole dopo il rifiuto, la X e la revoca contano
+  i cookie riscritti come attività; i cookie soltanto rimasti sono un fatto distinto di priorità bassa. Prima della
+  scelta gli hit di prima parte dello stesso fornitore dei cookie sono accorpati nel rilievo sui cookie, la cui forza
+  della prova dichiara anche i dati inviati. Inventario: colonna "Dopo rifiuto" con "sì", "rinnovato" o "ancora
+  presente" e tabella delle raccolte sul dominio del sito. Le classificazioni si riapplicano con `rigenera`; i dati
+  sui cookie riscritti esistono solo nelle rilevazioni fatte con la 0.1.1.

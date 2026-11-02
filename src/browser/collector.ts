@@ -30,6 +30,8 @@ export class Collector {
   currentUrl = '';
   readonly requests: (RequestRecord & { epoch: number })[] = [];
   private readonly cookies = new Map<string, CookieRecord>();
+  /** Ultimo valore e scadenza visti per ogni cookie: un cambiamento dopo la scelta è una nuova scrittura. */
+  private readonly cookieState = new Map<string, string>();
   private readonly storage = new Map<string, StorageRecord>();
   private readonly byRequest = new WeakMap<Request, RequestRecord>();
   private seq = 0;
@@ -130,7 +132,7 @@ export class Collector {
       pageUrl: maskPii(this.currentUrl),
       status: null,
     };
-    const t = this.classifier.classifyHost(host, parsed.pathname);
+    const t = this.classifier.classifyHost(host, parsed.pathname, parsed.search);
     if (t) rec.tracker = { company: t.azienda, category: t.categoria };
     const params: Record<string, string> = {};
     let body = '';
@@ -161,7 +163,21 @@ export class Collector {
     const now = new Date().toISOString();
     for (const c of await this.context.cookies()) {
       const key = `${c.name}|${c.domain}|${c.path}`;
-      if (this.cookies.has(key)) continue;
+      const state = `${c.value}|${c.expires}`;
+      const prev = this.cookieState.get(key);
+      this.cookieState.set(key, state);
+      const known = this.cookies.get(key);
+      if (known) {
+        // Già presente prima della scelta (o, dopo la revoca, scritto durante il consenso): si registra se c'è ancora
+        // e se è stato riscritto o rinnovato
+        if (this.phase === 'dopo' && (known.phase === 'prima' || (this.stage === 'revoca' && known.stage !== 'revoca'))) {
+          if (known.phase === 'prima') known.presentAfterChoice = true;
+          if (prev !== undefined && prev !== state && !known.renewals?.some((r) => r.stage === this.stage)) {
+            known.renewals = [...(known.renewals ?? []), { stage: this.stage, at: now, url: maskPii(this.currentUrl), expires: c.expires > 0 ? new Date(c.expires * 1000).toISOString() : null }];
+          }
+        }
+        continue;
+      }
       this.cookies.set(key, {
         name: c.name,
         domain: c.domain,
