@@ -1,0 +1,7 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Video</title></head>
+<body style="margin:0;background:#000;color:#fff"><div style="padding:20px">Lettore video di prova</div>
+<script>
+// Come un lettore video incorporato: invia un evento al caricamento e uno all'uscita (pagehide)
+fetch('/log_event?alt=json&ev=load', { method: 'POST', body: 'load' });
+addEventListener('pagehide', function () { navigator.sendBeacon('/log_event?alt=json&ev=uscita', 'uscita'); });
+</script></body></html>

@@ -27,8 +27,13 @@ export interface CmpAdapter {
   name: string;
   /** True se il CMP è presente sulla pagina (API JavaScript o elementi DOM). */
   detect(page: Page): Promise<boolean>;
-  /** True se il banner del CMP è visibile. */
+  /** True se il banner del CMP è visibile (elementi del banner visibili sullo schermo). */
   bannerVisible(page: Page): Promise<boolean>;
+  /**
+   * Visibilità del banner letta dallo stato del CMP (es. classi che il gestore mette al banner mostrato o chiuso).
+   * Ha la precedenza sugli altri controlli: true/false = deciso dal gestore, null = stato non leggibile.
+   */
+  isBannerVisible?(page: Page): Promise<boolean | null>;
   /**
    * Esegue la scelta. In modalità "click" usa i pulsanti reali (come farebbe l'utente);
    * in modalità "api" chiama l'API del CMP, usata solo come ultimo ripiego.

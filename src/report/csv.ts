@@ -10,10 +10,10 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
     [
       'sessioni.csv',
       toCsv(
-        ['sessione', 'sito', 'scenario', 'tipo_pagina', 'pagine', 'inizio', 'fine', 'momento_scelta', 'cmp_rilevati', 'banner_visibile', 'metodo', 'livello', 'via', 'esito', 'dettaglio', 'verifica', 'dettaglio_verifica', 'har', 'errori'],
+        ['sessione', 'sito', 'scenario', 'tipo_pagina', 'pagine', 'inizio', 'fine', 'momento_scelta', 'cmp_rilevati', 'banner_visibile', 'banner_visibile_dopo_scelta', 'banner_alla_pagina_successiva', 'metodo', 'livello', 'via', 'esito', 'dettaglio', 'verifica', 'dettaglio_verifica', 'har', 'errori'],
         sessions.map((s) => [
           s.id, s.site, s.scenario, s.pageType, s.pages.join(' '), s.startedAt, s.endedAt, s.choiceAt, s.interaction.detectedCmps,
-          s.interaction.bannerVisibleBefore, s.interaction.method, s.interaction.layer, s.interaction.via, s.interaction.outcome,
+          s.interaction.bannerVisibleBefore, s.interaction.bannerVisibleAfter, s.interaction.bannerOnNextPage, s.interaction.method, s.interaction.layer, s.interaction.via, s.interaction.outcome,
           s.interaction.detail, s.interaction.verification, s.interaction.verificationDetail, s.har, s.errors.join(' | '),
         ]),
       ),

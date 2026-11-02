@@ -141,7 +141,7 @@ export interface InteractionReport {
   clicked?: string[];
   /** Scenario "chiudi": cosa registra il gestore dopo la X. */
   closeEffect?: 'rifiuto' | 'consenso' | 'nessuna-scelta' | 'non-verificabile';
-  /** Scenario "chiudi": il banner ricompare alla pagina successiva (la chiusura non è stata ricordata). */
+  /** Dopo la scelta (o la X): il banner ricompare alla pagina successiva (la scelta non è stata ricordata). */
   bannerOnNextPage?: boolean;
 }
 

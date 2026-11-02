@@ -15,11 +15,30 @@ export async function detectCmps(page: Page): Promise<CmpAdapter[]> {
   return found;
 }
 
+/**
+ * Funzione unica di visibilità del banner, usata prima della scelta, dopo la scelta e alla pagina successiva.
+ * Ordine: selettori della configurazione; stato del gestore (`isBannerVisible`, ha la precedenza: un banner chiuso
+ * per il gestore ma ancora nel DOM non è visibile); elementi del banner del gestore realmente sullo schermo;
+ * infine, solo se nessun gestore ha deciso, il riconoscimento generico.
+ */
 export async function bannerVisible(page: Page, adapters: CmpAdapter[], banner?: BannerConfig): Promise<boolean> {
   if (banner && (await manualBannerVisible(page, banner))) return true;
-  for (const a of adapters) if (await a.bannerVisible(page).catch(() => false)) return true;
+  let decided = false;
+  for (const a of adapters) {
+    const state = a.isBannerVisible ? await a.isBannerVisible(page).catch(() => null) : null;
+    if (state === true) return true;
+    if (state === false) {
+      decided = true;
+      continue;
+    }
+    if (await a.bannerVisible(page).catch(() => false)) return true;
+  }
+  if (decided) return false;
   return heuristicBannerVisible(page);
 }
+
+/** Esito sul banner da riportare dopo la scelta: il fatto osservato, non la sola presenza nel DOM. */
+export const bannerOutcome = (visible: boolean) => (visible ? 'banner ancora visibile' : 'banner chiuso');
 
 async function readStates(page: Page, adapters: CmpAdapter[]): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
@@ -139,7 +158,7 @@ export async function performChoice(
       ? 'stato del consenso non leggibile e banner ancora visibile dopo il click'
       : 'banner non più visibile, ma stato del consenso non leggibile dal CMP';
   }
-  if (stillVisible) verificationDetail += ' (banner ancora visibile dopo la scelta)';
+  if (verification !== 'non-verificabile') verificationDetail += ` (dopo la scelta: ${bannerOutcome(stillVisible)})`;
 
   return {
     method,
@@ -392,7 +411,7 @@ export async function performClose(
     clicked: [label],
     detail: `click su ${label}`,
     verification: effect === 'non-verificabile' ? 'non-verificabile' : 'verificato',
-    verificationDetail: `${effectText[effect]}${notes.length ? ` (${notes.join('; ')})` : ''}${stillVisible ? '; banner ancora visibile dopo il click' : ''}`,
+    verificationDetail: `${effectText[effect]}${notes.length ? ` (${notes.join('; ')})` : ''}; dopo il click: ${bannerOutcome(stillVisible)}`,
     closeEffect: effect,
     consentStateAfter: after,
     bannerVisibleAfter: stillVisible,

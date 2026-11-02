@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { DeclaredItem } from '../../types.js';
-import { anyVisible, clickFirst, waitFor, type ClickedElement } from '../dom.js';
+import { clickFirst, waitFor, type ClickedElement } from '../dom.js';
+import { anyShown } from '../visibility.js';
 import { TEXTS } from '../heuristic.js';
 import type { CmpAdapter, Choice, ChoiceResult, ConsentCheck } from '../types.js';
 
@@ -17,6 +18,11 @@ export interface SelectorCmpSpec {
   detectSelectors: string[];
   /** Selettori di un banner visibile (primo livello). */
   bannerSelectors: string[];
+  /**
+   * Espressione JS che dice se il banner è mostrato secondo lo stato del gestore (true/false), o null se non lo
+   * si può leggere. Se vale true si controlla comunque che un elemento di `bannerSelectors` sia sullo schermo.
+   */
+  bannerStateExpr?: string;
   reject: {
     firstLayer: string[];
     /** Pulsante X / "continua senza accettare". */
@@ -47,7 +53,7 @@ async function evalExpr<T>(page: Page, expr: string): Promise<T | null> {
 }
 
 export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
-  const bannerVisible = (page: Page) => anyVisible(page, spec.bannerSelectors);
+  const bannerVisible = (page: Page) => anyShown(page, spec.bannerSelectors);
 
   const clicked = (layer: ChoiceResult['layer'], ...els: ClickedElement[]): ChoiceResult => ({
     ok: true,
@@ -66,6 +72,15 @@ export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
       return (await page.locator(spec.detectSelectors.join(', ')).count().catch(() => 0)) > 0;
     },
     bannerVisible,
+    ...(spec.bannerStateExpr
+      ? {
+          async isBannerVisible(page: Page) {
+            const st = await evalExpr<boolean | null>(page, `(() => { try { return ${spec.bannerStateExpr}; } catch { return null; } })()`);
+            if (st === null || st === undefined) return null;
+            return st ? bannerVisible(page) : false;
+          },
+        }
+      : {}),
     ...(spec.reopenExpr
       ? {
           async reopen(page: Page) {

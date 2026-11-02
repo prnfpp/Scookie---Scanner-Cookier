@@ -300,8 +300,9 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
         const journey = async () => {
           for (const [k, url] of [first, ...rest].entries()) {
             if (await visit(url)) {
-              // Dopo la X: il banner ricompare alla pagina successiva? (la chiusura non viene ricordata)
-              if (k === 0 && plan.scenario === 'chiudi' && interaction.outcome === 'eseguito') {
+              // Dopo la scelta (o la X): il banner ricompare alla pagina successiva? Stessa funzione di visibilità
+              // usata prima e dopo la scelta, dopo il caricamento e l'attesa standard della pagina
+              if (k === 0 && interaction.outcome === 'eseguito' && interaction.bannerOnNextPage === undefined) {
                 const again = await bannerVisible(page, await detectCmps(page), banner).catch(() => false);
                 interaction = { ...interaction, bannerOnNextPage: again };
               }
