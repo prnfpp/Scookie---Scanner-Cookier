@@ -1,4 +1,4 @@
-import { STAGE_LABEL, type Category, type InteractionReport, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
+import { NON_TECHNICAL, STAGE_LABEL, type Category, type InteractionReport, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   tecnico: 'tecnico',
@@ -242,3 +242,25 @@ export function describeGoogleConsent(params: Record<string, string> | undefined
   if (params.npa === '1') parts.push('npa=1: annunci non personalizzati richiesti');
   return parts.length ? parts.join('; ') : null;
 }
+
+/**
+ * Fornitori non tecnici attivi dopo il rifiuto, per sito: cookie scritti dopo la scelta e richieste a tracker
+ * (esclusi i ping di Consent Mode con consenso negato). Serve ad accorpare i fatti degli altri scenari (revoca,
+ * personalizza) che ripetono lo stesso comportamento del rifiuto.
+ */
+export function activeAfterReject(sessions: SessionResult[]): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const s of sessions.filter((x) => x.scenario === 'rifiuta' && x.interaction.outcome === 'eseguito')) {
+    const set = out.get(s.site) ?? new Set<string>();
+    for (const c of s.cookies) if (c.phase === 'dopo' && NON_TECHNICAL.has(c.classification.category)) set.add(c.classification.platform ?? c.domain);
+    for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r)) set.add(r.tracker.company);
+    out.set(s.site, set);
+  }
+  return out;
+}
+
+/**
+ * Rimando ai rilievi di un'altra regola sullo stesso fornitore, risolto dopo la numerazione (es. "vedi R-004").
+ * Se non c'è un rilievo corrispondente diventa il titolo della regola.
+ */
+export const refTo = (ruleId: string, subject: string) => `{{rilievi:${ruleId}:${subject}}}`;

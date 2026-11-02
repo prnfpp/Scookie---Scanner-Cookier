@@ -20,3 +20,9 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   nei Limiti e il rilievo `categorie-preattivate` non si produce. La X si riconosce anche dall'etichetta "Chiudi la
   finestra di dialogo" e dai selettori di chiusura dell'adattatore; se lo scenario "chiudi" ha usato la X, la struttura
   del banner non può dire "X assente".
+- **Scenario "personalizza" con Complianz (R-006).** Nuovo personalizzatore: "Visualizza le preferenze", attiva solo
+  `cmplz_statistics`, disattiva marketing e preferenze, "Salva preferenze"; verifica dai cookie `cmplz_*` (atteso
+  `cmplz_statistics=allow`, le altre `deny` o assenti). Per qualsiasi gestore, se la scelta non risulta verificata il
+  rilievo `personalizzazione-non-rispettata` esce con priorità abbassata e lo dichiara nel testo. Un fornitore attivo
+  anche dopo il rifiuto è accorpato ("stesso comportamento del rifiuto, vedi R-xxx", priorità bassa), come già per la
+  revoca. I rimandi "vedi R-xxx" tra rilievi si risolvono dopo la numerazione.

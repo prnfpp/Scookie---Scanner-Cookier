@@ -1,5 +1,5 @@
 import { NON_TECHNICAL, type Category } from '../../types.js';
-import { CATEGORY_LABEL, googleConsentSummary, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
+import { activeAfterReject, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo la revoca del consenso: nuovi cookie non tecnici o richieste a tracker. */
@@ -11,13 +11,7 @@ export const attivazioneDopoRevoca: Rule = {
   evaluate({ sessions }) {
     const out: RawFinding[] = [];
     // Fornitori ancora attivi dopo il rifiuto, per sito: se dopo la revoca succede lo stesso, non è un fatto nuovo.
-    const afterReject = new Map<string, Set<string>>();
-    for (const s of sessions.filter((x) => x.scenario === 'rifiuta' && x.interaction.outcome === 'eseguito')) {
-      const set = afterReject.get(s.site) ?? new Set<string>();
-      for (const c of s.cookies) if (c.phase === 'dopo' && NON_TECHNICAL.has(c.classification.category)) set.add(c.classification.platform ?? c.domain);
-      for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r)) set.add(r.tracker.company);
-      afterReject.set(s.site, set);
-    }
+    const afterReject = activeAfterReject(sessions);
     for (const s of sessions.filter((x) => x.scenario === 'revoca' && x.revocation?.outcome === 'eseguita')) {
       const cookies = s.cookies.filter((c) => c.stage === 'revoca' && NON_TECHNICAL.has(c.classification.category));
       const reqs = s.requests.filter((r) => r.stage === 'revoca' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r));
@@ -68,7 +62,7 @@ export const attivazioneDopoRevoca: Rule = {
             (onlyResidual
               ? ' Sulle pagine visitate dopo la revoca non parte nulla: è compatibile con l\'invio di dati già raccolti sulla pagina corrente (molti strumenti li inviano alla chiusura o al cambio di pagina), non con una nuova raccolta.'
               : '') +
-            (sameAsReject ? ' Lo stesso fornitore risulta attivo anche dopo il rifiuto (vedi le schede "Tracciamenti attivi dopo il rifiuto"): non è un comportamento diverso.' : ''),
+            (sameAsReject ? ` Lo stesso fornitore risulta attivo anche dopo il rifiuto (${refTo('attivazione-dopo-rifiuto', key)}): non è un comportamento diverso.` : ''),
           details: [
             ...(s.revocation!.remaining.length ? [`Cookie non tecnici ancora presenti subito dopo la revoca: ${s.revocation!.remaining.join(', ')}`] : []),
             ...(sample ? [`Richiesta di esempio: ${sample.msFromRevoke != null ? `${sample.msFromRevoke} ms dopo la revoca — ` : ''}${sample.url.slice(0, 200)}`] : []),
@@ -129,26 +123,43 @@ export const personalizzazioneNonRispettata: Rule = {
   evaluate({ sessions }) {
     const out: RawFinding[] = [];
     const notAllowed = (c: Category) => NON_TECHNICAL.has(c) && c !== 'statistica';
+    const afterReject = activeAfterReject(sessions);
     for (const s of sessions.filter((x) => x.scenario === 'personalizza' && x.interaction.outcome === 'eseguito')) {
       const cookies = s.cookies.filter((c) => c.phase === 'dopo' && notAllowed(c.classification.category));
       const reqs = s.requests.filter((r) => r.phase === 'dopo' && r.tracker && notAllowed(r.tracker.category) && !isConsentModeDeniedPing(r));
+      // La scelta per categoria è accertata solo se lo stato registrato dal gestore la conferma
+      const verified = s.interaction.verification === 'verificato';
       const groups = groupBy([...cookies.map((c) => ({ key: c.classification.platform ?? c.domain, cat: c.classification.category })), ...reqs.map((r) => ({ key: r.tracker!.company, cat: r.tracker!.category }))], (x) => x.key);
       for (const [key, items] of groups) {
         const cs = cookies.filter((c) => (c.classification.platform ?? c.domain) === key);
         const rs = reqs.filter((r) => r.tracker!.company === key);
         const level = cs.length ? 'identificativo' : requestEvidenceLevel(rs);
+        // Attivo anche dopo il rifiuto: non è un'attivazione "oltre le categorie scelte", è lo stesso comportamento
+        const sameAsReject = afterReject.get(s.site)?.has(key) ?? false;
+        const label = `${key} (${CATEGORY_LABEL[items[0].cat]})`;
+        const what = [cs.length ? `cookie ${cs.map((c) => c.name).join(', ')}` : '', rs.length ? `${nReq(rs.length)} a ${hostsSummary(rs)}` : ''].filter(Boolean).join('; ');
         out.push({
           site: s.site,
           scenario: s.scenario,
           pageUrl: s.pages[0],
-          severity: level === 'risorsa' ? 'media' : undefined,
+          // Stesso comportamento del rifiuto: già nei rilievi del rifiuto, qui solo come conferma.
+          // Scelta non verificata sullo stato del gestore o solo risorse scaricate: prova più debole.
+          severity: sameAsReject ? 'bassa' : level === 'risorsa' && !verified ? 'bassa' : level === 'risorsa' || !verified ? 'media' : undefined,
           evidenceLevel: level,
-          groupKey: key,
-          headline: `Accettando solo la statistica, ${key} (${CATEGORY_LABEL[items[0].cat]}) si attiva comunque`,
-          description: `Dopo aver accettato solo la categoria statistica (${s.interaction.detail}), si attiva ${key} (${CATEGORY_LABEL[items[0].cat]}): ${[cs.length ? `cookie ${cs.map((c) => c.name).join(', ')}` : '', rs.length ? `${nReq(rs.length)} a ${hostsSummary(rs)}` : ''].filter(Boolean).join('; ')}.`,
+          subjects: [key],
+          groupKey: `${key}|${sameAsReject}|${verified}`,
+          headline: sameAsReject
+            ? `Accettando solo la statistica, ${label} si comporta come dopo il rifiuto`
+            : verified
+              ? `Accettando solo la statistica, ${label} si attiva comunque`
+              : `Dopo una scelta per categoria non verificata, ${label} risulta attivo`,
+          description:
+            `Dopo aver accettato solo la categoria statistica (${s.interaction.detail}), si attiva ${label}: ${what}.` +
+            (verified ? '' : ` La scelta non è stata verificata sullo stato registrato dal gestore del consenso (${s.interaction.verification}): non è accertato che sia stata accettata la sola statistica, il fatto va letto con questa cautela.`) +
+            (sameAsReject ? ` Lo stesso fornitore risulta attivo anche dopo il rifiuto (${refTo('attivazione-dopo-rifiuto', key)}): è lo stesso comportamento del rifiuto, non un'attivazione legata alle categorie scelte.` : ''),
           details: [`Verifica dello stato del consenso: ${s.interaction.verification} — ${s.interaction.verificationDetail}`],
           evidence: sessionEvidence(s, ['2-dopo-scelta', '3-fine']),
-          requestExcerpt: rs[0] ? requestExcerpt(rs[0], s) : undefined,
+          requestExcerpt: rs.length ? requestExcerpt(strongestRequest(rs), s) : undefined,
         });
       }
     }

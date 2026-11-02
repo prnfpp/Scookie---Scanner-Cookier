@@ -198,10 +198,61 @@ const vanilla: Personalizer = {
   },
 };
 
+/* ---------------- Complianz ---------------- */
+
+/** Categorie di Complianz: il valore di data-category è anche il nome del cookie che registra la scelta. */
+const CMPLZ = { stats: 'cmplz_statistics', others: ['cmplz_marketing', 'cmplz_preferences'] };
+const cmplzInput = (cat: string) => `.cmplz-cookiebanner input[type="checkbox"][data-category="${cat}"]`;
+
+/**
+ * Casella di una categoria: quella visibile, oppure (se l'input è nascosto dietro l'interruttore grafico) quella del
+ * banner mostrato. Complianz può avere più banner nella pagina (optin/optout), uno solo con la classe cmplz-show.
+ */
+async function cmplzBox(page: Page, cat: string): Promise<Locator> {
+  const visible = page.locator(cmplzInput(cat)).filter({ visible: true });
+  return (await visible.count()) ? visible : page.locator(`.cmplz-cookiebanner.cmplz-show input[type="checkbox"][data-category="${cat}"]`);
+}
+
+const complianz: Personalizer = {
+  async choose(page, mode) {
+    if (mode === 'api') return null;
+    const steps: string[] = [];
+    const open = await clickFirst(page, ['.cmplz-cookiebanner .cmplz-view-preferences']);
+    if (!open) return { ok: false, layer: null, via: null, detail: 'pulsante "Visualizza le preferenze" di Complianz non trovato' };
+    steps.push(open.label);
+    await waitFor(async () => (await (await cmplzBox(page, CMPLZ.stats)).count()) > 0, 4000, 300);
+    const stats = await cmplzBox(page, CMPLZ.stats);
+    if (!(await stats.count())) return { ok: false, layer: null, via: null, detail: 'nessuna categoria statistica (cmplz_statistics) tra le preferenze di Complianz' };
+    const on = await setToggle(page, stats, true);
+    if (on) steps.push(on);
+    for (const cat of CMPLZ.others) {
+      const off = await setToggle(page, await cmplzBox(page, cat), false);
+      if (off) steps.push(off);
+    }
+    const save = await clickFirst(page, ['.cmplz-cookiebanner .cmplz-save-preferences']);
+    if (!save) return { ok: false, layer: null, via: null, detail: 'pulsante "Salva preferenze" di Complianz non trovato' };
+    steps.push(save.label);
+    return result('click', 'solo la categoria statistica selezionata (Statistiche attiva; Marketing e Preferenze disattive)', steps);
+  },
+  async check(page) {
+    const m = (await page.evaluate(`(() => { const o = {}; for (const c of document.cookie.split('; ')) { const i = c.indexOf('='); const k = c.slice(0, i); if (k.startsWith('cmplz_')) o[k] = decodeURIComponent(c.slice(i + 1)); } return o; })()`).catch(() => null)) as Record<string, string> | null;
+    if (!m || !Object.keys(m).length) return { consistent: null, detail: 'cookie cmplz_* non trovati' };
+    const show = (k: string) => `${k}=${m[k] ?? '(assente)'}`;
+    const state = [CMPLZ.stats, ...CMPLZ.others].map(show).join(', ');
+    if (m[CMPLZ.stats] !== 'allow') return { consistent: false, detail: `Complianz: la categoria statistica non risulta accettata (${state})` };
+    // una categoria non configurata nel banner può mancare: vale come non accettata
+    const extra = CMPLZ.others.filter((k) => m[k] === 'allow');
+    return extra.length
+      ? { consistent: false, detail: `Complianz: risultano accettate anche ${extra.join(', ')} (${state})` }
+      : { consistent: true, detail: `Complianz: accettata solo la statistica (${state})` };
+  },
+};
+
 /** Personalizzatori per id di adattatore. */
 export const PERSONALIZERS: Record<string, Personalizer> = {
   onetrust,
   cookiebot,
+  complianz,
   'vanilla-cookieconsent': vanilla,
 };
 

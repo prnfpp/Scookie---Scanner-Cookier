@@ -81,3 +81,18 @@ test('fix 2: analisi del banner limitata al banner, categorie del gestore, X pre
   assert.doesNotMatch(s.description, /chiusura \(X\) assente/);
   assert.ok(!s.details.some((d) => /Lunedì/.test(d)));
 });
+
+test('fix 3: personalizza con l\'adattatore Complianz, stato verificato, video accorpato al rifiuto', () => {
+  const p = session('personalizza').interaction;
+  assert.equal(p.method, 'adattatore:complianz');
+  assert.equal(p.verification, 'verificato', p.verificationDetail);
+  assert.match(p.verificationDetail, /cmplz_statistics=allow/);
+  assert.match(p.verificationDetail, /cmplz_marketing=deny/);
+  assert.ok(!/Lunedì/.test(p.detail), p.detail);
+  const f = findings('personalizzazione-non-rispettata').find((x) => x.subjects?.includes('VideoTest'));
+  assert.ok(f, 'il video resta attivo con la sola statistica');
+  assert.equal(f.severity, 'bassa');
+  const rej = findings('attivazione-dopo-rifiuto').find((x) => x.subjects?.includes('VideoTest'))!;
+  assert.match(f.description, new RegExp(`stesso comportamento del rifiuto`));
+  assert.match(f.description, new RegExp(`vedi ${rej.id}`));
+});
