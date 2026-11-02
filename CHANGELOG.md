@@ -16,7 +16,8 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   solo dentro il contenitore del gestore (elenco in `src/cmp/containers.ts`) e negli iframe del gestore (indirizzo di
   un CMP noto o iframe sovrapposto alla pagina). Gli iframe di contenuti incorporati in linea (calendari, video, mappe)
   non sono più trattati come banner. Celle di griglia, opzioni e schede non sono interruttori di categoria. Complianz
-  legge le categorie da `input[data-category]` del banner. Oltre 12 "categorie" l'analisi è dichiarata non affidabile
+  legge le categorie da `input[data-category]` del banner; la categoria con "Sempre attivo" (`.cmplz-always-active`)
+  è attiva e non modificabile anche se l'input non ha l'attributo `disabled`. Oltre 12 "categorie" l'analisi è dichiarata non affidabile
   nei Limiti e il rilievo `categorie-preattivate` non si produce. La X si riconosce anche dall'etichetta "Chiudi la
   finestra di dialogo" e dai selettori di chiusura dell'adattatore; se lo scenario "chiudi" ha usato la X, la struttura
   del banner non può dire "X assente".

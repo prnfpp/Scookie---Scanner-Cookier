@@ -76,6 +76,7 @@ test('fix 2: analisi del banner limitata al banner, categorie del gestore, X pre
   assert.ok(a.firstLayer.close.length, 'X presente');
   assert.ok(!a.firstLayer.all.some((t) => /Lunedì|Mese|Norme sulla privacy|Promemoria/.test(t)), a.firstLayer.all.join(' | '));
   assert.deepEqual(a.preferences?.toggles.map((t) => [t.label, t.checked, t.disabled]), [['Funzionale', true, true], ['Statistiche', false, false], ['Marketing', false, false]]);
+  // la funzionale è "Sempre attivo" senza l'attributo disabled (come sul markup reale): non è una categoria pre-attivata
   assert.equal(findings('categorie-preattivate').length, 0);
   const s = findings('struttura-banner')[0];
   assert.doesNotMatch(s.description, /chiusura \(X\) assente/);
