@@ -16,7 +16,7 @@ import { runSession, type SessionPlan } from './browser/session.js';
 import { renderHtml } from './report/html.js';
 import { writeCsvs } from './report/csv.js';
 import { REVIEW_FILE, writeReviewTemplate } from './report/review.js';
-import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms } from './rules/engine.js';
+import { DEFAULT_NORMS_FILE, evaluateRules, loadNorms, resolveRefs } from './rules/engine.js';
 import type { ComparisonRow, DeclaredSet, Finding, ScenarioName, SessionResult } from './types.js';
 import { closeSafely, sha256, sha256File, sleep, slug, timestampForPath } from './util/misc.js';
 import { TOOL_COMMIT, TOOL_VERSION } from './version.js';
@@ -707,6 +707,8 @@ async function finishRun(
   // Ordine delle schede: gravità, poi forza della prova e ripetibilità
   findings.sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || findingScore(b) - findingScore(a));
   findings.forEach((f, i) => (f.id = `R-${String(i + 1).padStart(3, '0')}`));
+  // rimandi tra rilievi ("vedi R-004"): con i numeri definitivi
+  findings.splice(0, findings.length, ...resolveRefs(findings));
   linkEvidenceToFindings(runDir, findings);
 
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));

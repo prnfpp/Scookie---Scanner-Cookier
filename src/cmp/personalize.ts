@@ -20,12 +20,12 @@ export interface Personalizer {
 const STATS_RE = /statist|analytic|analitic|\banalisi\b|prestazion|performance|misurazion|measurement/i;
 
 /** Imposta una casella o un interruttore, anche quando l'input è nascosto dietro un elemento grafico. */
-async function setToggle(page: Page, input: Locator, on: boolean): Promise<string | null> {
+async function setToggle(page: Page, input: Locator, on: boolean, name?: string): Promise<string | null> {
   if ((await input.count()) === 0) return null;
   const el = input.first();
   const checked = await el.isChecked().catch(() => null);
   if (checked === on) return null;
-  const label = await describeElement(el);
+  const label = name ? `"${name}"` : await describeElement(el);
   try {
     await el.setChecked(on, { force: true, timeout: 3000 });
   } catch {
@@ -202,6 +202,15 @@ const vanilla: Personalizer = {
 
 /** Categorie di Complianz: il valore di data-category è anche il nome del cookie che registra la scelta. */
 const CMPLZ = { stats: 'cmplz_statistics', others: ['cmplz_marketing', 'cmplz_preferences'] };
+/** Nome della categoria come lo vede l'utente (titolo della categoria nel banner). */
+async function cmplzName(box: Locator, fallback: string): Promise<string> {
+  const t = await box
+    .first()
+    .evaluate((i) => (i.closest('.cmplz-category')?.querySelector('.cmplz-category-title')?.textContent ?? '').trim())
+    .catch(() => '');
+  return t || fallback;
+}
+
 const cmplzInput = (cat: string) => `.cmplz-cookiebanner input[type="checkbox"][data-category="${cat}"]`;
 
 /**
@@ -223,10 +232,11 @@ const complianz: Personalizer = {
     await waitFor(async () => (await (await cmplzBox(page, CMPLZ.stats)).count()) > 0, 4000, 300);
     const stats = await cmplzBox(page, CMPLZ.stats);
     if (!(await stats.count())) return { ok: false, layer: null, via: null, detail: 'nessuna categoria statistica (cmplz_statistics) tra le preferenze di Complianz' };
-    const on = await setToggle(page, stats, true);
+    const on = await setToggle(page, stats, true, await cmplzName(stats, 'Statistiche'));
     if (on) steps.push(on);
     for (const cat of CMPLZ.others) {
-      const off = await setToggle(page, await cmplzBox(page, cat), false);
+      const box = await cmplzBox(page, cat);
+      const off = await setToggle(page, box, false, await cmplzName(box, cat));
       if (off) steps.push(off);
     }
     const save = await clickFirst(page, ['.cmplz-cookiebanner .cmplz-save-preferences']);

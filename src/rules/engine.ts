@@ -50,6 +50,7 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
         evidence: raw.evidence,
         requestExcerpt: raw.requestExcerpt,
         evidenceLevel: raw.evidenceLevel,
+        ...(raw.evidenceExtra ? { evidenceExtra: raw.evidenceExtra } : {}),
         headline: raw.headline?.replace(/\s+/g, ' ').trim(),
         ...(raw.subjects?.length ? { subjects: raw.subjects } : {}),
         sites: [raw.site],
@@ -63,13 +64,16 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
   }
   const merged = opts.merge === false ? all.map(({ groupKey: _g, ...f }: Omit<Finding, 'id'> & { groupKey?: string }) => f) : mergeAcrossSites(all as (Omit<Finding, 'id'> & { groupKey?: string })[]);
   merged.sort((a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity) || a.site.localeCompare(b.site));
-  return resolveRefs(merged.map((f, i) => ({ id: `R-${String(i + 1).padStart(3, '0')}`, ...f })));
+  return merged.map((f, i) => ({ id: `R-${String(i + 1).padStart(3, '0')}`, ...f }));
 }
 
 const REF = /\{\{rilievi:([a-z0-9-]+):([^}]*)\}\}/g;
 
-/** Rimandi tra rilievi (`refTo` nelle regole): "vedi R-004, R-007", o il titolo della regola se non ce ne sono. */
-function resolveRefs(list: Finding[]): Finding[] {
+/**
+ * Rimandi tra rilievi (`refTo` nelle regole): "vedi R-004, R-007", o il titolo della regola se non ce ne sono.
+ * Da applicare dopo la numerazione definitiva dei rilievi.
+ */
+export function resolveRefs(list: Finding[]): Finding[] {
   const fix = (f: Finding, t: string) =>
     t.replace(REF, (_m, rule: string, subject: string) => {
       const ids = list.filter((x) => x.ruleId === rule && (x.subjects ?? []).includes(subject) && x.sites.some((s) => f.sites.includes(s))).map((x) => x.id);
