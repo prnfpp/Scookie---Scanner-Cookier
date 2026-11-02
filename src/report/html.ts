@@ -350,6 +350,7 @@ ${[...third]
         notSeen.push(`${host(site)}: scenario "${sc}" non eseguito in ${list.length} ${list.length === 1 ? 'sessione' : 'sessioni'} (${list[0].interaction.detail.replace(/\s+/g, ' ').slice(0, 160)}).`);
       }
     }
+    for (const s of ss.filter((x) => x.bannerAnalysis?.preferences?.unreliable)) notSeen.push(`${host(site)}: ${s.bannerAnalysis!.preferences!.unreliable} (sessione ${s.id}).`);
     const rev = ss.filter((s) => s.scenario === 'revoca' && s.revocation && s.revocation.outcome !== 'eseguita');
     if (rev.length) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
     for (const s of ss.filter((x) => x.manual && !x.attributedFrom && (x.manual.pages.length <= 1 || x.manual.seconds < 60))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);

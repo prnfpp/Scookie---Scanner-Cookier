@@ -1,11 +1,30 @@
 import type { Page } from 'playwright';
 import type { BannerAnalysis, CommandLook } from '../types.js';
-import { frames, waitFor } from './dom.js';
-import { TEXTS, clickCandidate, scan, type Candidate } from './heuristic.js';
+import { describeElement, frames, waitFor } from './dom.js';
+import { TEXTS, clickCandidate, consentFrames, scan, type Candidate } from './heuristic.js';
+import { isShown } from './visibility.js';
 import { findRevokeControl } from './revoke.js';
 import type { CmpAdapter } from './types.js';
 
 const POLICY_TEXT = /cookie|privacy|informativa|policy|trattamento dei dati/i;
+
+/** Oltre questo numero di "categorie" l'interfaccia letta non è un elenco di categorie di consenso. */
+export const MAX_CATEGORIES = 12;
+
+export type Toggle = { label: string; checked: boolean; disabled: boolean; index?: number };
+
+/** Interruttori delle categorie: prima quelli dichiarati dal gestore, poi il riconoscimento generico nel perimetro del banner. */
+export async function readCategoryToggles(page: Page, adapters: CmpAdapter[], candidates?: Candidate[]): Promise<{ toggles: Toggle[]; source: string }> {
+  for (const a of adapters) {
+    const own = a.categories ? await a.categories(page).catch(() => null) : null;
+    if (own?.length) return { toggles: own, source: `adattatore ${a.name}` };
+  }
+  let toggles: Toggle[] = [];
+  for (const { frame, scoped } of await consentFrames(page, candidates)) toggles.push(...(await readToggles(frame, scoped).catch(() => [])));
+  // Lo stesso interruttore può comparire due volte (es. versione mobile e desktop del pannello)
+  toggles = toggles.filter((t, i) => toggles.findIndex((x) => x.label === t.label && x.checked === t.checked) === i);
+  return { toggles, source: 'riconoscimento generico' };
+}
 const CLOSE_LIKE = TEXTS.close;
 
 /** Classifica i pulsanti del primo livello del banner per funzione. */
@@ -28,6 +47,21 @@ function classify(candidates: Candidate[]) {
 export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (label: string) => Promise<void>): Promise<BannerAnalysis> {
   const { banner, candidates } = await scan(page);
   const firstLayer = classify(candidates);
+  // X di chiusura dichiarata dal gestore (es. un'icona senza testo, con la sola etichetta per l'accessibilità)
+  if (!firstLayer.close.length) {
+    for (const a of adapters) {
+      for (const sel of a.closeSelectors ?? []) {
+        for (const f of frames(page)) {
+          const el = f.locator(sel).first();
+          if (!(await isShown(el))) continue;
+          const desc = await describeElement(el);
+          firstLayer.close.push(/"([^"]+)"/.exec(desc)?.[1] ?? desc);
+          break;
+        }
+        if (firstLayer.close.length) break;
+      }
+    }
+  }
   const policy = candidates.find((c) => c.href && POLICY_TEXT.test(c.text));
 
   // Modo per riaprire le preferenze nella pagina, fuori dal banner (gli elementi del banner sono marcati dallo scan).
@@ -57,18 +91,21 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
     try {
       const opened = await clickCandidate(prefsButton);
       await page.waitForTimeout(1500);
-      let toggles: { label: string; checked: boolean; disabled: boolean }[] = [];
+      let toggles: Toggle[] = [];
+      let source = '';
       await waitFor(
         async () => {
-          toggles = [];
-          for (const f of frames(page)) toggles.push(...(await readToggles(f, f === page.mainFrame()).catch(() => [])));
-          // Lo stesso interruttore può comparire due volte (es. versione mobile e desktop del pannello)
-          toggles = toggles.filter((t, i) => toggles.findIndex((x) => x.label === t.label && x.checked === t.checked) === i);
+          ({ toggles, source } = await readCategoryToggles(page, adapters, (await scan(page)).candidates));
           return toggles.length > 0;
         },
         4000,
         500,
       );
+      // Difesa: decine di "categorie" vengono da un'interfaccia che non è il pannello del consenso (es. un calendario)
+      const unreliable =
+        toggles.length > MAX_CATEGORIES
+          ? `analisi delle categorie non affidabile: ${toggles.length} interruttori riconosciuti (${source}) nel secondo livello, più delle ${MAX_CATEGORIES} categorie plausibili; le categorie vanno lette sullo screenshot "4-preferenze"`
+          : undefined;
       await shot('4-preferenze');
       // Anche nel pannello: evidenza di "Consenti tutti" rispetto a "Rifiuta tutti". Solo comandi dentro il
       // pannello di un gestore noto: il banner di primo livello spesso resta visibile sotto e va escluso.
@@ -80,7 +117,7 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
             reject: await lookOf(inner.find((c) => TEXTS.preferencesReject.test(c.text) || TEXTS.reject.test(c.text))),
           }
         : undefined;
-      preferences = { opened: true, via: opened, toggles, ...(prom ? { prominence: prom } : {}) };
+      preferences = { opened: true, via: opened, toggles: toggles.map(({ index: _i, ...t }) => t), ...(unreliable ? { unreliable } : {}), ...(prom ? { prominence: prom } : {}) };
     } catch (e) {
       preferences = { opened: false, via: (e as Error).message.split('\n')[0], toggles: [] };
     }
@@ -171,8 +208,8 @@ async function measure(c: Candidate): Promise<CommandLook | null> {
  * Nella pagina principale solo quelli dentro l'interfaccia del gestore del consenso: le altre caselle
  * (es. moduli del sito) non c'entrano. Nei frame si leggono tutti: un frame del CMP è tutto interfaccia di consenso.
  */
-export async function readToggles(frame: import('playwright').Frame, isMain: boolean): Promise<{ label: string; checked: boolean; disabled: boolean; index?: number }[]> {
-  return frame.evaluate((isMain) => {
+export async function readToggles(frame: import('playwright').Frame, scoped: boolean): Promise<Toggle[]> {
+  return frame.evaluate((scoped) => {
     // Contenitori dei CMP noti: se uno è visibile, si leggono solo i suoi interruttori (non il resto della pagina)
     const KNOWN = ['#onetrust-pc-sdk', '#CybotCookiebotDialog', '#didomi-host', '#usercentrics-root', '#s-cnt', '#cc-main .pm', '.cky-preference-center', '#cmplz-cookiebanner-container', '#hs-modal', '#hs-eu-cookie-confirmation', '#hs-banner-parent', '[id^="hs-"][id*="modal"]', '.iubenda-cs-preferences', '#iubenda-cs-banner'];
     const shown = (el: Element) => {
@@ -208,6 +245,8 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
       // e interruttori grafici con solo aria-checked o con classe "toggle"/"switch" focalizzabili (es. preferenze HubSpot)
       for (const el of Array.from(root.querySelectorAll('input[type="checkbox"], [role="switch"], [role="checkbox"], button[aria-pressed], [aria-checked]:not([role="radio"]):not([role="option"]):not([role="menuitemradio"]), [class*="toggle"][tabindex]:not(:has(input, [role="switch"], [aria-checked])), [class*="switch"][tabindex]:not(:has(input, [role="switch"], [aria-checked]))'))) {
         if (all.includes(el)) continue;
+        // celle di griglie, opzioni e schede (es. i giorni di un calendario) non sono interruttori di categoria
+        if (el.matches('[role="gridcell"], [role="option"], [role="tab"], [role^="menuitem"], [role="row"]') || el.closest('[role="grid"], [role="listbox"], [role="tablist"], [role="menu"], [role="tree"]')) continue;
         // marcature di una lettura precedente: andrebbero a confondersi con quelle nuove
         el.removeAttribute('data-scookie-t');
         all.push(el);
@@ -243,9 +282,9 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
     // Gli interruttori sono marcati (data-scookie-t) per poterli poi impostare nello scenario "personalizza"
     // Il pannello delle preferenze può stare fuori dal contenitore noto del banner (es. HubSpot: banner in
     // #hs-banner-parent, preferenze in un'altra finestra): se lì non c'è nessun interruttore si usa il riconoscimento generico
-    if (useKnown && isMain && !all.some((el) => visible(el) && inConsentUi(el))) useKnown = false;
+    if (useKnown && scoped && !all.some((el) => visible(el) && inConsentUi(el))) useKnown = false;
     const toggles: { label: string; checked: boolean; disabled: boolean; index?: number }[] = all
-      .filter((el) => visible(el) && (!isMain || inConsentUi(el)))
+      .filter((el) => visible(el) && (!scoped || inConsentUi(el)))
       .map((el, index) => {
         const input = el as HTMLInputElement;
         const checked =
@@ -261,11 +300,11 @@ export async function readToggles(frame: import('playwright').Frame, isMain: boo
     // Categorie senza interruttore ma con la dicitura "Sempre attivi" (es. OneTrust): attive e non modificabili
     for (const el of Array.from(document.querySelectorAll('span, div, p, strong, em, label'))) {
       const t = ((el as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
-      if (!/^(sempre attiv[aeio]|always active)$/i.test(t) || !visible(el) || (isMain && !inConsentUi(el))) continue;
+      if (!/^(sempre attiv[aeio]|always active)$/i.test(t) || !visible(el) || (scoped && !inConsentUi(el))) continue;
       const label = labelOf(el).replace(/\s+/g, ' ').slice(0, 80);
       if (!toggles.some((x) => x.label === label)) toggles.push({ label, checked: true, disabled: true });
     }
     // Interruttori senza etichetta (es. legittimo interesse) solo se non ce ne sono di etichettati
     return toggles.some((x) => x.label !== '(senza etichetta)') ? toggles.filter((x) => x.label !== '(senza etichetta)') : toggles;
-  }, isMain);
+  }, scoped);
 }

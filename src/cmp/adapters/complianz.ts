@@ -15,6 +15,25 @@ export const complianz = selectorAdapter({
     preferencesReject: ['.cmplz-cookiebanner .cmplz-save-preferences'],
   },
   accept: { firstLayer: ['.cmplz-cookiebanner .cmplz-accept'] },
+  // Categorie dagli input del banner (input.cmplz-consent-checkbox con data-category cmplz_functional, cmplz_preferences,
+  // cmplz_statistics, cmplz_marketing); etichetta dal titolo della categoria (.cmplz-category-title) o dalla <label>.
+  // Si leggono solo le caselle con il loro riquadro visibile: Complianz ha più banner (optin/optout) nella pagina.
+  categoriesExpr: `(() => {
+    const shown = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 1 && r.height > 1 && s.visibility !== 'hidden' && s.display !== 'none'; };
+    const seen = new Set();
+    const out = [];
+    for (const i of document.querySelectorAll('.cmplz-cookiebanner input[type="checkbox"][data-category]')) {
+      const cat = i.getAttribute('data-category') || '';
+      const box = i.closest('.cmplz-category') || i.parentElement || i;
+      if (seen.has(cat) || !shown(box)) continue;
+      seen.add(cat);
+      const title = box.querySelector('.cmplz-category-title');
+      const lab = i.id ? document.querySelector('label[for="' + i.id + '"]') : null;
+      const label = ((title && title.textContent) || (lab && lab.textContent) || cat).replace(/\\s+/g, ' ').trim();
+      out.push({ label, checked: i.checked, disabled: i.disabled });
+    }
+    return out;
+  })()`,
   stateExpr: `(() => { const m = ${COOKIE_MAP_EXPR}; return Object.fromEntries(Object.entries(m).filter(([k]) => k.startsWith('cmplz_'))); })()`,
   check(state, choice) {
     const m = state as Record<string, string> | null;

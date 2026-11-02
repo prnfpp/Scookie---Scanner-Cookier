@@ -36,6 +36,11 @@ export interface SelectorCmpSpec {
     firstLayer: string[];
     api?: string;
   };
+  /**
+   * Espressione JS che restituisce le categorie del secondo livello lette dagli interruttori del gestore,
+   * come [{ label, checked, disabled }] (solo quelle visibili, con il pannello delle preferenze aperto).
+   */
+  categoriesExpr?: string;
   /** Espressione JS che restituisce lo stato del consenso (serializzabile). */
   stateExpr: string;
   check(state: unknown, choice: Choice): ConsentCheck;
@@ -125,6 +130,15 @@ export function selectorAdapter(spec: SelectorCmpSpec): CmpAdapter {
       return evalExpr(page, `(() => { try { return ${spec.stateExpr}; } catch (e) { return { errore: String(e) }; } })()`);
     },
     checkConsent: spec.check,
+    ...(spec.reject.close ? { closeSelectors: spec.reject.close } : {}),
+    ...(spec.categoriesExpr
+      ? {
+          async categories(page: Page) {
+            const v = await evalExpr<{ label: string; checked: boolean; disabled: boolean }[]>(page, `(() => { try { return ${spec.categoriesExpr}; } catch { return null; } })()`);
+            return Array.isArray(v) ? v : null;
+          },
+        }
+      : {}),
     declared: spec.declared,
   };
 }

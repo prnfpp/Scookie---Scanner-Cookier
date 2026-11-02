@@ -68,3 +68,16 @@ test('fix 1: dopo "Nega" e dopo la X il banner è chiuso e non ricompare alla pa
   assert.match(csv, /banner_visibile_dopo_scelta;banner_alla_pagina_successiva/);
   for (const f of result.findings) assert.doesNotMatch([f.description, ...f.details].join(' '), /banner ancora visibile dopo la scelta/, f.id);
 });
+
+test('fix 2: analisi del banner limitata al banner, categorie del gestore, X presente', () => {
+  const a = result.sessions.find((s) => s.bannerAnalysis)!.bannerAnalysis!;
+  assert.deepEqual(a.firstLayer.accept, ['Accetta']);
+  assert.deepEqual(a.firstLayer.reject, ['Nega']);
+  assert.ok(a.firstLayer.close.length, 'X presente');
+  assert.ok(!a.firstLayer.all.some((t) => /Lunedì|Mese|Norme sulla privacy|Promemoria/.test(t)), a.firstLayer.all.join(' | '));
+  assert.deepEqual(a.preferences?.toggles.map((t) => [t.label, t.checked, t.disabled]), [['Funzionale', true, true], ['Statistiche', false, false], ['Marketing', false, false]]);
+  assert.equal(findings('categorie-preattivate').length, 0);
+  const s = findings('struttura-banner')[0];
+  assert.doesNotMatch(s.description, /chiusura \(X\) assente/);
+  assert.ok(!s.details.some((d) => /Lunedì/.test(d)));
+});

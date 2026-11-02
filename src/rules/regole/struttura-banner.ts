@@ -72,6 +72,9 @@ export const strutturaBanner: Rule = {
       const f = a.firstLayer;
       const prom = prominenceText(a.prominence);
       // Scelta per categoria impossibile per come è configurato il gestore: è un fatto della struttura, non un limite
+      // Coerenza con lo scenario "chiudi": se lì la X è stata trovata e cliccata, il banner ha una X
+      const xSession = sessions.find((x) => x.site === s.site && x.scenario === 'chiudi' && x.interaction.outcome === 'eseguito' && x.interaction.layer === 'chiusura-x');
+      const close = f.close.length ? list(f.close) : xSession ? `presente (${xSession.interaction.clicked?.[0] ?? 'X di chiusura'}, usata nello scenario "chiudi")` : 'assente';
       const noStats = sessions.some((x) => x.site === s.site && x.scenario === 'personalizza' && x.interaction.outcome !== 'eseguito' && NO_STATS_CATEGORY.test(x.interaction.detail));
       return {
         site: s.site,
@@ -80,7 +83,7 @@ export const strutturaBanner: Rule = {
         groupKey: [f.all.join('|'), !!a.policyLink, !!a.revokeLink].join('#'),
         description:
           `Al primo livello il banner${a.cmp.length ? ` (${a.cmp.join(', ')})` : ''} offre: accettazione ${list(f.accept)}; ` +
-          `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura (X) ${f.close.length ? list(f.close) : 'assente'}. ` +
+          `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura (X) ${close}. ` +
           `Link all'informativa nel banner: ${a.policyLink ? `"${a.policyLink.text}"` : 'non trovato'}. ` +
           `Modo per rivedere la scelta nella pagina: ${a.revokeLink ? `"${a.revokeLink.text}"` : 'non trovato'}.` +
           (prom.sentence ? ` ${prom.asymmetric ? 'Evidenza dei comandi: vedi la scheda dedicata.' : prom.sentence}` : '') +
@@ -91,7 +94,8 @@ export const strutturaBanner: Rule = {
           `Tutti i comandi rilevati nel banner: ${list(f.all)}`,
           ...prom.lines,
           ...(a.policyLink ? [`Informativa: ${a.policyLink.href}`] : []),
-          ...(a.preferences?.opened
+          ...(a.preferences?.unreliable ? [`Secondo livello aperto con ${a.preferences.via}: ${a.preferences.unreliable}`] : []),
+          ...(a.preferences?.opened && !a.preferences.unreliable
             ? [`Secondo livello aperto con ${a.preferences.via}: ${a.preferences.toggles.map((t) => `${t.label} ${t.checked ? 'attiva' : 'non attiva'}${t.disabled ? ' (non modificabile)' : ''}`).join('; ') || 'nessuna categoria leggibile'}`]
             : []),
         ],
@@ -111,6 +115,8 @@ export const categoriePreattivate: Rule = {
     const out: RawFinding[] = [];
     for (const { s, a } of analyses(sessions)) {
       // Attive e modificabili: quelle bloccate attive sono di norma i cookie necessari.
+      // Interruttori non plausibili come categorie: il fatto non è accertato (l'anomalia è nei Limiti)
+      if (a.preferences?.unreliable) continue;
       const on = (a.preferences?.toggles ?? []).filter((t) => t.checked && !t.disabled);
       if (!on.length) continue;
       out.push({

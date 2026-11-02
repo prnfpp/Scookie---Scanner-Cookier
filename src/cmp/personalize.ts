@@ -1,8 +1,8 @@
 import type { Locator, Page } from 'playwright';
 import { normalizeDeclaredCategory } from '../classify/classifier.js';
 import { readToggles } from './analysis.js';
-import { clickFirst, describeElement, findVisible, frames, waitFor, type ClickedElement } from './dom.js';
-import { TEXTS, clickCandidate, scan } from './heuristic.js';
+import { clickFirst, describeElement, findVisible, waitFor, type ClickedElement } from './dom.js';
+import { TEXTS, clickCandidate, consentFrames, scan } from './heuristic.js';
 import type { ChoiceResult, ConsentCheck } from './types.js';
 
 /**
@@ -222,7 +222,7 @@ export const genericPersonalizer: Personalizer = {
     await waitFor(
       async () => {
         found = [];
-        for (const f of frames(page)) for (const t of await readToggles(f, f === page.mainFrame()).catch(() => [])) found.push({ frame: f, t });
+        for (const { frame: f, scoped } of await consentFrames(page, (await scan(page)).candidates)) for (const t of await readToggles(f, scoped).catch(() => [])) found.push({ frame: f, t });
         return found.some((x) => x.t.index !== undefined && !x.t.disabled);
       },
       5000,

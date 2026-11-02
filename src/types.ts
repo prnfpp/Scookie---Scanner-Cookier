@@ -158,6 +158,8 @@ export interface BannerAnalysis {
     opened: boolean;
     via: string;
     toggles: { label: string; checked: boolean; disabled: boolean }[];
+    /** Interruttori letti non plausibili come categorie (es. troppi): il rilievo sulle categorie attive non si produce. */
+    unreliable?: string;
     /** Evidenza di "Consenti tutti" e "Rifiuta tutti" nel pannello delle preferenze. */
     prominence?: { accept: CommandLook | null; reject: CommandLook | null };
   } | null;
