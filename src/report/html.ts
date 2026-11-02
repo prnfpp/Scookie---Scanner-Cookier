@@ -371,7 +371,10 @@ ${[...third]
         notSeen.push(`${host(site)}: scenario "${sc}" non eseguito in ${list.length} ${list.length === 1 ? 'sessione' : 'sessioni'} (${list[0].interaction.detail.replace(/\s+/g, ' ').slice(0, 160)}).`);
       }
     }
-    for (const s of ss.filter((x) => x.bannerAnalysis && categoriesUnreliable(x.bannerAnalysis))) notSeen.push(`${host(site)}: ${categoriesUnreliable(s.bannerAnalysis!)} (sessione ${s.id}).`);
+    // una riga per sito, con le sessioni in cui si è vista l'anomalia (con le ripetizioni sarebbe ripetuta identica)
+    for (const [msg, list] of groupBy(ss.filter((x) => x.bannerAnalysis && categoriesUnreliable(x.bannerAnalysis)), (x) => categoriesUnreliable(x.bannerAnalysis!)!)) {
+      notSeen.push(`${host(site)}: ${msg} (${list.length === 1 ? 'sessione' : 'sessioni'} ${list.map((x) => x.id).join(', ')}).`);
+    }
     const rev = ss.filter((s) => s.scenario === 'revoca' && s.revocation && s.revocation.outcome !== 'eseguita');
     if (rev.length) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
     for (const s of ss.filter((x) => x.manual && !x.attributedFrom && (x.manual.pages.length <= 1 || x.manual.seconds < 60))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);

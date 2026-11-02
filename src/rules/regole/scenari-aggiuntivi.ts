@@ -69,7 +69,8 @@ export const attivazioneDopoRevoca: Rule = {
               : '') +
             (sameAsReject ? ` Lo stesso fornitore risulta attivo anche dopo il rifiuto (${refTo('attivazione-dopo-rifiuto', key)}): non è un comportamento diverso.` : ''),
           details: [
-            ...(s.revocation!.remaining.length ? [`Cookie non tecnici ancora presenti subito dopo la revoca: ${s.revocation!.remaining.join(', ')}`] : []),
+            // in ordine alfabetico: le ripetizioni elencano gli stessi cookie in ordine diverso e la riga si unisce in una
+            ...(s.revocation!.remaining.length ? [`Cookie non tecnici ancora presenti subito dopo la revoca: ${[...s.revocation!.remaining].sort((x, y) => x.localeCompare(y)).join(', ')}`] : []),
             ...(pagesOf(all).exitLine ? [pagesOf(all).exitLine!] : []),
             ...(sample ? [`Richiesta di esempio: ${sample.msFromRevoke != null ? `${sample.msFromRevoke} ms dopo la revoca — ` : ''}${sample.url.slice(0, 200)}`] : []),
           ],
