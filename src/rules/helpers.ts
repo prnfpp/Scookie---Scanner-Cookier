@@ -1,4 +1,4 @@
-import { NON_TECHNICAL, STAGE_LABEL, type Category, type CookieRecord, type InteractionReport, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
+import { NON_TECHNICAL, STAGE_LABEL, type Category, type CookieRecord, type RequestRecord as Req, type InteractionReport, type Evidence, type RequestRecord, type SessionResult, type Stage } from '../types.js';
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   tecnico: 'tecnico',
@@ -253,8 +253,8 @@ export function activeAfterReject(sessions: SessionResult[]): Map<string, Set<st
   const out = new Map<string, Set<string>>();
   for (const s of sessions.filter((x) => x.scenario === 'rifiuta' && x.interaction.outcome === 'eseguito')) {
     const set = out.get(s.site) ?? new Set<string>();
-    for (const c of s.cookies) if (cookieActivity(c, 'scelta')) set.add(c.classification.platform ?? c.domain);
-    for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r)) set.add(r.tracker.company);
+    for (const c of s.cookies) if (cookieActivity(c, 'scelta')) set.add(cookieVendor(c));
+    for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r)) set.add(requestVendor(r));
     out.set(s.site, set);
   }
   return out;
@@ -288,3 +288,16 @@ export function pagesOf(reqs: RequestRecord[]): { pages: string[]; exitLine: str
     : null;
   return { pages, exitLine };
 }
+
+/**
+ * Fornitore canonico: lo stesso fornitore con nomi diversi nelle fonti conta una volta. I cookie del lettore YouTube
+ * sono "Youtube" in Open Cookie Database, le sue richieste sono "Google" nell'elenco dei domini: è lo stesso
+ * contenuto incorporato e lo stesso fornitore.
+ */
+const VENDOR_ALIASES: [RegExp, string][] = [[/^you ?tube$/i, 'Google']];
+export function canonicalVendor(name: string): string {
+  for (const [re, v] of VENDOR_ALIASES) if (re.test(name.trim())) return v;
+  return name;
+}
+export const cookieVendor = (c: CookieRecord) => canonicalVendor(c.classification.platform ?? c.domain);
+export const requestVendor = (r: Req) => canonicalVendor(r.tracker!.company);

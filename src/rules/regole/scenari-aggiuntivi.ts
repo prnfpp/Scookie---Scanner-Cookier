@@ -1,5 +1,5 @@
 import { NON_TECHNICAL, type Category } from '../../types.js';
-import { activeAfterReject, cookieActivity, pagesOf, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
+import { activeAfterReject, cookieActivity, cookieVendor, pagesOf, requestVendor, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 import { nWords, plural } from '../../util/text.js';
 
@@ -17,10 +17,10 @@ export const attivazioneDopoRevoca: Rule = {
       // scritti dopo la revoca, oppure già presenti e riscritti dopo la revoca
       const cookies = s.cookies.filter((c) => cookieActivity(c, 'revoca'));
       const reqs = s.requests.filter((r) => r.stage === 'revoca' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r));
-      const keys = new Set([...cookies.map((c) => c.classification.platform ?? c.domain), ...reqs.map((r) => r.tracker!.company)]);
+      const keys = new Set([...cookies.map(cookieVendor), ...reqs.map(requestVendor)]);
       for (const key of keys) {
-        const cs = cookies.filter((c) => (c.classification.platform ?? c.domain) === key);
-        const all = reqs.filter((r) => r.tracker!.company === key);
+        const cs = cookies.filter((c) => cookieVendor(c) === key);
+        const all = reqs.filter((r) => requestVendor(r) === key);
         // Invio residuo (sulla pagina in cui si revoca, es. dati già raccolti inviati alla chiusura della pagina)
         // e nuova raccolta (sulle pagine visitate dopo la revoca) sono fatti di peso diverso.
         const fresh = all.filter((r) => r.afterRevokeNav);
@@ -136,10 +136,10 @@ export const personalizzazioneNonRispettata: Rule = {
       const reqs = s.requests.filter((r) => r.phase === 'dopo' && r.tracker && notAllowed(r.tracker.category) && !isConsentModeDeniedPing(r));
       // La scelta per categoria è accertata solo se lo stato registrato dal gestore la conferma
       const verified = s.interaction.verification === 'verificato';
-      const groups = groupBy([...cookies.map((c) => ({ key: c.classification.platform ?? c.domain, cat: c.classification.category })), ...reqs.map((r) => ({ key: r.tracker!.company, cat: r.tracker!.category }))], (x) => x.key);
+      const groups = groupBy([...cookies.map((c) => ({ key: cookieVendor(c), cat: c.classification.category })), ...reqs.map((r) => ({ key: requestVendor(r), cat: r.tracker!.category }))], (x) => x.key);
       for (const [key, items] of groups) {
-        const cs = cookies.filter((c) => (c.classification.platform ?? c.domain) === key);
-        const rs = reqs.filter((r) => r.tracker!.company === key);
+        const cs = cookies.filter((c) => cookieVendor(c) === key);
+        const rs = reqs.filter((r) => requestVendor(r) === key);
         const level = cs.length ? 'identificativo' : requestEvidenceLevel(rs);
         // Attivo anche dopo il rifiuto: non è un'attivazione "oltre le categorie scelte", è lo stesso comportamento
         const sameAsReject = afterReject.get(s.site)?.has(key) ?? false;

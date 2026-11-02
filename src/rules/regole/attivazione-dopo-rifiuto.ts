@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { choiceHow, cookieActivity, pagesOf, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary } from '../helpers.js';
+import { choiceHow, cookieActivity, cookieVendor, pagesOf, requestVendor, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Testi della regola per lo scenario: rifiuto o chiusura del banner con la X. */
@@ -35,14 +35,17 @@ function afterChoice(scenario: 'rifiuta' | 'chiudi', id: string, title: string):
       const reqs = s.requests.filter(
         (r) => r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category) && !isConsentModeDeniedPing(r),
       );
-      const keyOf = (c: (typeof s.cookies)[number]) => c.classification.platform ?? c.domain;
-      const keys = new Set([...cookies.map(keyOf), ...reqs.map((r) => r.tracker!.company)]);
-      for (const key of keys) {
-        const cs = cookies.filter((c) => keyOf(c) === key);
+      // un fornitore canonico (cookie e richieste dello stesso contenuto, es. YouTube = Google) per categoria
+      const keyOf = (c: (typeof s.cookies)[number]) => `${cookieVendor(c)}|${c.classification.category}`;
+      const reqKey = (r: (typeof reqs)[number]) => `${requestVendor(r)}|${r.tracker!.category}`;
+      const keys = new Set([...cookies.map(keyOf), ...reqs.map(reqKey)]);
+      for (const k of keys) {
+        const key = k.slice(0, k.lastIndexOf('|'));
+        const cs = cookies.filter((c) => keyOf(c) === k);
         const fresh = cs.filter((c) => !renewed.has(c));
         const again = cs.filter((c) => renewed.has(c));
-        const left = residual.filter((c) => keyOf(c) === key);
-        const rs = reqs.filter((r) => r.tracker!.company === key);
+        const left = residual.filter((c) => keyOf(c) === k);
+        const rs = reqs.filter((r) => reqKey(r) === k);
         const cat = cs[0]?.classification.category ?? rs[0]?.tracker!.category;
         const parts: string[] = [];
         if (fresh.length) parts.push(`${fresh.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${fresh.length} cookie`} (${fresh.map((c) => c.name).join(', ')})`);
@@ -94,7 +97,8 @@ function afterChoice(scenario: 'rifiuta' | 'chiudi', id: string, title: string):
         });
       }
       // Fornitori con soli cookie rimasti (scritti prima della scelta, non riscritti e senza richieste dopo): fatto più debole
-      for (const [key, left] of groupBy(residual.filter((c) => !keys.has(keyOf(c))), keyOf)) {
+      for (const [k, left] of groupBy(residual.filter((c) => !keys.has(keyOf(c))), keyOf)) {
+        const key = k.slice(0, k.lastIndexOf('|'));
         out.push({
           site: s.site,
           scenario: s.scenario,

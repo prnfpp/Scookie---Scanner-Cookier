@@ -114,3 +114,35 @@ test('fix 4 e 2: revoca usata con un comando della pagina e X usata nello scenar
   assert.match(d, /visibile solo dopo la scelta/);
   assert.match(d, /chiusura \(X\) presente/);
 });
+
+test('fix 7: domini Google classificati dopo la verifica sui HAR', () => {
+  const c = new Classifier();
+  assert.equal(c.classifyHost('jnn-pa.googleapis.com', '/$rpc/google.internal.waa.v1.Waa/GenerateIT')?.categoria, 'funzionalita');
+  assert.equal(c.classifyHost('yt3.ggpht.com', '/abc=s88')?.categoria, 'funzionalita');
+  assert.equal(c.classifyHost('lh3.googleusercontent.com', '/a/x=s40-c-mo')?.categoria, 'funzionalita');
+  assert.equal(c.classifyHost('www.google.com', '/js/th/abc.js')?.categoria, 'tecnico');
+  assert.equal(c.classifyHost('www.google.com', '/recaptcha/api.js')?.categoria, 'tecnico');
+  assert.equal(c.classifyHost('csp.withgoogle.com', '/csp/frame-ancestors/x')?.categoria, 'tecnico');
+  assert.equal(c.classifyHost('play.google.com', '/log')?.categoria, 'statistica');
+  assert.equal(c.classifyHost('play.google.com', '/store/apps'), undefined);
+});
+
+test('accorpamento: cookie di YouTube e richieste di Google dopo il rifiuto sono un solo fornitore', async () => {
+  const { attivazioneDopoRifiuto } = await import('../src/rules/regole/attivazione-dopo-rifiuto.js');
+  const ck = (name: string): import('../src/types.js').CookieRecord => ({
+    name, domain: '.youtube.com', path: '/', expires: null, httpOnly: true, secure: true, sameSite: 'None', party: 'terza', phase: 'prima', stage: 'caricamento',
+    firstSeenUrl: 'https://www.esempio.it/', firstSeenAt: '', valuePreview: '', classification: { category: 'marketing', source: 'open-cookie-database', platform: 'Youtube' },
+    presentAfterChoice: true, renewals: [{ stage: 'scelta', at: '', url: 'https://www.esempio.it/', expires: null }],
+  });
+  const out = attivazioneDopoRifiuto.evaluate({
+    sessions: [sess({ scenario: 'rifiuta', cookies: [ck('VISITOR_INFO1_LIVE')], requests: [req({ host: 'www.youtube.com', url: 'https://www.youtube.com/youtubei/v1/log_event?alt=json', method: 'POST', resourceType: 'xhr', tracker: { company: 'Google', category: 'marketing' } })] })],
+  } as never);
+  assert.equal(out.length, 1, out.map((f) => f.description).join(' | '));
+  assert.deepEqual(out[0].subjects, ['Google']);
+  assert.match(out[0].description, /riscritto 1 cookie.*VISITOR_INFO1_LIVE.* e parte 1 richiesta a www\.youtube\.com/);
+  // categorie diverse dello stesso fornitore restano distinte
+  const two = attivazioneDopoRifiuto.evaluate({
+    sessions: [sess({ scenario: 'rifiuta', requests: [req({ host: 'www.youtube.com', method: 'POST', tracker: { company: 'Google', category: 'marketing' } }), req({ host: 'play.google.com', url: 'https://play.google.com/log?format=json', method: 'POST', tracker: { company: 'Google', category: 'statistica' } })] })],
+  } as never);
+  assert.equal(two.length, 2);
+});

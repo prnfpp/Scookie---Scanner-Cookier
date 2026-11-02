@@ -175,6 +175,13 @@ tracker:
   - { dominio: acswapp.com, azienda: accessiBe, categoria: funzionalita, nota: "Widget di accessibilità di terza parte (accessiBe): da valutare se raccoglie dati" }
   - { dominio: calendar.google.com, azienda: Google Calendar (contenuti incorporati), categoria: funzionalita, percorsi: ["^/calendar/appointments/"], nota: "Prenotazione di appuntamenti di Google Calendar incorporata nella pagina: contenuto di Google" }
   - { dominio: calendar-pa.clients6.google.com, azienda: Google Calendar (contenuti incorporati), categoria: funzionalita, nota: "Servizio usato dal widget di prenotazione di appuntamenti di Google Calendar incorporato: contenuto di Google" }
+  # Classificati dopo la verifica sui HAR (frame di origine e contenuto delle richieste)
+  - { dominio: jnn-pa.googleapis.com, azienda: Google, categoria: funzionalita, nota: "Componente del lettore YouTube incorporato: attestazione anti-abuso (Waa/GenerateIT)" }
+  - { dominio: yt3.ggpht.com, azienda: Google, categoria: funzionalita, nota: "Immagini del lettore YouTube incorporato (es. avatar del canale)" }
+  - { dominio: lh3.googleusercontent.com, azienda: Google, categoria: funzionalita, nota: "Immagini ospitate da Google nei contenuti incorporati (es. foto dell'organizzatore nel widget di prenotazione)" }
+  - { dominio: www.google.com, azienda: Google, categoria: tecnico, percorsi: ["^/js/th/"], nota: "Script anti-abuso di Google caricato dai contenuti incorporati" }
+  - { dominio: csp.withgoogle.com, azienda: Google, categoria: tecnico, nota: "Report di violazione della Content Security Policy inviato dal browser" }
+  - { dominio: play.google.com, azienda: Google, categoria: statistica, percorsi: ["^/log"], nota: "Telemetria di Google inviata dai contenuti incorporati (es. widget di prenotazione di Google Calendar)" }
 
   # --- Infrastruttura: CDN, pagamenti, protezione anti-bot ---
   # Classificate per ridurre il rumore della regola "elementi non classificati". Restano visibili nell'inventario.

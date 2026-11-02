@@ -65,7 +65,7 @@ function item(title: string, fs: Finding[]): SummaryItem {
 const phasesOf = (fs: Finding[]) => PHASE_ORDER.filter((p) => fs.some((f) => PHASE[f.ruleId] === p));
 
 /** Fornitore canonico: lo stesso fornitore con nomi diversi nelle fonti (es. "Bing / Microsoft" e "Microsoft") conta una volta. */
-const ALIASES: [RegExp, string][] = [[/\bbing\b|\bmicrosoft\b/i, 'Microsoft']];
+const ALIASES: [RegExp, string][] = [[/\bbing\b|\bmicrosoft\b/i, 'Microsoft'], [/^you ?tube$/i, 'Google']];
 export function vendorKey(subject: string): string {
   for (const [re, name] of ALIASES) if (re.test(subject)) return name;
   return subject;

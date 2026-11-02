@@ -1,13 +1,13 @@
 import { NON_TECHNICAL, type SessionResult } from '../../types.js';
-import { cookieActivity, groupBy, sessionEvidence } from '../helpers.js';
+import { cookieActivity, cookieVendor, groupBy, requestVendor, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Fornitori non tecnici attivi dopo la scelta (cookie o richieste) in un gruppo di sessioni. */
 function activeAfter(list: SessionResult[]): Set<string> {
   const out = new Set<string>();
   for (const s of list) {
-    for (const c of s.cookies) if (cookieActivity(c, 'scelta')) out.add(c.classification.platform ?? c.domain);
-    for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category)) out.add(r.tracker.company);
+    for (const c of s.cookies) if (cookieActivity(c, 'scelta')) out.add(cookieVendor(c));
+    for (const r of s.requests) if (r.phase === 'dopo' && r.tracker && NON_TECHNICAL.has(r.tracker.category)) out.add(requestVendor(r));
   }
   return out;
 }

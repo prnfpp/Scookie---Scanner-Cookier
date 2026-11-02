@@ -55,10 +55,16 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
 - **Domini non classificati (R-008).** `data/trackers.yaml`: accessiBe (`acsbapp.com`, `acswapp.com`) come widget di
   accessibilità di terza parte, categoria funzionalità, con nota "da valutare se raccoglie dati"; Google Calendar
   appuntamenti (`calendar.google.com` solo per `/calendar/appointments/`, `calendar-pa.clients6.google.com`) come
-  contenuto incorporato di Google. Le classificazioni si riapplicano con `rigenera`. Gli altri domini Google del
-  rilievo restano non classificati in attesa della verifica sui HAR (proposta nel messaggio del commit).
+  contenuto incorporato di Google. Dopo la verifica sui HAR (frame di origine e contenuto): `jnn-pa.googleapis.com`,
+  `yt3.ggpht.com` (lettore YouTube) e `lh3.googleusercontent.com` funzionalità; `www.google.com/js/th/` e
+  `csp.withgoogle.com` tecnici; `play.google.com/log` (telemetria dei contenuti incorporati) statistica. Le
+  classificazioni si riapplicano con `rigenera`.
 - **Testi del rapporto.** Nuova `src/util/text.ts` (`plural`, `nWords`, `labelled`) usata nei template e nelle regole
   con numeri: niente più "1 categoria risulta già attive", "attiva e modificabili", "1 sessioni non hanno potuto…",
   "1 sessioni su 3", "1 chiavi", "1 voci", "1 rilievi" ecc. La sintesi non lascia elenchi vuoti dopo i due punti:
   il rilievo `personalizzazione-non-rispettata` ora indica il fornitore e, se l'elenco resta vuoto, il punto usa un
   testo alternativo. Test di regola aggiunti in `test/correzioni-0.1.1.test.ts` per i casi generali dei fix 2–5.
+- **Accorpamento dei fornitori nei rilievi dopo la scelta.** Cookie e richieste dello stesso contenuto incorporato con
+  nomi diversi nelle fonti (cookie "Youtube" di Open Cookie Database, richieste "Google" dell'elenco dei domini) sono
+  un solo fornitore nei rilievi dopo il rifiuto, la X, la revoca e la personalizzazione e nella sintesi. Le categorie
+  diverse dello stesso fornitore restano schede distinte.
