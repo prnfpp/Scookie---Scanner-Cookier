@@ -93,6 +93,10 @@ test('fix 2: troppe "categorie" lette: analisi non affidabile, nessun rilievo di
   const ctx = { sessions: [sess({ bannerAnalysis: a })] } as never;
   assert.equal(categoriePreattivate.evaluate(ctx).length, 0);
   assert.ok(strutturaBanner.evaluate(ctx)[0].details.some((d) => /non affidabile/.test(d)));
+  // rilevazione precedente, senza la marcatura della raccolta: il controllo vale anche con "rigenera"
+  const old = { sessions: [sess({ bannerAnalysis: { ...a, preferences: { opened: true, via: 'x', toggles } } })] } as never;
+  assert.equal(categoriePreattivate.evaluate(old).length, 0);
+  assert.ok(strutturaBanner.evaluate(old)[0].details.some((d) => /non affidabile: 30 interruttori/.test(d)));
 });
 
 test('fix 4 e 2: revoca usata con un comando della pagina e X usata nello scenario chiudi rendono coerente la struttura', async () => {

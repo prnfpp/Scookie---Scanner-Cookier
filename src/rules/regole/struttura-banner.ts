@@ -76,6 +76,22 @@ export function revokeFound(sessions: SessionResult[], site: string, before: Ban
   return null;
 }
 
+/** Oltre questo numero di "categorie" l'interfaccia letta non è un elenco di categorie di consenso. */
+const MAX_CATEGORIES = 12;
+
+/**
+ * Anomalia nella lettura delle categorie del secondo livello: dichiarata durante la raccolta o, per le rilevazioni
+ * precedenti, ricavata qui dal numero di interruttori letti.
+ */
+export function categoriesUnreliable(a: BannerAnalysis): string | undefined {
+  const p = a.preferences;
+  if (!p?.opened) return undefined;
+  if (p.unreliable) return p.unreliable;
+  return p.toggles.length > MAX_CATEGORIES
+    ? `analisi delle categorie non affidabile: ${p.toggles.length} interruttori letti nel secondo livello, più delle ${MAX_CATEGORIES} categorie plausibili (probabili elementi di un'altra interfaccia della pagina); le categorie vanno lette sullo screenshot "4-preferenze"`
+    : undefined;
+}
+
 /** Struttura del banner al primo livello: quali comandi offre, link all'informativa, modo per rivedere la scelta. */
 /** Esito dello scenario "personalizza" quando il gestore non ha una categoria statistica separata e rifiutabile. */
 export const NO_STATS_CATEGORY = /nessuna categoria statistica separata e rifiutabile/;
@@ -114,8 +130,8 @@ export const strutturaBanner: Rule = {
           `Tutti i comandi rilevati nel banner: ${list(f.all)}`,
           ...prom.lines,
           ...(a.policyLink ? [`Informativa: ${a.policyLink.href}`] : []),
-          ...(a.preferences?.unreliable ? [`Secondo livello aperto con ${a.preferences.via}: ${a.preferences.unreliable}`] : []),
-          ...(a.preferences?.opened && !a.preferences.unreliable
+          ...(categoriesUnreliable(a) ? [`Secondo livello aperto con ${a.preferences!.via}: ${categoriesUnreliable(a)}`] : []),
+          ...(a.preferences?.opened && !categoriesUnreliable(a)
             ? [`Secondo livello aperto con ${a.preferences.via}: ${a.preferences.toggles.map((t) => `${t.label} ${t.checked ? 'attiva' : 'non attiva'}${t.disabled ? ' (non modificabile)' : ''}`).join('; ') || 'nessuna categoria leggibile'}`]
             : []),
         ],
@@ -136,7 +152,7 @@ export const categoriePreattivate: Rule = {
     for (const { s, a } of analyses(sessions)) {
       // Attive e modificabili: quelle bloccate attive sono di norma i cookie necessari.
       // Interruttori non plausibili come categorie: il fatto non è accertato (l'anomalia è nei Limiti)
-      if (a.preferences?.unreliable) continue;
+      if (categoriesUnreliable(a)) continue;
       const on = (a.preferences?.toggles ?? []).filter((t) => t.checked && !t.disabled);
       if (!on.length) continue;
       out.push({
