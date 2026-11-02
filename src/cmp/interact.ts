@@ -3,7 +3,7 @@ import type { BannerConfig } from '../config/schema.js';
 import type { InteractionReport } from '../types.js';
 import { describeElement, frames, waitFor } from './dom.js';
 import { PERSONALIZERS, genericPersonalizer } from './personalize.js';
-import { findRevokeControl } from './revoke.js';
+import { findRevokeControl, findRevokeInPage } from './revoke.js';
 import { TEXTS, clickCandidate, heuristicBannerVisible, heuristicChoose, scan } from './heuristic.js';
 import { hasManual, manualBannerVisible, manualChoose } from './manual.js';
 import { ADAPTERS } from './registry.js';
@@ -274,18 +274,18 @@ export async function performRevocation(
 ): Promise<{ outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null }> {
   // Prima il comando nella pagina, come farebbe un utente; se manca o non funziona, la pagina dedicata; infine l'API.
   const notes: string[] = [];
-  for (const f of frames(page)) {
-    const found = await findRevokeControl(f);
-    if (!found) continue;
-    const link = f.locator('[data-scookie-revoke]').first();
-    const label = await describeElement(link);
-    await link.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
-    await link.click({ timeout: 5000 }).catch(() => link.click({ timeout: 5000, force: true }).catch(() => {}));
-    await page.waitForTimeout(1000);
-    const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
-    if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'link', how: `click su ${label}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
-    notes.push(`click su ${label}, ma rifiuto non eseguito (${r.detail})`);
-    break;
+  {
+    const found = await findRevokeInPage(page);
+    const link = found?.frame.locator('[data-scookie-revoke]').first();
+    if (found && link) {
+      const label = await describeElement(link);
+      await link.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+      await link.click({ timeout: 5000 }).catch(() => link.click({ timeout: 5000, force: true }).catch(() => {}));
+      await page.waitForTimeout(1000);
+      const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
+      if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'link', how: `click su ${label}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
+      notes.push(`click su ${label}, ma rifiuto non eseguito (${r.detail})`);
+    }
   }
   if (revokePage) {
     await page.goto(revokePage, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});

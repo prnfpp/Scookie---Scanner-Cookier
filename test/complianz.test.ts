@@ -96,3 +96,16 @@ test('fix 3: personalizza con l\'adattatore Complianz, stato verificato, video a
   assert.match(f.description, new RegExp(`stesso comportamento del rifiuto`));
   assert.match(f.description, new RegExp(`vedi ${rej.id}`));
 });
+
+test('fix 4: comando di revoca trovato dopo la scelta e usato nello scenario revoca', () => {
+  const rej = session('rifiuta');
+  assert.match(rej.revokeAfterChoice?.text ?? '', /Gestisci consenso/);
+  assert.match(rej.revokeAfterChoice?.how ?? '', /manage-consent/);
+  const rev = session('revoca').revocation!;
+  assert.equal(rev.outcome, 'eseguita');
+  assert.equal(rev.via, 'link');
+  assert.match(rev.how, /Gestisci consenso/);
+  assert.equal(findings('revoca-non-trovata').length, 0);
+  const s = findings('struttura-banner')[0];
+  assert.match(s.description, /Modo per rivedere la scelta nella pagina: trovato, "Gestisci consenso" \(.*visibile solo dopo la scelta\)/);
+});

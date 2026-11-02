@@ -1,4 +1,6 @@
-import type { Frame } from 'playwright';
+import type { Frame, Page } from 'playwright';
+import { frames } from './dom.js';
+import { frameRole } from './heuristic.js';
 
 /**
  * Comandi per riaprire le preferenze dopo la scelta (di solito nel footer o come icona fluttuante):
@@ -26,6 +28,10 @@ export const REVOKE_SELECTORS = [
   '[data-cc="show-preferencesModal"]',
   '.cky-btn-revisit',
   '#cmplz-manage-consent',
+  // Complianz: pulsante "Gestisci consenso" (classi cmplz-manage-consent manage-consent-N), visibile dopo la scelta
+  '.cmplz-manage-consent',
+  '[class*="cmplz-manage-consent"]',
+  '.cmplz-btn[class*="manage-consent-"]',
   // HubSpot
   '#hs-eu-cookie-settings-button',
   '[href*="showBanner"]',
@@ -97,3 +103,16 @@ export const isRevokeUrl = (url: string) => {
     return false;
   }
 };
+
+/**
+ * Comando di revoca nella pagina (fuori dal banner), cercato nella pagina e negli iframe del gestore, non nei
+ * contenuti incorporati. Molti gestori lo mostrano solo dopo la scelta: va cercato anche allora.
+ */
+export async function findRevokeInPage(page: Page): Promise<{ text: string; how: string; frame: Frame } | null> {
+  for (const f of frames(page)) {
+    if ((await frameRole(f).catch(() => 'other')) === 'other') continue;
+    const r = await findRevokeControl(f);
+    if (r) return { ...r, frame: f };
+  }
+  return null;
+}

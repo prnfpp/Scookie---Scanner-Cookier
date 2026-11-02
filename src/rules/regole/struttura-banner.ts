@@ -58,6 +58,23 @@ function prominenceText(p: Prom): { lines: string[]; sentence: string; asymmetri
   return { lines, sentence, asymmetric, ratio };
 }
 
+/**
+ * Modo per rivedere la scelta, da tutte le osservazioni del sito: nella pagina prima della scelta (analisi del banner),
+ * nella pagina dopo la scelta (sessioni con scelta), o usato davvero nello scenario "revoca" con un comando della
+ * pagina (non con l'API del gestore). Se la revoca è riuscita con un comando della pagina, il comando esiste.
+ */
+export function revokeFound(sessions: SessionResult[], site: string, before: BannerAnalysis['revokeLink']): { text: string; how: string; afterChoiceOnly: boolean } | null {
+  if (before) return { ...before, afterChoiceOnly: false };
+  const after = sessions.find((x) => x.site === site && x.revokeAfterChoice)?.revokeAfterChoice;
+  if (after) return { text: after.text, how: after.how, afterChoiceOnly: true };
+  const used = sessions.find((x) => x.site === site && x.scenario === 'revoca' && x.revocation?.outcome === 'eseguita' && x.revocation.via === 'link');
+  if (used) {
+    const label = /^click su (.+?)(, poi|$)/.exec(used.revocation!.how)?.[1] ?? used.revocation!.how;
+    return { text: /"([^"]+)"/.exec(label)?.[1] ?? label, how: `${label}, usato nello scenario "revoca"`, afterChoiceOnly: true };
+  }
+  return null;
+}
+
 /** Struttura del banner al primo livello: quali comandi offre, link all'informativa, modo per rivedere la scelta. */
 /** Esito dello scenario "personalizza" quando il gestore non ha una categoria statistica separata e rifiutabile. */
 export const NO_STATS_CATEGORY = /nessuna categoria statistica separata e rifiutabile/;
@@ -74,18 +91,20 @@ export const strutturaBanner: Rule = {
       // Scelta per categoria impossibile per come è configurato il gestore: è un fatto della struttura, non un limite
       // Coerenza con lo scenario "chiudi": se lì la X è stata trovata e cliccata, il banner ha una X
       const xSession = sessions.find((x) => x.site === s.site && x.scenario === 'chiudi' && x.interaction.outcome === 'eseguito' && x.interaction.layer === 'chiusura-x');
+      const rev = revokeFound(sessions, s.site, a.revokeLink);
+      const revText = rev ? `trovato, "${rev.text}" (${rev.how}${rev.afterChoiceOnly ? '; visibile solo dopo la scelta' : ''})` : 'non trovato';
       const close = f.close.length ? list(f.close) : xSession ? `presente (${xSession.interaction.clicked?.[0] ?? 'X di chiusura'}, usata nello scenario "chiudi")` : 'assente';
       const noStats = sessions.some((x) => x.site === s.site && x.scenario === 'personalizza' && x.interaction.outcome !== 'eseguito' && NO_STATS_CATEGORY.test(x.interaction.detail));
       return {
         site: s.site,
         scenario: s.scenario,
         pageUrl: s.pages[0],
-        groupKey: [f.all.join('|'), !!a.policyLink, !!a.revokeLink].join('#'),
+        groupKey: [f.all.join('|'), !!a.policyLink, !!rev].join('#'),
         description:
           `Al primo livello il banner${a.cmp.length ? ` (${a.cmp.join(', ')})` : ''} offre: accettazione ${list(f.accept)}; ` +
           `rifiuto ${list(f.reject)}; preferenze ${list(f.preferences)}; chiusura (X) ${close}. ` +
           `Link all'informativa nel banner: ${a.policyLink ? `"${a.policyLink.text}"` : 'non trovato'}. ` +
-          `Modo per rivedere la scelta nella pagina: ${a.revokeLink ? `"${a.revokeLink.text}"` : 'non trovato'}.` +
+          `Modo per rivedere la scelta nella pagina: ${revText}.` +
           (prom.sentence ? ` ${prom.asymmetric ? 'Evidenza dei comandi: vedi la scheda dedicata.' : prom.sentence}` : '') +
           (noStats
             ? " Non è possibile accettare o rifiutare la sola statistica: nella configurazione del gestore non esiste una categoria statistica separata e rifiutabile (gli strumenti di statistica sono nella categoria sempre attiva). Per questo lo scenario \"personalizza\" non è applicabile."
@@ -141,8 +160,9 @@ export const revocaNonTrovata: Rule = {
   defaultSeverity: 'bassa',
   defaultNorms: ['gdpr7', 'garante2021'],
   evaluate({ sessions, discovery }) {
+    // Un comando trovato dopo la scelta, o usato nello scenario "revoca", esclude il fatto
     return analyses(sessions)
-      .filter(({ a }) => !a.revokeLink)
+      .filter(({ s, a }) => !revokeFound(sessions, s.site, a.revokeLink))
       .map(({ s }): RawFinding => {
         // Una pagina dedicata (es. /preferenze-cookies) trovata tra le URL del sito è probabilmente il meccanismo di revoca.
         const page = discovery?.find((d) => d.site === s.site)?.revokePages?.[0];

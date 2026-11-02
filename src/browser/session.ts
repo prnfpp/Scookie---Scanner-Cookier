@@ -9,6 +9,7 @@ import { PartyResolver, registrableDomain } from '../util/domains.js';
 import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { detectBotChallenge, type BotBlock } from './antibot.js';
 import { Collector } from './collector.js';
+import { findRevokeInPage } from '../cmp/revoke.js';
 import { trimHar } from './har.js';
 import { maskPii } from '../util/pii.js';
 import { manualJourney, type ManualPlan } from './manual.js';
@@ -183,6 +184,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let choiceAt: string | null = null;
   let bannerAnalysis: BannerAnalysis | undefined;
   let revocation: SessionResult['revocation'];
+  let revokeAfterChoice: SessionResult['revokeAfterChoice'];
   let manual: SessionResult['manual'];
   let unreachable: string | undefined;
   let replay: SessionResult['replay'];
@@ -305,6 +307,9 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
               if (k === 0 && interaction.outcome === 'eseguito' && interaction.bannerOnNextPage === undefined) {
                 const again = await bannerVisible(page, await detectCmps(page), banner).catch(() => false);
                 interaction = { ...interaction, bannerOnNextPage: again };
+                // Comando per rivedere la scelta: molti gestori lo mostrano solo dopo la scelta
+                const rev = await findRevokeInPage(page).catch(() => null);
+                if (rev) revokeAfterChoice = { text: rev.text, how: rev.how, url: maskPii(page.url()) };
               }
               await settle();
             } else if (blocked) break;
@@ -374,6 +379,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     ...(blocked ? { blocked } : {}),
     ...(bannerAnalysis ? { bannerAnalysis } : {}),
     ...(revocation ? { revocation } : {}),
+    ...(revokeAfterChoice ? { revokeAfterChoice } : {}),
     ...(manual ? { manual } : {}),
     ...(replay ? { replay, pages: replay.pages } : {}),
     ...(unreachable ? { unreachable } : {}),

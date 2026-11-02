@@ -219,6 +219,8 @@ export interface SessionResult {
   manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; steps?: import('./browser/replay.js').RecordedStep[]; errorPages?: { url: string; status: number }[]; extraTabs?: number };
   /** Sessione automatica che ha rigiocato un percorso registrato in una navigazione manuale. */
   replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string };
+  /** Comando per rivedere la scelta trovato nella pagina dopo la scelta (molti gestori lo mostrano solo allora). */
+  revokeAfterChoice?: { text: string; how: string; url: string };
   /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */
   bannerAnalysis?: BannerAnalysis;
   /**

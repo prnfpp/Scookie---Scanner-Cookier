@@ -26,3 +26,9 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   rilievo `personalizzazione-non-rispettata` esce con priorità abbassata e lo dichiara nel testo. Un fornitore attivo
   anche dopo il rifiuto è accorpato ("stesso comportamento del rifiuto, vedi R-xxx", priorità bassa), come già per la
   revoca. I rimandi "vedi R-xxx" tra rilievi si risolvono dopo la numerazione.
+- **Comando di revoca trovato anche dopo la scelta (R-010, coerenza con R-009/R-012/R-013).** Il comando per rivedere
+  la scelta si cerca anche alla prima pagina dopo la scelta in tutti gli scenari con scelta (`revokeAfterChoice`),
+  nella pagina e negli iframe del gestore. Complianz: `.cmplz-manage-consent` e varianti `manage-consent-*`. Se il
+  comando è stato trovato dopo la scelta, o lo scenario "revoca" ha riaperto le preferenze con un comando della pagina
+  (non via API), `revoca-non-trovata` non scatta e la struttura del banner dice "trovato", quale comando e se è
+  visibile solo dopo la scelta.

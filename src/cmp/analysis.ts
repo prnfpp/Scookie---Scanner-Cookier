@@ -3,7 +3,7 @@ import type { BannerAnalysis, CommandLook } from '../types.js';
 import { describeElement, frames, waitFor } from './dom.js';
 import { TEXTS, clickCandidate, consentFrames, scan, type Candidate } from './heuristic.js';
 import { isShown } from './visibility.js';
-import { findRevokeControl } from './revoke.js';
+import { findRevokeInPage } from './revoke.js';
 import type { CmpAdapter } from './types.js';
 
 const POLICY_TEXT = /cookie|privacy|informativa|policy|trattamento dei dati/i;
@@ -65,11 +65,8 @@ export async function analyzeBanner(page: Page, adapters: CmpAdapter[], shot: (l
   const policy = candidates.find((c) => c.href && POLICY_TEXT.test(c.text));
 
   // Modo per riaprire le preferenze nella pagina, fuori dal banner (gli elementi del banner sono marcati dallo scan).
-  let revoke: BannerAnalysis['revokeLink'] = null;
-  for (const f of frames(page)) {
-    revoke = await findRevokeControl(f);
-    if (revoke) break;
-  }
+  const found = await findRevokeInPage(page);
+  const revoke: BannerAnalysis['revokeLink'] = found ? { text: found.text, how: found.how } : null;
 
   // Evidenza visiva dei comandi di accettazione e rifiuto (prima di toccare altro)
   const lookOf = async (c: Candidate | undefined) => (c ? measure(c).catch(() => null) : null);
