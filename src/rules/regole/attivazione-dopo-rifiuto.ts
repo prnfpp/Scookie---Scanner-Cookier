@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { choiceHow, cookieActivity, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary } from '../helpers.js';
+import { choiceHow, cookieActivity, pagesOf, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Testi della regola per lo scenario: rifiuto o chiusura del banner con la X. */
@@ -75,6 +75,7 @@ function afterChoice(scenario: 'rifiuta' | 'chiudi', id: string, title: string):
               : ''),
           details: [
             `Pagine in cui si osserva: ${pages.join(', ')}`,
+            ...(pagesOf(rs).exitLine ? [pagesOf(rs).exitLine!] : []),
             `Metodo di interazione: ${s.interaction.method}; verifica stato consenso: ${s.interaction.verification} ${s.interaction.verificationDetail}`,
             ...fresh.map((c) => `cookie ${c.name} — ${c.domain}, prima volta su ${c.firstSeenUrl}${cookieNote(c.name)}`),
             ...again.map((c) => {

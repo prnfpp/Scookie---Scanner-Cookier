@@ -41,6 +41,7 @@ export function requestExcerpt(r: RequestRecord, s: SessionResult): Record<strin
     tipo: r.resourceType,
     stato: r.status,
     pagina: r.pageUrl,
+    ...(r.sentOnExit ? { inviataAllUscita: true } : {}),
     ...(r.fromServiceWorker ? { daServiceWorker: true } : {}),
     ...(r.purpose ? { natura: r.purpose } : {}),
     ...(r.consentParams ? { parametriConsenso: r.consentParams } : {}),
@@ -273,4 +274,17 @@ export function cookieActivity(c: CookieRecord, stage: 'scelta' | 'revoca'): 'nu
   if (!NON_TECHNICAL.has(c.classification.category)) return null;
   if (stage === 'scelta' ? c.phase === 'dopo' : c.stage === 'revoca') return 'nuovo';
   return c.renewals?.some((r) => r.stage === stage) ? 'rinnovato' : null;
+}
+
+/**
+ * Pagine di un gruppo di richieste: quelle che ospitano il contenuto che le ha inviate e, a parte, quelle da cui
+ * sono partite richieste all'uscita (es. evento inviato da un video incorporato mentre si passa alla pagina successiva).
+ */
+export function pagesOf(reqs: RequestRecord[]): { pages: string[]; exitLine: string | null } {
+  const pages = [...new Set(reqs.map((r) => r.pageUrl))];
+  const exits = groupBy(reqs.filter((r) => r.sentOnExit), (r) => r.pageUrl);
+  const exitLine = exits.size
+    ? `Invii all'uscita dalla pagina (inviati mentre si passava alla pagina successiva, attribuiti alla pagina che ospita il contenuto): ${[...exits].map(([p, l]) => `${p} (${nReq(l.length)})`).join(', ')}`
+    : null;
+  return { pages, exitLine };
 }

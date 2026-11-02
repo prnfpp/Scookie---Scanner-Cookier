@@ -43,3 +43,10 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   della prova dichiara anche i dati inviati. Inventario: colonna "Dopo rifiuto" con "sì", "rinnovato" o "ancora
   presente" e tabella delle raccolte sul dominio del sito. Le classificazioni si riapplicano con `rigenera`; i dati
   sui cookie riscritti esistono solo nelle rilevazioni fatte con la 0.1.1.
+- **Attribuzione delle richieste alla pagina giusta (R-004, R-005, R-009).** La pagina di una richiesta è il documento
+  principale che ospita il frame che l'ha generata, letto al momento della richiesta (`request.frame()`), non l'URL
+  verso cui si sta navigando. Le richieste partite da un documento che si sta lasciando (tra l'inizio della navigazione
+  e il commit della nuova pagina, o da un frame già staccato) sono marcate `sentOnExit` ("inviata all'uscita"):
+  restano attribuite alla pagina che ospita il contenuto e i rilievi le elencano a parte ("Invii all'uscita dalla
+  pagina"). `richieste.csv` ha la colonna `inviata_all_uscita`. Vale per le nuove rilevazioni: quelle già raccolte
+  non contengono il frame di origine.

@@ -111,7 +111,13 @@ export interface RequestRecord {
   party: Party;
   phase: Phase;
   stage: Stage;
+  /** Pagina che ospita il contenuto che ha inviato la richiesta (documento del frame al momento della richiesta). */
   pageUrl: string;
+  /**
+   * Richiesta inviata all'uscita dalla pagina `pageUrl` (pagehide/unload, o tra l'inizio della navigazione verso la
+   * pagina successiva e il suo caricamento): non è stata generata dalla pagina successiva.
+   */
+  sentOnExit?: boolean;
   status: number | null;
   tracker?: { company: string; category: Category };
   /** Parametri di consenso Google (gcs, gcd, npa) se presenti. */

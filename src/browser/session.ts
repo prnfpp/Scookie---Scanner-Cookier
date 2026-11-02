@@ -122,7 +122,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let blocked: BotBlock | null = null;
   const visit = async (url: string): Promise<boolean> => {
     stage = `caricamento di ${maskPii(url)}`;
-    collector.currentUrl = url;
+    collector.beginNavigation(url);
     let response: Response | null = null;
     try {
       response = await page.goto(url, { waitUntil: 'load', timeout: p.timeoutNavigazione });
@@ -130,6 +130,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
       const msg = (e as Error).message.split('\n')[0];
       const hint = /ERR_NETWORK_IO_SUSPENDED/.test(msg) ? ' — il computer è andato in stop durante l\'audit' : /ERR_INTERNET_DISCONNECTED/.test(msg) ? ' — connessione a internet assente' : '';
       errors.push(`navigazione non riuscita su ${url}: ${msg}${hint}`);
+      collector.endNavigation();
       return false;
     }
     collector.currentUrl = page.url();

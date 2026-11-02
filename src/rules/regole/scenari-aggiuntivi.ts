@@ -1,5 +1,5 @@
 import { NON_TECHNICAL, type Category } from '../../types.js';
-import { activeAfterReject, cookieActivity, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
+import { activeAfterReject, cookieActivity, pagesOf, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Dopo la revoca del consenso: nuovi cookie non tecnici o richieste a tracker. */
@@ -69,6 +69,7 @@ export const attivazioneDopoRevoca: Rule = {
             (sameAsReject ? ` Lo stesso fornitore risulta attivo anche dopo il rifiuto (${refTo('attivazione-dopo-rifiuto', key)}): non è un comportamento diverso.` : ''),
           details: [
             ...(s.revocation!.remaining.length ? [`Cookie non tecnici ancora presenti subito dopo la revoca: ${s.revocation!.remaining.join(', ')}`] : []),
+            ...(pagesOf(all).exitLine ? [pagesOf(all).exitLine!] : []),
             ...(sample ? [`Richiesta di esempio: ${sample.msFromRevoke != null ? `${sample.msFromRevoke} ms dopo la revoca — ` : ''}${sample.url.slice(0, 200)}`] : []),
           ],
           evidence: sessionEvidence(s, ['4-dopo-revoca', '5-fine-revoca']),

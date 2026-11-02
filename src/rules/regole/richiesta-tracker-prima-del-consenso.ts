@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen } from '../helpers.js';
+import { describeGoogleConsent, pagesOf, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Richieste verso tracker (pubblicità, statistica, registrazione sessioni, social) prima della scelta. */
@@ -59,6 +59,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
           ...[...new Set(reqs.map((x) => x.purpose).filter(Boolean))].map((x) => `Natura delle richieste: ${x}`),
           `Al caricamento: ${reqs.filter((x) => x.stage === 'caricamento').length}; solo dopo lo scroll e il movimento del mouse: ${reqs.filter((x) => x.stage === 'scroll').length}`,
           `Pagine: ${pages.slice(0, 10).join(', ')}`,
+          ...(pagesOf(reqs).exitLine ? [pagesOf(reqs).exitLine!] : []),
           `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`,
         ],
         evidence: sessionEvidence(s, onlyAfterScroll ? ['1-banner', '3-fine'] : ['1-banner']),

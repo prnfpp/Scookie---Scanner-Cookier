@@ -144,3 +144,21 @@ test('fix 5: tracker di prima parte (Matomo) attivo dopo il rifiuto e dopo la X,
   assert.match(html, /<td>_pk_id\.1\.ab12<\/td>(?:(?!<\/tr>).)*<td>rinnovato<\/td>/s);
   assert.match(html, /raccolte sul dominio del sito/);
 });
+
+test('fix 6: evento inviato dal video all\'uscita attribuito alla pagina che lo ospita, marcato "all\'uscita"', () => {
+  const rej = session('rifiuta');
+  const home = rej.pages[0];
+  const video = rej.requests.filter((r) => r.host.startsWith('video-terzo.test') && /log_event/.test(r.url));
+  const exits = video.filter((r) => /ev=uscita/.test(r.url));
+  assert.ok(exits.length, 'evento di uscita registrato');
+  for (const r of exits) {
+    assert.equal(r.pageUrl, home, r.url);
+    assert.equal(r.sentOnExit, true, r.url);
+  }
+  // la seconda pagina non ha video: nessuna richiesta del video le è attribuita
+  assert.ok(!video.some((r) => /chi-siamo/.test(r.pageUrl)), video.map((r) => r.pageUrl).join(' '));
+  const f = findings('attivazione-dopo-rifiuto').find((x) => x.subjects?.includes('VideoTest'))!;
+  const pagesLine = f.details.find((d) => d.startsWith('Pagine in cui si osserva'))!;
+  assert.doesNotMatch(pagesLine, /chi-siamo/);
+  assert.ok(f.details.some((d) => /^Invii all'uscita dalla pagina/.test(d)), f.details.join(' | '));
+});
