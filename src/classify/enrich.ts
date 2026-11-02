@@ -81,3 +81,25 @@ function params(u: string): URLSearchParams {
     return new URLSearchParams();
   }
 }
+
+/**
+ * Contenuto incorporato da cui parte una richiesta (documento dell'iframe che l'ha inviata), classificato con l'elenco
+ * dei domini: la telemetria di un widget (es. il log di Google inviato dal widget di Google Calendar) appartiene a quel
+ * widget, non è un tracker a sé.
+ */
+export function attributeToEmbeds(sessions: SessionResult[], classifier: Classifier): void {
+  for (const s of sessions) {
+    for (const r of s.requests) {
+      delete r.embed;
+      if (!r.frameUrl) continue;
+      let u: URL;
+      try {
+        u = new URL(r.frameUrl);
+      } catch {
+        continue;
+      }
+      const t = classifier.classifyHost(u.hostname, u.pathname, u.search);
+      if (t) r.embed = t.azienda;
+    }
+  }
+}

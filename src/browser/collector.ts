@@ -85,7 +85,7 @@ export class Collector {
    * la richiesta parte da un documento che si sta lasciando (pagehide/unload, o tra l'inizio della navigazione e il
    * commit della nuova pagina), la pagina da cui si esce.
    */
-  private origin(r: Request): { page: string | null; exit: boolean } {
+  private origin(r: Request): { page: string | null; exit: boolean; frameUrl?: string } {
     let f: Frame;
     try {
       f = r.frame();
@@ -101,7 +101,8 @@ export class Collector {
     const top = isMain ? committed : (this.frameTop.get(f) ?? committed);
     if (!top || !/^https?:/.test(top)) return { page: null, exit: false };
     const exit = f.isDetached() || (!!committed && top !== committed) || (this.navPending && top === committed);
-    return { page: top, exit };
+    const doc = isMain ? '' : f.url();
+    return { page: top, exit, ...(/^https?:/.test(doc) ? { frameUrl: doc } : {}) };
   }
 
   markChoice() {
@@ -187,6 +188,7 @@ export class Collector {
     const from = this.origin(r);
     if (from.page) rec.pageUrl = maskPii(from.page);
     if (from.exit) rec.sentOnExit = true;
+    if (from.frameUrl) rec.frameUrl = maskPii(from.frameUrl);
     const t = this.classifier.classifyHost(host, parsed.pathname, parsed.search);
     if (t) rec.tracker = { company: t.azienda, category: t.categoria };
     const params: Record<string, string> = {};

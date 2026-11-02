@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { describeGoogleConsent, pagesOf, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen } from '../helpers.js';
+import { describeGoogleConsent, embedLine, pagesOf, requestBreakdown, requestVendor, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Richieste verso tracker (pubblicità, statistica, registrazione sessioni, social) prima della scelta. */
@@ -19,8 +19,10 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         .map((r) => ({ s, r })),
     );
     const out: RawFinding[] = [];
-    for (const [, group] of groupBy(items, (i) => `${i.s.site}|${i.r.tracker!.company}|${i.r.tracker!.category}`)) {
+    for (const [, group] of groupBy(items, (i) => `${i.s.site}|${requestVendor(i.r)}|${i.r.tracker!.category}`)) {
       const { s, r } = group[0];
+      // fornitore della richiesta, o il contenuto incorporato dello stesso fornitore da cui parte
+      const vendor = requestVendor(r);
       const reqs = group.map((g) => g.r);
       const pages = [...new Set(reqs.map((x) => x.pageUrl))];
       const { when, onlyAfterScroll } = stageWhen(reqs.map((x) => x.stage));
@@ -39,18 +41,18 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         scenario: s.scenario,
         pageUrl: r.pageUrl,
         description:
-          `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${nReq(reqs.length)} a ${r.tracker!.company} ` +
+          `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${nReq(reqs.length)}${requestBreakdown(reqs)} a ${vendor} ` +
           `(${CATEGORY_LABEL[r.tracker!.category]}): ${hostsSummary(reqs)}.` +
           (level === 'risorsa' ? ' Le richieste scaricano risorse del fornitore: non è stato osservato un invio di dati di raccolta.' : ''),
         // Solo script o contenuti scaricati: prova più debole di una raccolta di dati
         severity: level === 'risorsa' ? 'media' : undefined,
         evidenceLevel: level,
-        subjects: [r.tracker!.company],
-        groupKey: `${r.tracker!.company}|${r.tracker!.category}`,
+        subjects: [vendor],
+        groupKey: `${vendor}|${r.tracker!.category}`,
         headline:
           level === 'raccolta'
-            ? `${r.tracker!.company} (${CATEGORY_LABEL[r.tracker!.category]}) riceve dati di navigazione prima di qualsiasi scelta sul banner${consentShort ? `, ${consentShort}` : ''}`
-            : `Il sito scarica risorse di ${r.tracker!.company} (${CATEGORY_LABEL[r.tracker!.category]}) prima di qualsiasi scelta sul banner`,
+            ? `${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) riceve dati di navigazione prima di qualsiasi scelta sul banner${consentShort ? `, ${consentShort}` : ''}`
+            : `Il sito scarica risorse di ${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) prima di qualsiasi scelta sul banner`,
         details: [
           `Richiesta di esempio: ${firstAtLoad.method} ${firstAtLoad.url.slice(0, 200)}`,
           ...(consent ? [`Consenso Google dichiarato nella richiesta di esempio: ${consent}${firstAtLoad.fromServiceWorker ? ' (richiesta inviata da un service worker del sito)' : ''}`] : []),
@@ -58,6 +60,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
           ...(uet.detail ? [uet.detail] : []),
           ...[...new Set(reqs.map((x) => x.purpose).filter(Boolean))].map((x) => `Natura delle richieste: ${x}`),
           `Al caricamento: ${reqs.filter((x) => x.stage === 'caricamento').length}; solo dopo lo scroll e il movimento del mouse: ${reqs.filter((x) => x.stage === 'scroll').length}`,
+          ...(embedLine(reqs) ? [embedLine(reqs)!] : []),
           `Pagine: ${pages.slice(0, 10).join(', ')}`,
           ...(pagesOf(reqs).exitLine ? [pagesOf(reqs).exitLine!] : []),
           `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`,

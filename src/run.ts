@@ -26,7 +26,7 @@ import { keepAwake } from './util/awake.js';
 import type { RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
 import { attributeByHost, checkDeclared } from './report/attribution.js';
-import { enrichRequests, reclassify } from './classify/enrich.js';
+import { attributeToEmbeds, enrichRequests, reclassify } from './classify/enrich.js';
 import { reattributeFromHar } from './browser/har-frames.js';
 import { nWords, plural } from './util/text.js';
 
@@ -651,6 +651,13 @@ async function finishRun(
     } catch (e) {
       o.log(`Attribuzione dal file HAR non eseguita (${(e as Error).message.split('\n')[0]}): restano le pagine della rilevazione.`);
     }
+  }
+  // richieste partite da un contenuto incorporato: a quale contenuto appartengono (dopo il frame ricostruito dal HAR)
+  try {
+    const extraTrackers: TrackerEntry[] = config.trackerExtra ? Classifier.loadExtraTrackers(loaded.resolvePath(config.trackerExtra)) : [];
+    attributeToEmbeds(collected.sessions, new Classifier(extraTrackers));
+  } catch {
+    // senza attribuzione ai contenuti incorporati le richieste restano del fornitore del dominio
   }
   // Ogni fatto appartiene al sito della pagina in cui avviene (es. navigazione manuale partita da www che prosegue
   // su app): le parti delle sessioni su altri host diventano sessioni di quei siti. L'elenco dichiarato letto dal

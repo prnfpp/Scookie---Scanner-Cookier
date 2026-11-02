@@ -67,7 +67,7 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
   return merged.map((f, i) => ({ id: `R-${String(i + 1).padStart(3, '0')}`, ...f }));
 }
 
-const REF = /\{\{rilievi:([a-z0-9-]+):([^}]*)\}\}/g;
+const REF = /\{\{rilievi:([a-z0-9-]+):([^}:]*)(?::([a-z-]+))?\}\}/g;
 
 /**
  * Rimandi tra rilievi (`refTo` nelle regole): "vedi R-004, R-007", o il titolo della regola se non ce ne sono.
@@ -75,8 +75,11 @@ const REF = /\{\{rilievi:([a-z0-9-]+):([^}]*)\}\}/g;
  */
 export function resolveRefs(list: Finding[]): Finding[] {
   const fix = (f: Finding, t: string) =>
-    t.replace(REF, (_m, rule: string, subject: string) => {
-      const ids = list.filter((x) => x.ruleId === rule && (x.subjects ?? []).includes(subject) && x.sites.some((s) => f.sites.includes(s))).map((x) => x.id);
+    t.replace(REF, (_m, rule: string, subject: string, category?: string) => {
+      const same = list.filter((x) => x.ruleId === rule && (x.subjects ?? []).includes(subject) && x.sites.some((s) => f.sites.includes(s)));
+      // con la categoria, solo i rilievi di quella categoria (la chiave dei rilievi dopo la scelta è fornitore|categoria)
+      const byCat = category ? same.filter((x) => (x.key ?? '').includes(`|${subject}|${category}|`)) : same;
+      const ids = (byCat.length ? byCat : same).map((x) => x.id);
       return ids.length ? `vedi ${ids.join(', ')}` : `vedi le schede "${RULES.find((r) => r.id === rule)?.title ?? rule}"`;
     });
   return list.map((f) => ({ ...f, description: fix(f, f.description), details: f.details.map((d) => fix(f, d)), ...(f.headline ? { headline: fix(f, f.headline) } : {}) }));
@@ -88,7 +91,9 @@ export function resolveRefs(list: Finding[]): Finding[] {
  * dove non spezzano la frase con parentesi annidate.
  */
 export function tidy(description: string, details: string[]): { description: string; details: string[] } {
-  const clean = (t: string) => t.replace(/\s+/g, ' ').replace(/\s+([,.;:)])/g, '$1').trim();
+  // lo spazio prima della punteggiatura si toglie, ma non davanti a un punto che inizia un nome
+  // (".youtube.com", ".cmplz-manage-consent")
+  const clean = (t: string) => t.replace(/\s+/g, ' ').replace(/\s+([,;:)]|\.(?![\w-]))/g, '$1').trim();
   let text = clean(description);
   const moved: string[] = [];
   for (;;) {

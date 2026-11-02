@@ -143,7 +143,9 @@ test('fix 5: tracker di prima parte (Matomo) attivo dopo il rifiuto e dopo la X,
   // inventario: colonna "Dopo rifiuto" valorizzata per i cookie _pk_*
   const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
   assert.match(html, /<td>_pk_id\.1\.ab12<\/td>(?:(?!<\/tr>).)*<td>rinnovato<\/td>/s);
-  assert.match(html, /raccolte sul dominio del sito/);
+  assert.match(html, /strumenti di tracciamento sul dominio del sito/);
+  assert.match(html, /matomo\.php<\/td><td>raccolta di dati/);
+  assert.match(html, /matomo\.js<\/td><td>script o risorsa/);
 });
 
 test('fix 6: evento inviato dal video all\'uscita attribuito alla pagina che lo ospita, marcato "all\'uscita"', () => {
@@ -179,13 +181,44 @@ test('fix 6: con "rigenera" le rilevazioni precedenti si riattribuiscono dal fra
   // come una rilevazione fatta con la 0.1.0: nessuna marcatura e l'evento d'uscita attribuito alla pagina successiva
   const moved = rej.requests.filter((r) => r.sentOnExit && /ev=uscita/.test(r.url));
   assert.ok(moved.length);
-  for (const r of rej.requests) delete r.sentOnExit;
+  for (const r of rej.requests) {
+    delete r.sentOnExit;
+    delete r.frameUrl;
+  }
   for (const r of moved) r.pageUrl = second;
   const n = reattributeFromHar(result.runDir, [rej]);
   assert.ok((n.get(rej.id) ?? 0) >= 1);
   const last = moved.at(-1)!;
   assert.equal(last.pageUrl, rej.pages[0]);
   assert.equal(last.sentOnExit, true);
+  // ricostruito anche il documento dell'iframe che ha inviato la richiesta
+  assert.match(last.frameUrl ?? '', /video-terzo\.test:\d+\/embed\.html/);
   // le richieste della pagina principale non si toccano
   assert.ok(rej.requests.filter((r) => /matomo\.php/.test(r.url)).every((r) => !r.sentOnExit));
+});
+
+test('seconda verifica: telemetria del widget attribuita al widget, conteggi separati, revoca e testi', () => {
+  const W = 'AdTest Calendario (contenuti incorporati)';
+  // 1. la richiesta parte dall'iframe del widget: appartiene al widget, non è un tracker AdTest a sé
+  const rej = findings('attivazione-dopo-rifiuto');
+  assert.ok(!rej.some((f) => f.subjects?.includes('AdTest')), rej.map((f) => f.subjects).join(' | '));
+  const w = rej.find((f) => f.subjects?.includes(W))!;
+  assert.ok(w, 'telemetria del widget dopo il rifiuto');
+  assert.ok(w.details.some((d) => /^Inviate da contenuti incorporati nella pagina \(iframe\): http:\/\/calendario-terzo\.test:\d+\/widget\.html/.test(d)), w.details.join(' | '));
+  assert.ok(findings('richiesta-tracker-prima-del-consenso').some((f) => f.subjects?.includes(W)));
+  // 2. Matomo: raccolte e script contati a parte, coerenti con la forza della prova
+  const m = rej.find((f) => f.subjects?.includes('Matomo'))!;
+  const col = /\((\d+) di raccolta dati, (\d+) di script o risorse\)/.exec(m.description);
+  assert.ok(col, m.description);
+  assert.match(m.evidenceExtra ?? '', new RegExp(`\\(${col[1]} richieste? di raccolta\\)`));
+  // 3. dopo la revoca: identificativo e anche dati inviati
+  const rev = findings('attivazione-dopo-revoca').find((f) => f.subjects?.includes('Matomo'))!;
+  assert.match(rev.evidenceExtra ?? '', /dati di navigazione inviati/);
+  // 4. cookie rimasti dopo la revoca: presenti prima della revoca, non "scritti durante il consenso" se già scritti prima della scelta
+  const er = findings('esito-revoca')[0];
+  assert.doesNotMatch(er.description, /scritti durante il consenso/);
+  assert.match(er.description, /presenti prima della revoca, (tutti già scritti|di cui \d+ già scritt[oi]) prima di qualsiasi scelta/);
+  // 5. spazi davanti a un nome che inizia con il punto
+  const s = findings('struttura-banner')[0];
+  assert.match(s.description, /elemento \.cmplz-manage-consent/);
 });

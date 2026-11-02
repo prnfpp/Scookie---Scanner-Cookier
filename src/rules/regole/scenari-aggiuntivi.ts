@@ -1,5 +1,5 @@
 import { NON_TECHNICAL, type Category } from '../../types.js';
-import { activeAfterReject, cookieActivity, cookieVendor, pagesOf, requestVendor, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
+import { activeAfterReject, collectedCount, embedLine, cookieActivity, requestBreakdown, cookieVendor, pagesOf, requestVendor, CATEGORY_LABEL, googleConsentSummary, refTo, groupBy, hostsSummary, isConsentModeDeniedPing, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, strongestRequest } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 import { nWords, plural } from '../../util/text.js';
 
@@ -37,11 +37,11 @@ export const attivazioneDopoRevoca: Rule = {
         const again = cs.filter((c) => cookieActivity(c, 'revoca') === 'rinnovato');
         if (newC.length) parts.push(`${newC.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${newC.length} cookie`} (${newC.map((c) => c.name).join(', ')})`);
         if (again.length) parts.push(`${again.length === 1 ? 'viene riscritto 1 cookie già presente' : `vengono riscritti ${again.length} cookie già presenti`}, con scadenza o valore aggiornati (${again.map((c) => c.name).join(', ')})`);
-        if (fresh.length) parts.push(`sulle pagine visitate dopo la revoca ${fresh.length === 1 ? 'parte' : 'partono'} ${nReq(fresh.length)} a ${hostsSummary(fresh)}`);
+        if (fresh.length) parts.push(`sulle pagine visitate dopo la revoca ${fresh.length === 1 ? 'parte' : 'partono'} ${nReq(fresh.length)} a ${hostsSummary(fresh)}${requestBreakdown(fresh)}`);
         if (residual.length) {
           const first = Math.min(...residual.map((r) => r.msFromRevoke ?? Infinity));
           parts.push(
-            `sulla pagina in cui è avvenuta la revoca ${residual.length === 1 ? 'parte' : 'partono'} ${nReq(residual.length)} a ${hostsSummary(residual)}` +
+            `sulla pagina in cui è avvenuta la revoca ${residual.length === 1 ? 'parte' : 'partono'} ${nReq(residual.length)} a ${hostsSummary(residual)}${requestBreakdown(residual)}` +
               (Number.isFinite(first) ? ` (la prima ${first} ms dopo la revoca)` : ''),
           );
         }
@@ -54,6 +54,8 @@ export const attivazioneDopoRevoca: Rule = {
           // Solo invio residuo: compatibile con dati già raccolti inviati alla chiusura della pagina, prova debole.
           severity: sameAsReject || onlyResidual ? 'bassa' : level === 'risorsa' || viaApi ? 'media' : undefined,
           evidenceLevel: level,
+          // identificativo e anche dati inviati dopo la revoca: la forza della prova li dichiara entrambi
+          ...(cs.length && collectedCount(all) ? { evidenceExtra: `dati di navigazione inviati al fornitore (${nReq(collectedCount(all))} di raccolta)` } : {}),
           // revoca dal link della pagina o solo via API: casi diversi, schede diverse
           subjects: [key],
           groupKey: `${key}|${s.revocation!.via ?? 'link'}|${sameAsReject}|${onlyResidual}`,
@@ -72,6 +74,7 @@ export const attivazioneDopoRevoca: Rule = {
             // in ordine alfabetico: le ripetizioni elencano gli stessi cookie in ordine diverso e la riga si unisce in una
             ...(s.revocation!.remaining.length ? [`Cookie non tecnici ancora presenti subito dopo la revoca: ${[...s.revocation!.remaining].sort((x, y) => x.localeCompare(y)).join(', ')}`] : []),
             ...(pagesOf(all).exitLine ? [pagesOf(all).exitLine!] : []),
+            ...(embedLine(all) ? [embedLine(all)!] : []),
             ...(sample ? [`Richiesta di esempio: ${sample.msFromRevoke != null ? `${sample.msFromRevoke} ms dopo la revoca — ` : ''}${sample.url.slice(0, 200)}`] : []),
           ],
           evidence: sessionEvidence(s, ['4-dopo-revoca', '5-fine-revoca']),
@@ -111,7 +114,14 @@ export const esitoRevoca: Rule = {
           pageUrl: s.pages[0],
           severity: 'informativa',
           groupKey: `cookie-rimasti|${r.via ?? 'link'}`,
-          description: `Dopo la revoca (${r.how}) restano nel browser ${nWords(r.remaining.length, 'cookie non tecnico scritto', 'cookie non tecnici scritti')} durante il consenso. La revoca impedisce nuovi trattamenti; la rimozione dei cookie già scritti dipende dal gestore del consenso.`,
+          // "scritti durante il consenso" sarebbe falso per i cookie già presenti prima di qualsiasi scelta
+          description: (() => {
+            const before = new Set(s.cookies.filter((c) => c.phase === 'prima').map((c) => `${c.name} (${c.domain})`));
+            const pre = r.remaining.filter((x) => before.has(x)).length;
+            const n = r.remaining.length;
+            const origin = pre === n ? (n === 1 ? ', già scritto prima di qualsiasi scelta sul banner' : ', tutti già scritti prima di qualsiasi scelta sul banner') : pre ? `, di cui ${pre} già ${plural(pre, 'scritto', 'scritti')} prima di qualsiasi scelta sul banner` : `, ${plural(n, 'scritto', 'scritti')} durante il consenso`;
+            return `Dopo la revoca (${r.how}) restano nel browser ${nWords(n, 'cookie non tecnico presente', 'cookie non tecnici presenti')} prima della revoca${origin}. La revoca impedisce nuovi trattamenti; la rimozione dei cookie già scritti dipende dal gestore del consenso.`;
+          })(),
           details: r.remaining,
           evidence: sessionEvidence(s, ['4-dopo-revoca']).filter((e) => !e.file.endsWith('.har')),
         });
@@ -144,7 +154,7 @@ export const personalizzazioneNonRispettata: Rule = {
         // Attivo anche dopo il rifiuto: non è un'attivazione "oltre le categorie scelte", è lo stesso comportamento
         const sameAsReject = afterReject.get(s.site)?.has(key) ?? false;
         const label = `${key} (${CATEGORY_LABEL[items[0].cat]})`;
-        const what = [cs.length ? `cookie ${cs.map((c) => c.name).join(', ')}` : '', rs.length ? `${nReq(rs.length)} a ${hostsSummary(rs)}` : ''].filter(Boolean).join('; ');
+        const what = [cs.length ? `cookie ${cs.map((c) => c.name).join(', ')}` : '', rs.length ? `${nReq(rs.length)} a ${hostsSummary(rs)}${requestBreakdown(rs)}` : ''].filter(Boolean).join('; ');
         out.push({
           site: s.site,
           scenario: s.scenario,
@@ -163,7 +173,7 @@ export const personalizzazioneNonRispettata: Rule = {
           description:
             `Dopo aver accettato solo la categoria statistica (${s.interaction.detail}), si attiva ${label}: ${what}.` +
             (verified ? '' : ` La scelta non è stata verificata sullo stato registrato dal gestore del consenso (${s.interaction.verification}): non è accertato che sia stata accettata la sola statistica, il fatto va letto con questa cautela.`) +
-            (sameAsReject ? ` Lo stesso fornitore risulta attivo anche dopo il rifiuto (${refTo('attivazione-dopo-rifiuto', key)}): è lo stesso comportamento del rifiuto, non un'attivazione legata alle categorie scelte.` : ''),
+            (sameAsReject ? ` Lo stesso fornitore risulta attivo anche dopo il rifiuto (${refTo('attivazione-dopo-rifiuto', key, items[0].cat)}): è lo stesso comportamento del rifiuto, non un'attivazione legata alle categorie scelte.` : ''),
           details: [`Verifica dello stato del consenso: ${s.interaction.verification} — ${s.interaction.verificationDetail}`],
           evidence: sessionEvidence(s, ['2-dopo-scelta', '3-fine']),
           requestExcerpt: rs.length ? requestExcerpt(strongestRequest(rs), s) : undefined,

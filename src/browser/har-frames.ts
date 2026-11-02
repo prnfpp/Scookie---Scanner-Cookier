@@ -37,7 +37,10 @@ function readEntries(runDir: string, har: string): Entry[] | null {
 export function reattributeFromHar(runDir: string, sessions: SessionResult[]): Map<string, number> {
   const changed = new Map<string, number>();
   for (const s of sessions) {
-    if (!s.har || s.requests.some((r) => r.sentOnExit !== undefined)) continue;
+    // già con le informazioni sul frame (rilevazione 0.1.1 o successiva con documento del frame): nulla da fare
+    const needExit = !s.requests.some((r) => r.sentOnExit !== undefined);
+    const needFrame = !s.requests.some((r) => r.frameUrl !== undefined);
+    if (!s.har || (!needExit && !needFrame)) continue;
     const entries = readEntries(runDir, s.har);
     if (!entries?.length || !entries.some((e) => e._frameref)) continue;
     const t = (e: Entry) => Date.parse(e.startedDateTime);
@@ -65,6 +68,11 @@ export function reattributeFromHar(runDir: string, sessions: SessionResult[]): M
       const at = Date.parse(r.at);
       const e = (byUrl.get(r.url) ?? []).filter((x) => x.request.method === r.method).sort((a, b) => Math.abs(t(a) - at) - Math.abs(t(b) - at))[0];
       if (!e?._frameref || e._frameref === mainRef || Math.abs(t(e) - at) > 2000) continue;
+      if (needFrame) {
+        const doc = docs.filter((d) => d._frameref === e._frameref && t(d) <= t(e)).at(-1);
+        if (doc) r.frameUrl = maskPii(doc.request.url);
+      }
+      if (!needExit) continue;
       const host = hostOf(e._frameref, t(e));
       if (host && host !== r.pageUrl) {
         r.pageUrl = host;

@@ -83,7 +83,7 @@ test('fix 3: personalizza non verificata esce con priorità abbassata e lo dichi
   assert.match(weak.description, /non è stata verificata/);
   const same = run('verificato', true)[0];
   assert.equal(same.severity, 'bassa');
-  assert.match(same.description, /attivo anche dopo il rifiuto \(\{\{rilievi:attivazione-dopo-rifiuto:AdTest\}\}\): è lo stesso comportamento del rifiuto/);
+  assert.match(same.description, /attivo anche dopo il rifiuto \(\{\{rilievi:attivazione-dopo-rifiuto:AdTest:marketing\}\}\): è lo stesso comportamento del rifiuto/);
 });
 
 test('fix 2: troppe "categorie" lette: analisi non affidabile, nessun rilievo di categorie pre-attivate', async () => {
@@ -145,4 +145,27 @@ test('accorpamento: cookie di YouTube e richieste di Google dopo il rifiuto sono
     sessions: [sess({ scenario: 'rifiuta', requests: [req({ host: 'www.youtube.com', method: 'POST', tracker: { company: 'Google', category: 'marketing' } }), req({ host: 'play.google.com', url: 'https://play.google.com/log?format=json', method: 'POST', tracker: { company: 'Google', category: 'statistica' } })] })],
   } as never);
   assert.equal(two.length, 2);
+});
+
+test('fix 8: sintesi e non classificati nominano solo ciò che c\'è', async () => {
+  const { summaryItems } = await import('../src/report/summary.js');
+  const base = { ruleId: 'cookie-prima-del-consenso', ruleTitle: 't', severity: 'alta', site: 'https://www.esempio.it', scenario: 'nessuna-azione', pageUrl: null, details: [], evidence: [], evidenceLevel: 'identificativo', sites: ['https://www.esempio.it'], norms: [] };
+  const f = { ...base, id: 'R-001', description: 'Categoria: statistica (Matomo).', subjects: ['Matomo'] } as unknown as import('../src/types.js').Finding;
+  assert.equal(summaryItems([f])[0].title, 'Statistica prima di qualsiasi scelta sul banner: Matomo');
+  const g = { ...base, id: 'R-002', description: 'Categoria: registrazione sessioni/heatmap (Hotjar).', subjects: ['Hotjar'] } as unknown as import('../src/types.js').Finding;
+  assert.match(summaryItems([f, g])[0].title, /^Statistica e registrazione delle sessioni/);
+  const { elementiNonClassificati } = await import('../src/rules/regole/elementi-non-classificati.js');
+  const st = { origin: 'https://video.example', kind: 'localStorage', key: 'chiave-ignota', valuePreview: '', party: 'terza', phase: 'prima', stage: 'caricamento', firstSeenUrl: 'https://www.esempio.it/', firstSeenAt: '', classification: { category: 'sconosciuta', source: 'nessuna' } };
+  const out = elementiNonClassificati.evaluate({ sessions: [sess({ storage: [st as never] })] } as never);
+  assert.equal(out.length, 1);
+  assert.doesNotMatch(out[0].description, /\b0 (cookie|domini|chiavi)|di cui 0/);
+  assert.match(out[0].description, /\(1 chiave di storage di terze parti\)/);
+});
+
+test('seconda verifica: pulizia dei testi senza togliere lo spazio davanti ai nomi che iniziano con il punto', async () => {
+  const { tidy } = await import('../src/rules/engine.js');
+  assert.equal(tidy('elemento .cmplz-manage-consent ; dominio .youtube.com .', []).description, 'elemento .cmplz-manage-consent; dominio .youtube.com.');
+  const { requestBreakdown } = await import('../src/rules/helpers.js');
+  assert.equal(requestBreakdown([req({ url: 'https://x.test/c?a=1' }), req({ url: 'https://x.test/s.js', resourceType: 'script' })]), ' (1 di raccolta dati, 1 di script o risorse)');
+  assert.equal(requestBreakdown([req({ url: 'https://x.test/s.js', resourceType: 'script' })]), ' (script o risorsa, nessuna raccolta di dati)');
 });
