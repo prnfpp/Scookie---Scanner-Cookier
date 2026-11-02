@@ -91,7 +91,9 @@ export function resolveRefs(list: Finding[]): Finding[] {
  * dove non spezzano la frase con parentesi annidate.
  */
 export function tidy(description: string, details: string[]): { description: string; details: string[] } {
-  const clean = (t: string) => t.replace(/\s+/g, ' ').replace(/\s+([,.;:)])/g, '$1').trim();
+  // lo spazio prima della punteggiatura si toglie, ma non davanti a un punto che inizia un nome
+  // (".youtube.com", ".cmplz-manage-consent")
+  const clean = (t: string) => t.replace(/\s+/g, ' ').replace(/\s+([,;:)]|\.(?![\w-]))/g, '$1').trim();
   let text = clean(description);
   const moved: string[] = [];
   for (;;) {

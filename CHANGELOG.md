@@ -68,3 +68,15 @@ con lo stesso gestore o, dove indicato, per qualsiasi gestore.
   nomi diversi nelle fonti (cookie "Youtube" di Open Cookie Database, richieste "Google" dell'elenco dei domini) sono
   un solo fornitore nei rilievi dopo il rifiuto, la X, la revoca e la personalizzazione e nella sintesi. Le categorie
   diverse dello stesso fornitore restano schede distinte.
+- **Seconda verifica del rapporto.**
+  - Contenuti incorporati: ogni richiesta registra il documento dell'iframe che l'ha inviata (`frameUrl`; per le
+    rilevazioni precedenti `rigenera` lo ricostruisce dal HAR). Se l'iframe è un contenuto riconosciuto dello stesso
+    fornitore, la richiesta è attribuita a quel contenuto (es. il log di `play.google.com` inviato dal widget di Google
+    Calendar è di "Google Calendar (contenuti incorporati)", non un terzo tracker di Google); i rilievi lo indicano.
+  - Raccolte e script contati a parte nei rilievi ("8 richieste (4 di raccolta dati, 4 di script o risorse)") e
+    nella tabella degli strumenti sul dominio del sito, con la colonna "Tipo".
+  - Dopo la revoca la forza della prova dichiara anche i dati inviati, come dopo il rifiuto.
+  - Cookie rimasti dopo la revoca: "presenti prima della revoca", con quanti erano già scritti prima di qualsiasi scelta.
+  - Testi: non si toglie più lo spazio davanti ai nomi che iniziano con il punto (".youtube.com",
+    ".cmplz-manage-consent"); elementi non classificati senza voci a zero; titolo della sintesi con le sole categorie
+    osservate.

@@ -161,3 +161,11 @@ test('fix 8: sintesi e non classificati nominano solo ciò che c\'è', async () 
   assert.doesNotMatch(out[0].description, /\b0 (cookie|domini|chiavi)|di cui 0/);
   assert.match(out[0].description, /\(1 chiave di storage di terze parti\)/);
 });
+
+test('seconda verifica: pulizia dei testi senza togliere lo spazio davanti ai nomi che iniziano con il punto', async () => {
+  const { tidy } = await import('../src/rules/engine.js');
+  assert.equal(tidy('elemento .cmplz-manage-consent ; dominio .youtube.com .', []).description, 'elemento .cmplz-manage-consent; dominio .youtube.com.');
+  const { requestBreakdown } = await import('../src/rules/helpers.js');
+  assert.equal(requestBreakdown([req({ url: 'https://x.test/c?a=1' }), req({ url: 'https://x.test/s.js', resourceType: 'script' })]), ' (1 di raccolta dati, 1 di script o risorse)');
+  assert.equal(requestBreakdown([req({ url: 'https://x.test/s.js', resourceType: 'script' })]), ' (script o risorsa, nessuna raccolta di dati)');
+});

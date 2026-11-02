@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { choiceHow, cookieActivity, cookieVendor, pagesOf, requestVendor, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary } from '../helpers.js';
+import { choiceHow, cookieActivity, embedLine, requestBreakdown, cookieVendor, pagesOf, requestVendor, describeGoogleConsent, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Testi della regola per lo scenario: rifiuto o chiusura del banner con la X. */
@@ -50,7 +50,7 @@ function afterChoice(scenario: 'rifiuta' | 'chiudi', id: string, title: string):
         const parts: string[] = [];
         if (fresh.length) parts.push(`${fresh.length === 1 ? 'viene scritto 1 cookie' : `vengono scritti ${fresh.length} cookie`} (${fresh.map((c) => c.name).join(', ')})`);
         if (again.length) parts.push(`${again.length === 1 ? 'viene riscritto 1 cookie già presente' : `vengono riscritti ${again.length} cookie già presenti`} prima della scelta, con scadenza o valore aggiornati (${again.map((c) => c.name).join(', ')})`);
-        if (rs.length) parts.push(`${rs.length === 1 ? 'parte' : 'partono'} ${nReq(rs.length)} a ${hostsSummary(rs)}${rs.every((r) => r.party === 'prima') ? ' (endpoint di raccolta sul dominio del sito)' : ''}`);
+        if (rs.length) parts.push(`${rs.length === 1 ? 'parte' : 'partono'} ${nReq(rs.length)} a ${hostsSummary(rs)}${rs.every((r) => r.party === 'prima') ? ' sul dominio del sito' : ''}${requestBreakdown(rs)}`);
         const pages = [...new Set([...fresh.map((c) => c.firstSeenUrl), ...again.map((c) => c.renewals!.find((r) => r.stage === 'scelta')!.url), ...rs.map((r) => r.pageUrl)])];
         const reqLevel = rs.length ? requestEvidenceLevel(rs) : null;
         const level = cs.length ? 'identificativo' : reqLevel!;
@@ -79,6 +79,7 @@ function afterChoice(scenario: 'rifiuta' | 'chiudi', id: string, title: string):
           details: [
             `Pagine in cui si osserva: ${pages.join(', ')}`,
             ...(pagesOf(rs).exitLine ? [pagesOf(rs).exitLine!] : []),
+            ...(embedLine(rs) ? [embedLine(rs)!] : []),
             `Metodo di interazione: ${s.interaction.method}; verifica stato consenso: ${s.interaction.verification} ${s.interaction.verificationDetail}`,
             ...fresh.map((c) => `cookie ${c.name} — ${c.domain}, prima volta su ${c.firstSeenUrl}${cookieNote(c.name)}`),
             ...again.map((c) => {

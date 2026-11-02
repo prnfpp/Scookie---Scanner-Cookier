@@ -1,7 +1,7 @@
 import type { ExitInfo } from '../browser/exit.js';
 import type { AuditConfig } from '../config/schema.js';
 import type { DiscoveryResult } from '../discovery/discover.js';
-import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy } from '../rules/helpers.js';
+import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy, requestEvidenceLevel } from '../rules/helpers.js';
 import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } from '../types.js';
 import { NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
@@ -329,12 +329,13 @@ ${[...cookies.values()]
       (x) => `${x.q.host}${(() => { try { return new URL(x.q.url).pathname; } catch { return ''; } })()}`,
     );
     if (own.size) {
-      parts.push(`<h3>${esc(site)} — raccolte sul dominio del sito (${own.size})</h3><table><tr><th>Indirizzo</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
+      parts.push(`<h3>${esc(site)} — strumenti di tracciamento sul dominio del sito (${own.size})</h3><p class="muted">Gli invii di dati (raccolta) e gli script dello strumento sono righe distinte: solo i primi sono raccolte.</p><table><tr><th>Indirizzo</th><th>Tipo</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
 ${[...own]
   .sort((a, b) => a[0].localeCompare(b[0]))
   .map(([h, list]) => {
     const t = list[0].q.tracker!;
-    return `<tr><td>${esc(h)}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
+    const kind = list.some((x) => requestEvidenceLevel([x.q]) === 'raccolta') ? 'raccolta di dati' : 'script o risorsa';
+    return `<tr><td>${esc(h)}</td><td>${kind}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
   })
   .join('')}</table>`);
     }

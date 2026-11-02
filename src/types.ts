@@ -118,6 +118,10 @@ export interface RequestRecord {
    * pagina successiva e il suo caricamento): non è stata generata dalla pagina successiva.
    */
   sentOnExit?: boolean;
+  /** Documento dell'iframe che ha inviato la richiesta (solo per le richieste partite da un contenuto incorporato). */
+  frameUrl?: string;
+  /** Contenuto incorporato da cui parte la richiesta, se riconosciuto (es. il widget di prenotazione di Google Calendar). */
+  embed?: string;
   status: number | null;
   tracker?: { company: string; category: Category };
   /** Parametri di consenso Google (gcs, gcd, npa) se presenti. */

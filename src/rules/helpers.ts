@@ -300,4 +300,40 @@ export function canonicalVendor(name: string): string {
   return name;
 }
 export const cookieVendor = (c: CookieRecord) => canonicalVendor(c.classification.platform ?? c.domain);
-export const requestVendor = (r: Req) => canonicalVendor(r.tracker!.company);
+/**
+ * Fornitore di una richiesta: quello del dominio, oppure il contenuto incorporato da cui parte se è dello stesso
+ * fornitore (es. il log di Google inviato dal widget di Google Calendar → "Google Calendar (contenuti incorporati)").
+ */
+export const requestVendor = (r: Req) =>
+  canonicalVendor(r.embed && r.embed !== r.tracker!.company && canonicalVendor(r.embed).startsWith(canonicalVendor(r.tracker!.company)) ? r.embed : r.tracker!.company);
+
+/** Riga dei dettagli: da quale contenuto incorporato partono le richieste (documento dell'iframe). */
+export function embedLine(rs: Req[]): string | null {
+  const docs = [...new Set(rs.map((r) => r.frameUrl).filter((x): x is string => !!x).map((u) => {
+    try {
+      const x = new URL(u);
+      return x.origin + x.pathname;
+    } catch {
+      return u;
+    }
+  }))];
+  if (!docs.length) return null;
+  const all = rs.every((r) => r.frameUrl);
+  return `Inviate ${all ? 'da' : 'in parte da'} contenuti incorporati nella pagina (iframe): ${docs.slice(0, 3).join(', ')}${docs.length > 3 ? ` e altri ${docs.length - 3}` : ''}`;
+}
+
+/**
+ * Composizione di un gruppo di richieste: raccolte di dati e script o risorse si contano a parte, così il totale
+ * ("partono 8 richieste") e la forza della prova ("4 richieste di raccolta") non sembrano in contraddizione.
+ */
+export function requestBreakdown(rs: Req[]): string {
+  const col = rs.filter((r) => requestEvidenceLevel([r]) === 'raccolta').length;
+  const res = rs.length - col;
+  if (!rs.length) return '';
+  if (col && res) return ` (${col} di raccolta dati, ${res} di script o risorse)`;
+  if (col) return col === 1 ? ' (di raccolta dati)' : ' (tutte di raccolta dati)';
+  return res === 1 ? ' (script o risorsa, nessuna raccolta di dati)' : ' (solo script o risorse, nessuna raccolta di dati)';
+}
+
+/** Richieste di raccolta in un gruppo, per la forza della prova ("inoltre dati inviati"). */
+export const collectedCount = (rs: Req[]) => rs.filter((r) => requestEvidenceLevel([r]) === 'raccolta').length;
