@@ -2,7 +2,11 @@ import type { BrowserContext, Frame, Page, Request } from 'playwright';
 import type { Classifier } from '../classify/classifier.js';
 import type { CookieRecord, Phase, RequestRecord, Stage, StorageRecord } from '../types.js';
 import { hostOf, type PartyResolver } from '../util/domains.js';
-import { preview } from '../util/misc.js';
+import { readableFrame } from '../cmp/dom.js';
+import { preview, withTimeout } from '../util/misc.js';
+
+/** Attesa massima per leggere lo storage di un frame. */
+const FRAME_TIMEOUT_MS = 5000;
 import { detectPii, maskPii } from '../util/pii.js';
 
 /** Parametri di consenso nelle richieste Google e IAB, utili come evidenza. */
@@ -253,9 +257,10 @@ export class Collector {
       });
     }
     for (const f of page.frames()) {
-      if (f.isDetached()) continue;
-      const data = await f
-        .evaluate(() => {
+      if (!readableFrame(f)) continue;
+      // Un frame che non risponde (es. a metà di una navigazione) non deve bloccare la sessione
+      const data = await withTimeout(
+        f.evaluate(() => {
           const read = (s: Storage) => {
             const out: [string, string][] = [];
             for (let i = 0; i < s.length; i++) {
@@ -269,8 +274,10 @@ export class Collector {
           } catch {
             return null;
           }
-        })
-        .catch(() => null);
+        }),
+        FRAME_TIMEOUT_MS,
+        'lettura dello storage del frame',
+      ).catch(() => null);
       if (!data || !data.origin || data.origin === 'null') continue;
       const host = hostOf(data.origin);
       for (const [kind, entries] of [['localStorage', data.local], ['sessionStorage', data.session]] as const) {

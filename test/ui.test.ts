@@ -163,3 +163,24 @@ test('confronto con l\'esecuzione precedente', async () => {
   assert.match(await cmp.textContent('h1') ?? '', /Confronto tra due rilevazioni/);
   await cmp.close();
 });
+
+test('arresto forzato dell\'audit dal pulsante "Interrompi"', async () => {
+  const before = new Set(readdirSync(runsDir));
+  await page.click('#tab-clienti');
+  await page.click('#clients >> text=Cliente di prova');
+  await page.waitForFunction(() => (document.querySelector('#f-cliente') as HTMLInputElement).value === 'Cliente di prova');
+  await page.click('.step[data-step="4"]');
+  page.once('dialog', (d) => void d.accept());
+  await page.click('#run');
+  await page.click('#stop-job', { timeout: 30000 });
+  await page.waitForSelector('text=Audit interrotto.', { timeout: 60000 });
+  assert.match(await page.textContent('#job-badge') ?? '', /Interrotto/);
+  // la cartella resta, marcata come incompleta, senza rapporto
+  const created = readdirSync(runsDir).filter((n) => !before.has(n));
+  assert.equal(created.length, 1);
+  assert.ok(existsSync(join(runsDir, created[0], 'INTERROTTO.txt')));
+  assert.ok(!existsSync(join(runsDir, created[0], 'manifest.json')));
+  // a lavoro fermo si può subito avviare un altro audit (nessun "operazione in corso")
+  const j = await page.evaluate(() => fetch('/api/lavoro', { headers: { 'x-scookie': '1' } }).then((r) => r.json()));
+  assert.equal(j.status, 'interrotto');
+});

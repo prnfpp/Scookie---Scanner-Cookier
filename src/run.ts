@@ -44,7 +44,23 @@ export interface RunOptions {
   onProgress?: (p: Progress) => void;
   /** Esegue solo questi siti della configurazione (indirizzi), es. per ripetere quelli non raggiunti. */
   onlySites?: string[];
+  /**
+   * Arresto forzato (pulsante "Interrompi" dell'interfaccia): chiude subito i browser, così ogni attesa in corso
+   * finisce, e l'audit termina con {@link AuditStopped} senza rapporto. I dati parziali non sono una rilevazione valida.
+   */
+  signal?: AbortSignal;
 }
+
+/** Audit fermato dall'operatore: la cartella resta, incompleta e senza rapporto. */
+export class AuditStopped extends Error {
+  constructor(readonly runDir: string | null) {
+    super(`Audit interrotto dall'operatore${runDir ? `: la cartella ${runDir} è incompleta e non produce un rapporto` : ''}.`);
+    this.name = 'AuditStopped';
+  }
+}
+
+/** File scritto nella cartella di un audit interrotto, per chi la apre in seguito. */
+export const STOPPED_FILE = 'INTERROTTO.txt';
 
 export interface RunResult {
   runDir: string;
@@ -85,10 +101,10 @@ export async function resolveUserAgent(browser: Browser, cfg: AuditConfig): Prom
 const NETWORK_ERROR = /net::ERR_(INTERNET_DISCONNECTED|NETWORK_IO_SUSPENDED|NETWORK_CHANGED|NETWORK_ACCESS_DENIED|ADDRESS_UNREACHABLE)/;
 
 /** Attende che il sito torni raggiungibile (fino a 5 minuti). */
-async function waitOnline(browser: Browser, url: string, log: (m: string) => void): Promise<boolean> {
+async function waitOnline(browser: Browser, url: string, log: (m: string) => void, signal?: AbortSignal): Promise<boolean> {
   const ctx = await browser.newContext();
   try {
-    for (let k = 0; k < 30; k++) {
+    for (let k = 0; k < 30 && !signal?.aborted; k++) {
       const ok = await ctx.request
         .get(url, { timeout: 10000, maxRedirects: 5 })
         .then(() => true)
@@ -96,6 +112,7 @@ async function waitOnline(browser: Browser, url: string, log: (m: string) => voi
       if (ok) return true;
       await sleep(10000);
     }
+    if (signal?.aborted) return false;
     log('  connessione non ripristinata entro 5 minuti: le sessioni restano non valide');
     return false;
   } finally {
@@ -353,8 +370,21 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
     log(`Navigazione manuale prevista per: ${manualSites.map((s) => s.url).join(', ')}. Il browser si aprirà in una finestra: restare al computer.`);
   }
   const headless = config.browser.headless;
+  if (opts.signal?.aborted) throw new AuditStopped(runDir);
   const browser = await chromium.launch(launchOptions(config, headless));
   let manualBrowser: Browser | null = null;
+  // Arresto forzato: chiudendo i browser ogni comando in attesa (pagina, frame, navigazione manuale) termina con un
+  // errore, e i controlli tra un passo e l'altro fermano l'audit
+  const stopped = () => !!opts.signal?.aborted;
+  const checkStop = () => {
+    if (stopped()) throw new AuditStopped(runDir);
+  };
+  const onAbort = () => {
+    log('\nInterruzione richiesta: chiusura del browser…');
+    void closeSafely(browser, 15000);
+    if (manualBrowser) void closeSafely(manualBrowser, 15000);
+  };
+  opts.signal?.addEventListener('abort', onAbort, { once: true });
   const sessions: SessionResult[] = [];
   const discovery: DiscoveryResult[] = [];
   const declared: DeclaredSet[] = [];
@@ -394,12 +424,14 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       const site = config.siti[i];
       log(`\n[${site.url}] scoperta pagine…`);
       progress.phase('scoperta', `${new URL(site.url).hostname} (${i + 1} di ${config.siti.length})`);
+      checkStop();
       let d = await discoverSite(browser, site, config, userAgent);
+      checkStop();
       if (d.notes.some((n) => NETWORK_ERROR.test(n))) {
         // Connessione caduta durante la scoperta (es. computer in stop): si aspetta che torni e si ripete una volta
         log('  connessione assente durante la scoperta: attesa del ripristino…');
         progress.wait('connessione');
-        const back = await waitOnline(browser, site.url, log);
+        const back = await waitOnline(browser, site.url, log, opts.signal);
         progress.wait(null);
         if (back) d = await discoverSite(browser, site, config, userAgent);
       }
@@ -437,12 +469,14 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
     for (const j of jobs) progress.plan(j.d.site, j.plans.filter((p) => !p.manual).length, j.plans.filter((p) => p.manual).length);
 
     const exec = async (job: (typeof jobs)[number], plan: SessionPlan) => {
+      checkStop();
       const { decl } = job;
       log(`  ${plan.id} (${plan.pages.length} pagine)…`);
       const t0 = Date.now();
       progress.start(`${new URL(plan.site).hostname} · ${plan.scenario}${plan.manual ? ' (navigazione manuale)' : ''}${plan.repeat ? ` · ripetizione ${plan.repeat}` : ''}`);
       if (plan.manual) progress.wait('manuale');
       if (plan.manual && !opts.manualDriver && headless && !manualBrowser) manualBrowser = await chromium.launch(launchOptions(config, false));
+      checkStop();
       const res = await runSession(plan.manual && manualBrowser ? manualBrowser : browser, plan, {
         config,
         runDir,
@@ -459,8 +493,12 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
               decl.source = `CMP ${cmp}`;
             },
       });
+      checkStop();
       const i2 = res.interaction;
       log(`    banner: ${i2.bannerVisibleBefore ? 'sì' : 'no'}; metodo: ${i2.method}; esito: ${i2.outcome}; verifica: ${i2.verification}; cookie: ${res.cookies.length}; richieste: ${res.requests.length}`);
+      // Sessione fermata dal tetto di durata: va detto subito, perché i dati raccolti sono parziali
+      const capped = res.errors.find((e) => e.includes('sessione interrotta'));
+      if (capped) log(`    ATTENZIONE: ${capped}`);
       if (plan.manual) progress.wait(null);
       await sleep(config.protocollo.pausaTraSessioni);
       progress.finished(plan.site, (Date.now() - t0) / 1000, !!plan.manual);
@@ -503,6 +541,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       }
     }
 
+    checkStop();
     progress.phase('automatiche');
     for (const job of jobs) {
       const { site, d, decl } = job;
@@ -585,8 +624,15 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       }
       if (!decl.source) decl.note = 'Nessun elenco leggibile dal CMP, dalla cookie policy o da un file configurato: confronto con i dichiarati non eseguito.';
     }
+    checkStop();
+  } catch (e) {
+    // Dopo l'arresto i comandi del browser falliscono con errori qualsiasi: conta l'arresto, non l'errore
+    if (stopped()) throw markStopped(runDir, log);
+    throw e;
   } finally {
-    await browser.close();
+    opts.signal?.removeEventListener('abort', onAbort);
+    await closeSafely(browser, 30000);
+    if (manualBrowser && stopped()) await closeSafely(manualBrowser, 15000);
   }
 
   // I dati raccolti vanno su disco prima di regole e rapporto: un errore in quella fase non deve far perdere
@@ -604,6 +650,21 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   };
   writeFileSync(join(runDir, COLLECTED_FILE), JSON.stringify(collected));
   return finishRun(loaded, config, runDir, collected, { pdf: opts.pdf, log, progress });
+}
+
+/** Annota l'arresto nella cartella dell'audit e nel registro. */
+function markStopped(runDir: string, log: (m: string) => void): AuditStopped {
+  try {
+    writeFileSync(
+      join(runDir, STOPPED_FILE),
+      `Audit interrotto dall'operatore il ${new Date().toLocaleString('it-IT')}.\n` +
+        'I dati in questa cartella sono parziali: non sono una rilevazione valida e non producono un rapporto. Ripetere l\'audit.\n',
+    );
+  } catch {
+    // cartella non scrivibile: resta l'annotazione nel registro
+  }
+  log(`Audit interrotto. La cartella ${runDir} resta incompleta (vedi ${STOPPED_FILE}): l'audit va ripetuto.`);
+  return new AuditStopped(runDir);
 }
 
 /** Dati raccolti dalle sessioni, salvati prima di regole e rapporto. */

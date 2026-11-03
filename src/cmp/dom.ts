@@ -1,9 +1,18 @@
 import type { Frame, Locator, Page } from 'playwright';
 
-/** Tutti i frame della pagina, principale per primo. */
+/**
+ * Un iframe che non ha ancora caricato nulla (indirizzo vuoto: tipicamente `loading="lazy"` sotto la piega, mai
+ * arrivato in vista) non ha un documento: evaluate, count e isVisible su di lui restano in attesa per sempre, senza
+ * timeout, e la sessione si ferma fino al tetto di durata. Non contiene niente da leggere: si salta.
+ */
+export function readableFrame(f: Frame): boolean {
+  return !f.isDetached() && f.url() !== '';
+}
+
+/** Tutti i frame della pagina con un documento, principale per primo. */
 export function frames(page: Page): Frame[] {
   const main = page.mainFrame();
-  return [main, ...page.frames().filter((f) => f !== main && !f.isDetached())];
+  return [main, ...page.frames().filter((f) => f !== main && readableFrame(f))];
 }
 
 /** Primo elemento visibile per il selettore, cercato in tutti i frame (il CSS di Playwright attraversa lo shadow DOM aperto). */

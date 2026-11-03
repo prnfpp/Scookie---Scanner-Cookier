@@ -1,4 +1,5 @@
 import type { Frame, Locator, Page } from 'playwright';
+import { readableFrame } from '../cmp/dom.js';
 import { maskPii } from '../util/pii.js';
 import type { Collector } from './collector.js';
 
@@ -105,7 +106,7 @@ export const RECORDER = `(() => {
 
 /** Cerca l'elemento di un passo: prima il selettore, poi il testo visibile. */
 async function locate(page: Page, step: RecordedStep, timeout: number): Promise<Locator | null> {
-  const frames: (Page | Frame)[] = [page, ...page.frames().filter((f) => f !== page.mainFrame())];
+  const frames: (Page | Frame)[] = [page, ...page.frames().filter((f) => f !== page.mainFrame() && readableFrame(f))];
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     for (const f of frames) {

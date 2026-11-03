@@ -70,6 +70,8 @@ section { display: grid; gap: 18px; }
 .btn.primary:hover { filter: brightness(1.07); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--primary); padding-inline: 6px; }
 .btn.sm { padding: 6px 11px; font-size: .86rem; }
+.btn.danger { color: var(--bad); border-color: var(--bad-soft); }
+.btn.danger:hover { border-color: var(--bad); }
 .btn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 10px; font-size: .78rem; font-weight: 600; background: var(--info-soft); color: var(--info); white-space: nowrap; }
 .chip.ok { background: var(--ok-soft); color: var(--ok); } .chip.warn { background: var(--warn-soft); color: var(--warn); }
@@ -320,6 +322,7 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
       <div class="bar" id="bar"><i style="width:0"></i></div>
       <div class="row" id="now"></div>
       <p class="small muted">Il computer resta sveglio fino alla fine dell'audit, anche se non lo usi. Non chiudere il coperchio del portatile: con il coperchio chiuso il Mac va comunque in stop.</p>
+      <div class="row spread hidden" id="stop-box"><span class="small muted" id="stop-hint">Se l'audit sembra bloccato o l'hai avviato per errore, puoi fermarlo: i dati raccolti fin qui non producono un rapporto.</span><button class="btn sm danger" id="stop-job">Interrompi l'audit</button></div>
     </div>
     <div class="action hidden" id="job-action">
       <div class="row spread"><h2>Tocca a te: navigazione manuale</h2><span class="chip warn">In attesa</span></div>
@@ -861,6 +864,7 @@ async function refreshJob() {
     clearInterval(state.polling);
     state.polling = null;
     if (j && j.kind === 'audit' && j.status === 'completato') toast('Audit completato: il rapporto è pronto.');
+    if (j && j.kind === 'audit' && j.status === 'interrotto') toast('Audit interrotto.');
   }
 }
 
@@ -871,7 +875,7 @@ function renderStatus(j) {
   const waiting = running && pr && pr.waiting;
   const pct = running && pr && pr.total ? Math.round(progressPct(pr)) : null;
   st.className = 'status ' + (waiting ? 'st-wait' : running ? 'st-run' : j && j.status === 'errore' ? 'st-err' : '');
-  $('#status-t').textContent = waiting === 'manuale' ? 'Azione richiesta' : waiting === 'connessione' ? 'In pausa: connessione' : running ? (j.kind === 'audit' ? 'Audit in corso' : 'Anteprima in corso') : j && j.status === 'errore' ? 'Ultima operazione: errore' : 'Pronto';
+  $('#status-t').textContent = running && j.stopping ? 'Interruzione in corso' : j && j.status === 'interrotto' ? 'Ultimo audit: interrotto' : waiting === 'manuale' ? 'Azione richiesta' : waiting === 'connessione' ? 'In pausa: connessione' : running ? (j.kind === 'audit' ? 'Audit in corso' : 'Anteprima in corso') : j && j.status === 'errore' ? 'Ultima operazione: errore' : 'Pronto';
   $('#mini').classList.toggle('hidden', pct == null);
   if (pct != null) $('#mini i').style.width = pct + '%';
   document.title = waiting === 'manuale' ? '⚠ Azione richiesta – Scookie' : pct != null ? `${pct}% – Scookie` : 'Scookie';
@@ -911,8 +915,13 @@ function renderAudit(j) {
   $('#job-title').textContent = state.clients.find((c) => c.file === j.file)?.cliente || j.file;
   $('#job-kind').textContent = running ? 'Audit in corso' : 'Ultimo audit';
   const badge = $('#job-badge');
-  badge.className = 'chip ' + (running ? 'blue' : j.status === 'completato' ? 'ok' : 'bad');
-  badge.textContent = running ? 'In corso' : j.status === 'completato' ? 'Completato' : 'Errore';
+  const stopping = running && j.stopping;
+  badge.className = 'chip ' + (stopping ? 'warn' : running ? 'blue' : j.status === 'completato' ? 'ok' : j.status === 'interrotto' ? 'warn' : 'bad');
+  badge.textContent = stopping ? 'Interruzione…' : running ? 'In corso' : j.status === 'completato' ? 'Completato' : j.status === 'interrotto' ? 'Interrotto' : 'Errore';
+  const canStop = running && !(pr && (pr.phase === 'report' || pr.phase === 'fine'));
+  $('#stop-box').classList.toggle('hidden', !canStop);
+  $('#stop-job').disabled = !!stopping;
+  $('#stop-job').textContent = stopping ? 'Interruzione in corso…' : 'Interrompi l\'audit';
   const pre = $('#job-log');
   const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
   pre.textContent = j.log.join('\n');
@@ -943,6 +952,8 @@ function renderAudit(j) {
   const r = $('#job-result');
   if (j.status === 'errore') {
     r.innerHTML = `<div class="msg err">${esc(j.error)}</div>`;
+  } else if (j.status === 'interrotto') {
+    r.innerHTML = `<div class="msg warn"><b>Audit interrotto.</b> ${esc(j.error || '')} Per avere il rapporto, ripeti l'audit dalla sezione Clienti.</div>`;
   } else if (j.status === 'completato' && j.runName) {
     const base = '/esecuzioni/' + encodeURIComponent(j.runName) + '/';
     r.innerHTML = `<div class="card stack"><div class="row spread"><h2>Audit completato</h2><span class="chip ok">Report pronto</span></div>
@@ -999,6 +1010,19 @@ async function loadRuns() {
   }).join('');
 }
 $('#refresh-runs').onclick = loadRuns;
+$('#stop-job').onclick = async () => {
+  if (!confirm('Interrompere l\'audit adesso?\n\nIl browser si chiude subito. I dati raccolti fin qui sono parziali: non producono un rapporto e l\'audit va ripetuto.')) return;
+  const b = $('#stop-job');
+  b.disabled = true;
+  try {
+    await api('/api/interrompi', { method: 'POST', body: {} });
+    toast('Interruzione in corso: il browser si sta chiudendo.');
+    refreshJob();
+  } catch (e) {
+    toast(e.message);
+    b.disabled = false;
+  }
+};
 $('#manual-done').onclick = async () => {
   const b = $('#manual-done');
   b.disabled = true;
