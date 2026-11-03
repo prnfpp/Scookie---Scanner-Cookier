@@ -8,6 +8,11 @@
   dati parziali (cookie e storage non letti). Questi frame ora si saltano, e ogni lettura di un frame ha un tempo
   massimo. Su un sito con un iframe così una sessione passa da circa 5 minuti a circa 30 secondi. Quando una sessione
   viene interrotta dal tetto di durata, il registro lo dice subito ("ATTENZIONE: sessione interrotta…").
+- **Pulsante "Interrompi l'audit".** Nella scheda Audit in corso, con conferma: chiude subito il browser (ogni attesa
+  in corso termina) e ferma l'audit entro pochi secondi, in qualsiasi fase prima del rapporto. La cartella resta con un
+  file `INTERROTTO.txt` e senza rapporto, perché i dati sono parziali. Se qualcosa non risponde neppure alla chiusura
+  del browser, dopo 30 secondi l'audit si considera fermo comunque, così si può avviarne un altro o chiudere Scookie.
+  Le attese del ripristino della connessione si fermano anch'esse. Nuovo comando `POST /api/interrompi`.
 
 ## 0.1.1 — 2026-11-02
 

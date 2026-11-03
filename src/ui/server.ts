@@ -13,7 +13,7 @@ import { discoverSite, type DiscoveryResult } from '../discovery/discover.js';
 import { writeComparison } from '../report/compare.js';
 import { applyReview, readReview, readReviewRows, REVIEW_FILE, writeReviewRows } from '../report/review.js';
 import type { Progress } from '../progress.js';
-import { COLLECTED_FILE, launchOptions, recordingFile, regenerateRun, resolveUserAgent, runAudit } from '../run.js';
+import { AuditStopped, COLLECTED_FILE, launchOptions, recordingFile, regenerateRun, resolveUserAgent, runAudit } from '../run.js';
 import { closeSafely } from '../util/misc.js';
 import { TOOL_VERSION } from '../version.js';
 import { checkUpdates, restartWithUpdate } from './update.js';
@@ -49,7 +49,9 @@ interface Job {
   id: number;
   kind: 'audit' | 'scopri';
   file: string;
-  status: 'in-corso' | 'completato' | 'errore';
+  status: 'in-corso' | 'completato' | 'errore' | 'interrotto';
+  /** Arresto forzato richiesto dall'operatore, in attesa che il lavoro si fermi. */
+  stopping: boolean;
   startedAt: string;
   endedAt: string | null;
   log: string[];
@@ -206,13 +208,19 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
 
   const hasCookie = (req: IncomingMessage) => (req.headers.cookie ?? '').split(/;\s*/).includes(`scookie=${token}`);
 
-  const startJob = (kind: Job['kind'], file: string, work: (j: Job) => Promise<void>) => {
+  /** Arresto forzato del lavoro in corso (pulsante "Interrompi"). */
+  let stopJob: (() => void) | null = null;
+  /** Oltre questo tempo dall'arresto, il lavoro si considera fermo anche se non ha ancora risposto. */
+  const STOP_GRACE_MS = 30000;
+
+  const startJob = (kind: Job['kind'], file: string, work: (j: Job, signal: AbortSignal) => Promise<void>) => {
     if (job?.status === 'in-corso') throw new HttpError(409, 'È già in corso un\'altra operazione: attendere che finisca.');
     const j: Job = {
       id: ++jobSeq,
       kind,
       file,
       status: 'in-corso',
+      stopping: false,
       startedAt: new Date().toISOString(),
       endedAt: null,
       log: [],
@@ -222,17 +230,38 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
       progress: null,
     };
     job = j;
-    work(j)
-      .then(() => {
-        j.status = 'completato';
-      })
+    const ctrl = new AbortController();
+    let settled = false;
+    const end = (status: Job['status'], error: string | null = null) => {
+      if (settled) return;
+      settled = true;
+      stopJob = null;
+      j.status = status;
+      j.error = error;
+      j.stopping = false;
+      j.endedAt = new Date().toISOString();
+    };
+    stopJob = () => {
+      if (ctrl.signal.aborted) return;
+      j.stopping = true;
+      j.log.push('Interruzione richiesta dall\'operatore…');
+      ctrl.abort();
+      // Se qualcosa non risponde neppure alla chiusura del browser, il lavoro si dà comunque per fermo
+      setTimeout(() => {
+        if (settled) return;
+        j.log.push('Il lavoro non ha risposto all\'interruzione entro 30 secondi: considerato fermo.');
+        end('interrotto', 'Audit interrotto dall\'operatore: i dati raccolti sono parziali e non producono un rapporto.');
+      }, STOP_GRACE_MS).unref();
+    };
+    work(j, ctrl.signal)
+      .then(() => end('completato'))
       .catch((e: Error) => {
-        j.status = 'errore';
-        j.error = e.message;
+        if (e instanceof AuditStopped || ctrl.signal.aborted) {
+          end('interrotto', e instanceof AuditStopped ? e.message : 'Operazione interrotta dall\'operatore.');
+          return;
+        }
         j.log.push(`Errore: ${e.message}`);
-      })
-      .finally(() => {
-        j.endedAt = new Date().toISOString();
+        end('errore', e.message);
       });
     return j;
   };
@@ -324,13 +353,15 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
       if (!existsSync(p)) throw new HttpError(404, 'Configurazione non trovata');
       const loaded = loadConfig(p); // lancia un errore leggibile se la configurazione non è valida
       if (path === '/api/scopri') {
-        const j = startJob('scopri', body.file!, async (jj) => {
+        const j = startJob('scopri', body.file!, async (jj, signal) => {
           const { config } = loaded;
           const browser = await chromium.launch(launchOptions(config));
+          signal.addEventListener('abort', () => void closeSafely(browser, 15000), { once: true });
           try {
             const ua = await resolveUserAgent(browser, config);
             jj.discovery = [];
             for (const site of config.siti) {
+              if (signal.aborted) throw new Error('Anteprima interrotta');
               jj.log.push(`Scoperta pagine di ${site.url}…`);
               const d = await discoverSite(browser, site, config, ua);
               jj.discovery.push(d);
@@ -342,8 +373,9 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
         });
         return json(res, 202, { id: j.id });
       }
-      const j = startJob('audit', body.file!, async (jj) => {
+      const j = startJob('audit', body.file!, async (jj, signal) => {
         const result = await runAudit(loaded, {
+          signal,
           onManualFinisher: (f) => {
             manualFinish = f;
           },
@@ -367,7 +399,7 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
     }
     if ((path === '/api/esci' || path === '/api/aggiorna') && method === 'POST') {
       if (!opts.onQuit) throw new HttpError(404, 'Chiusura dall\'interfaccia non disponibile');
-      if (job?.status === 'in-corso') throw new HttpError(409, 'Un audit è in corso: aspetta la fine prima di chiudere Scookie.');
+      if (job?.status === 'in-corso') throw new HttpError(409, 'Un audit è in corso: interrompilo o aspetta la fine prima di chiudere Scookie.');
       if (path === '/api/aggiorna') {
         if (!(await checkUpdates()).canRestart) throw new HttpError(409, 'Aggiornamento automatico disponibile solo avviando Scookie dall\'icona su Mac.');
         restartWithUpdate();
@@ -375,6 +407,20 @@ export async function startUi(opts: UiOptions): Promise<{ server: Server; url: s
       json(res, 200, { ok: true });
       setTimeout(() => opts.onQuit!(), 300);
       return;
+    }
+    // Arresto forzato: per una sessione bloccata o un audit avviato per errore. Nella fase del rapporto non serve:
+    // i dati sono già salvati e mancano pochi secondi.
+    if (path === '/api/interrompi' && method === 'POST') {
+      if (!job || job.status !== 'in-corso' || !stopJob) throw new HttpError(409, 'Nessuna operazione in corso');
+      if (job.progress?.phase === 'report' || job.progress?.phase === 'fine') {
+        throw new HttpError(409, 'I dati sono già raccolti e il rapporto è in preparazione: attendi qualche secondo.');
+      }
+      if (manualFinish) {
+        manualFinish();
+        manualFinish = null;
+      }
+      stopJob();
+      return json(res, 202, { ok: true });
     }
     // "Ho finito" dall'interfaccia, se il riquadro nella finestra del browser non è raggiungibile
     if (path === '/api/manuale/fatto' && method === 'POST') {

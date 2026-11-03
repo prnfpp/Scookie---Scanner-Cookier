@@ -67,6 +67,8 @@ Nell'interfaccia ci sono tre schede in alto: **Clienti**, **Audit** ed **Esecuzi
 
 In fondo alla scheda Clienti, il riquadro **Programma** dice se ci sono aggiornamenti su GitHub: **Aggiorna e riavvia** li installa e riapre l'interfaccia (se Scookie è stato aperto dall'icona), **Chiudi Scookie** lo chiude.
 
+**Interrompere un audit.** Nella scheda **Audit in corso** il pulsante **Interrompi l'audit** ferma l'audit in qualsiasi momento prima del rapporto: il browser si chiude subito e la cartella dell'esecuzione resta, con un file `INTERROTTO.txt`. I dati raccolti fino a quel punto sono parziali e non producono un rapporto, quindi l'audit va ripetuto. Serve se l'audit sembra bloccato o se l'hai avviato per errore; dopo l'interruzione puoi avviarne subito un altro o chiudere Scookie.
+
 **Il computer resta sveglio durante l'audit.** Un audit completo può durare più di un'ora: per tutta la durata il tool impedisce lo stop per inattività (su Mac con `caffeinate`), anche se non tocchi il computer. Non chiudere il coperchio del portatile: con il coperchio chiuso il Mac va comunque in stop, salvo con alimentatore e monitor esterno collegati.
 
 Le sezioni 4 e 5 descrivono le stesse operazioni dal Terminale, utili anche per capire le opzioni del file di configurazione.
