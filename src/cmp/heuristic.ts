@@ -1,6 +1,7 @@
 import type { Frame, Page } from 'playwright';
 import type { ChoiceLayer } from '../types.js';
 import { CMP_CONTAINERS, CMP_FRAME_URL } from './containers.js';
+import { withTimeout } from '../util/misc.js';
 import { describeElement, frames, waitFor } from './dom.js';
 import type { Choice, ChoiceResult } from './types.js';
 
@@ -72,7 +73,8 @@ export async function frameRole(frame: Frame): Promise<FrameRole> {
  */
 async function scanFrame(frame: Frame, role: FrameRole): Promise<{ banner: boolean; candidates: Candidate[] }> {
   try {
-    const res = await frame.evaluate(
+    // Un frame che non risponde (es. a metà di una navigazione) non deve bloccare la sessione
+    const res = await withTimeout(frame.evaluate(
       ({ attr, wholeDocument, known }) => {
         const all: Element[] = [];
         const walk = (root: Document | ShadowRoot) => {
@@ -136,7 +138,7 @@ async function scanFrame(frame: Frame, role: FrameRole): Promise<{ banner: boole
         return { banner: banners.length > 0, candidates: out };
       },
       { attr: SCAN_ATTR, wholeDocument: role === 'cmp', known: CMP_CONTAINERS },
-    );
+    ), 10000, 'scansione del frame');
     return { banner: res.banner, candidates: res.candidates.map((c) => ({ ...c, frame })) };
   } catch {
     return { banner: false, candidates: [] };

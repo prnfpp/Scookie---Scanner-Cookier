@@ -461,6 +461,9 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       });
       const i2 = res.interaction;
       log(`    banner: ${i2.bannerVisibleBefore ? 'sì' : 'no'}; metodo: ${i2.method}; esito: ${i2.outcome}; verifica: ${i2.verification}; cookie: ${res.cookies.length}; richieste: ${res.requests.length}`);
+      // Sessione fermata dal tetto di durata: va detto subito, perché i dati raccolti sono parziali
+      const stopped = res.errors.find((e) => e.includes('sessione interrotta'));
+      if (stopped) log(`    ATTENZIONE: ${stopped}`);
       if (plan.manual) progress.wait(null);
       await sleep(config.protocollo.pausaTraSessioni);
       progress.finished(plan.site, (Date.now() - t0) / 1000, !!plan.manual);

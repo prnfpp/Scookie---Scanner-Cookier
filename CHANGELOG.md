@@ -1,5 +1,14 @@
 # Changelog
 
+## Non rilasciato
+
+- **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
+  o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del
+  banner, `count`/`isVisible`) restavano in attesa per sempre, e ogni sessione si fermava al tetto di 5 minuti con
+  dati parziali (cookie e storage non letti). Questi frame ora si saltano, e ogni lettura di un frame ha un tempo
+  massimo. Su un sito con un iframe così una sessione passa da circa 5 minuti a circa 30 secondi. Quando una sessione
+  viene interrotta dal tetto di durata, il registro lo dice subito ("ATTENZIONE: sessione interrotta…").
+
 ## 0.1.1 — 2026-11-02
 
 Correzioni dopo la verifica manuale di una rilevazione su un sito con Complianz. Ogni voce vale per qualsiasi sito
