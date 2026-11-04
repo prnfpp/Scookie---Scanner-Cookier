@@ -5,6 +5,7 @@ import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy, noBannerSites, requestEvidence
 import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } from '../types.js';
 import { NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
+import { pageviewCoherence } from './coherence.js';
 import { summaryItems } from './summary.js';
 import { categoriesUnreliable, NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
 import type { TestEntry } from '../util/pii.js';
@@ -391,6 +392,8 @@ ${[...third]
   }
   const errBy = new Map<string, string[]>();
   for (const n of r.attributionNotes ?? []) errBy.set(n, []);
+  // coerenza del momento: più raccolte "al caricamento" che pagine visitate per uno strumento di pageview
+  for (const n of pageviewCoherence(sessions)) errBy.set(n, []);
   for (const s of sessions) for (const e of new Set(s.errors)) errBy.set(e, [...(errBy.get(e) ?? []), s.id]);
   const errors = [...errBy].map(([e, ids]) => (!ids.length ? e : ids.length === 1 ? `${ids[0]}: ${e}` : `${e} — in ${ids.length} sessioni (${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''})`));
   parts.push(`<h2>5. Limiti</h2>

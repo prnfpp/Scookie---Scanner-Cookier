@@ -10,9 +10,9 @@ export type ScenarioName = 'nessuna-azione' | 'rifiuta' | 'accetta' | 'personali
 export type Phase = 'prima' | 'dopo';
 
 /**
- * Momento preciso in cui un elemento compare:
- * - caricamento: pagina caricata, nessuna interazione dell'utente;
- * - scroll: dopo lo scroll della pagina (con mouse e rotella), senza alcuna scelta sul banner;
+ * Momento preciso in cui un elemento compare, rispetto alla pagina in cui avviene:
+ * - caricamento: prima della prima interazione simulata (mouse o rotella) su quella pagina;
+ * - scroll: dopo la prima interazione simulata su quella pagina, senza alcuna scelta sul banner;
  * - scelta: dopo il click sul banner.
  * Separare lo scroll serve per i banner che (illegittimamente) lo trattano come consenso.
  */
@@ -132,6 +132,8 @@ export interface RequestRecord {
   serverSide?: string;
   /** Motivo del fallimento, se la richiesta non ha ricevuto risposta (es. net::ERR_TIMED_OUT). */
   failure?: string;
+  /** Indice della visita di pagina nella sessione (SessionResult.visits). Assente nelle rilevazioni precedenti alla 0.1.2. */
+  visit?: number;
 }
 
 export type ChoiceLayer = 'primo-livello' | 'secondo-livello' | 'chiusura-x';
@@ -226,6 +228,11 @@ export interface SessionResult {
   errors: string[];
   /** Se la sessione è la ripetizione di un'altra, l'id di quella scartata. */
   retryOf?: string;
+  /**
+   * Visite di pagina nell'ordine: indirizzo, inizio del caricamento e prima interazione simulata (mouse o rotella),
+   * se c'è stata. Assente nelle rilevazioni precedenti alla 0.1.2.
+   */
+  visits?: { url: string; at: string; interactionAt?: string }[];
   /** Scenario "revoca": come è stato revocato il consenso e quali cookie non tecnici restavano nel browser. */
   revocation?: { outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null; remaining: string[] };
   /** Numero della ripetizione dello scenario (con scenari.ripetizioni > 1). */

@@ -1,7 +1,34 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { describeGoogleConsent, embedLine, pagesOf, requestBreakdown, requestVendor, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
+import { describeGoogleConsent, embedLine, pagesOf, requestVendor, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 import type { RequestRecord } from '../../types.js';
+
+const isCollect = (r: RequestRecord) => requestEvidenceLevel([r]) === 'raccolta';
+const nCol = (n: number) => `${n} ${n === 1 ? 'richiesta' : 'richieste'} di raccolta dati`;
+const nRes = (n: number) => `${n} ${n === 1 ? 'download' : 'download'} di script o risorse`;
+
+/**
+ * Cosa parte verso il fornitore, con raccolte e script contati a parte e mai sommati:
+ * "il browser invia a Matomo (statistica) 12 richieste di raccolta dati e 12 download di script o risorse".
+ */
+export function sentPhrase(reqs: RequestRecord[], who: string): string {
+  const col = reqs.filter(isCollect).length;
+  const res = reqs.length - col;
+  if (col && res) return `il browser invia a ${who} ${nCol(col)}, oltre a ${nRes(res)}`;
+  if (col) return `il browser invia a ${who} ${nCol(col)}`;
+  return `il browser esegue ${nRes(res)} da ${who}`;
+}
+
+/**
+ * Momento delle richieste, separato per tipo: le raccolte e gli script hanno ciascuno il proprio conteggio
+ * "al caricamento" / "dopo lo scroll" (rispetto alla pagina in cui partono).
+ */
+export function stageBreakdown(reqs: RequestRecord[]): string {
+  const part = (rs: RequestRecord[]) => `al caricamento: ${rs.filter((x) => x.stage === 'caricamento').length}, dopo lo scroll e il movimento del mouse: ${rs.filter((x) => x.stage === 'scroll').length}`;
+  const col = reqs.filter(isCollect);
+  const res = reqs.filter((r) => !isCollect(r));
+  return [col.length ? `${nCol(col.length)} (${part(col)})` : '', res.length ? `${nRes(res.length)} (${part(res)})` : ''].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase());
+}
 
 /**
  * Titolo secondo la parte delle richieste: un endpoint sul dominio del sito (es. Matomo ospitato sul sito) non è una
@@ -59,8 +86,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         title: trackerTitle(reqs, nb),
         ...(nb ? { noBanner: true } : {}),
         description:
-          `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${nReq(reqs.length)}${requestBreakdown(reqs)} a ${vendor} ` +
-          `(${CATEGORY_LABEL[r.tracker!.category]}): ${hostsSummary(reqs)}.` +
+          `${when[0].toUpperCase()}${when.slice(1)}, ${sentPhrase(reqs, `${vendor} (${CATEGORY_LABEL[r.tracker!.category]})`)}: ${hostsSummary(reqs)}.` +
           (level === 'risorsa' ? ' Le richieste scaricano risorse del fornitore: non è stato osservato un invio di dati di raccolta.' : ''),
         // Solo script o contenuti scaricati: prova più debole di una raccolta di dati
         severity: level === 'risorsa' ? 'media' : undefined,
@@ -77,7 +103,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
           ...(summary.detail ? [summary.detail] : []),
           ...(uet.detail ? [uet.detail] : []),
           ...[...new Set(reqs.map((x) => x.purpose).filter(Boolean))].map((x) => `Natura delle richieste: ${x}`),
-          `Al caricamento: ${reqs.filter((x) => x.stage === 'caricamento').length}; solo dopo lo scroll e il movimento del mouse: ${reqs.filter((x) => x.stage === 'scroll').length}`,
+          stageBreakdown(reqs),
           ...(embedLine(reqs) ? [embedLine(reqs)!] : []),
           `Pagine: ${pages.slice(0, 10).join(', ')}`,
           ...(pagesOf(reqs).exitLine ? [pagesOf(reqs).exitLine!] : []),

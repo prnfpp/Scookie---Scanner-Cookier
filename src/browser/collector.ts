@@ -45,6 +45,13 @@ export class Collector {
   private readonly frameTop = new WeakMap<Frame, string>();
   /** Navigazione della pagina principale avviata e non ancora confermata: il documento corrente sta per uscire. */
   private navPending = false;
+  /**
+   * Visite di pagina della sessione, nell'ordine: indirizzo, inizio del caricamento e prima interazione simulata
+   * (mouse o rotella). Il momento "al caricamento" / "dopo lo scroll" si misura rispetto alla pagina in cui avviene.
+   */
+  readonly visits: { url: string; at: string; interactionAt?: string }[] = [];
+  /** Stadio della pagina che si sta lasciando: gli invii all'uscita appartengono a quella pagina, non alla nuova. */
+  private leavingStage: Stage = 'caricamento';
 
   constructor(
     private readonly context: BrowserContext,
@@ -77,6 +84,11 @@ export class Collector {
   beginNavigation(url: string) {
     this.navPending = true;
     this.currentUrl = url;
+    this.leavingStage = this.stage;
+    // Pagina nuova, nessuna interazione ancora: prima della scelta si torna "al caricamento" (lo scroll della pagina
+    // precedente non vale per questa). Dopo la scelta o la revoca lo stadio resta quello.
+    if (this.phase === 'prima' && this.stage === 'scroll') this.stage = 'caricamento';
+    this.visits.push({ url: maskPii(url), at: new Date().toISOString() });
   }
 
   /** Navigazione non riuscita: nessun documento in uscita. */
@@ -137,6 +149,8 @@ export class Collector {
   }
 
   markScroll() {
+    const v = this.visits[this.visits.length - 1];
+    if (v && !v.interactionAt) v.interactionAt = new Date().toISOString();
     if (this.stage === 'caricamento') this.stage = 'scroll';
   }
 
@@ -191,7 +205,12 @@ export class Collector {
     };
     const from = this.origin(r);
     if (from.page) rec.pageUrl = maskPii(from.page);
-    if (from.exit) rec.sentOnExit = true;
+    if (from.exit) {
+      rec.sentOnExit = true;
+      // inviata all'uscita dalla pagina precedente: vale il momento di quella pagina (es. dopo lo scroll)
+      if (this.navPending && rec.phase === 'prima') rec.stage = this.leavingStage;
+    }
+    if (this.visits.length) rec.visit = from.exit && this.navPending ? this.visits.length - 2 : this.visits.length - 1;
     if (from.frameUrl) rec.frameUrl = maskPii(from.frameUrl);
     const t = this.classifier.classifyHost(host, parsed.pathname, parsed.search);
     if (t) rec.tracker = { company: t.azienda, category: t.categoria };
@@ -310,6 +329,6 @@ export class Collector {
       ...(revoke !== null && epoch >= revoke ? { msFromRevoke: epoch - revoke } : {}),
       ...(this.revokeNavEpoch !== null && epoch >= this.revokeNavEpoch ? { afterRevokeNav: true } : {}),
     }));
-    return { cookies: [...this.cookies.values()], storage: [...this.storage.values()], requests };
+    return { cookies: [...this.cookies.values()], storage: [...this.storage.values()], requests, visits: this.visits };
   }
 }

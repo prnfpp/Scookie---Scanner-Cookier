@@ -21,6 +21,19 @@ Ogni voce vale per qualsiasi sito; i fatti restano rilievi, cambia come sono des
   `non-applicabile (nessuna-azione)`, `non-applicabile (scelta non eseguita: …)`), `ms_dalla_scelta` vale
   `non-applicabile` senza scelta, e `confronto-dichiarati.csv` ha `osservato_dopo_rifiuto` (`sì`, `no`,
   `non-applicabile`) e valori espliciti per categoria osservata, differenza di categoria e scenari.
+- **Fix 3 — momento calcolato per pagina, raccolte separate dagli script.** Lo stadio "dopo lo scroll" restava attivo
+  anche sulle pagine successive della sessione: negli scenari con scelta senza banner (e in ogni percorso di più
+  pagine prima della scelta) tutte le richieste dopo la prima pagina finivano "dopo lo scroll", compreso il pageview
+  che parte al caricamento. Ora "al caricamento" vuol dire prima della prima interazione simulata (mouse o rotella)
+  *su quella pagina* e lo stadio torna "al caricamento" a ogni nuova pagina; gli invii all'uscita tengono il momento
+  della pagina che si lascia; il primo movimento del mouse, che porta il cursore sopra la pagina, non conta come
+  interazione. Le sessioni registrano le visite (`visits`: pagina, inizio, prima interazione) e ogni richiesta la sua
+  visita (`visit`). I testi non sommano più raccolte e script: "N richieste di raccolta dati (al caricamento: X,
+  dopo lo scroll: Y); M download di script o risorse (…)". Nuovo controllo di coerenza nelle anomalie: per uno
+  strumento di pageview (statistica di prima parte, Matomo/Piwik) le raccolte "al caricamento" non possono superare
+  le pagine visitate. Nuovo `scripts/conta-richieste.mjs` per contare, pagina per pagina, le richieste di una
+  rilevazione e il momento assegnato, dai dati e dal HAR. Il momento si ricalcola solo con una nuova raccolta: in
+  `rigenera` restano i momenti registrati.
 
 - **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
   o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del

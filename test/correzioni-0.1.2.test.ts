@@ -104,3 +104,47 @@ test('fix 2: esito della scelta per i CSV distingue eseguita, nessun banner e sc
   assert.equal(choiceStatus({ scenario: 'rifiuta', interaction: { outcome: 'non-trovato', bannerVisibleBefore: true, detectedCmps: [] } } as never), 'non-applicabile (scelta non eseguita: non-trovato)');
   assert.equal(choiceStatus({ scenario: 'nessuna-azione', interaction: { outcome: 'non-applicabile' } } as never), 'non-applicabile (nessuna-azione)');
 });
+
+test('fix 3: momento per pagina: un hit di Matomo al caricamento per ogni pagina, nessuno "dopo lo scroll"', () => {
+  const ss = result.sessions.filter((s) => s.site.includes(MATOMO));
+  let checked = 0;
+  for (const s of ss) {
+    assert.ok(s.visits?.length, `${s.id}: visite registrate`);
+    for (const [i, v] of s.visits!.entries()) {
+      if (/privacy-policy/.test(v.url)) continue;
+      const hits = s.requests.filter((r) => r.visit === i && /matomo\.php/.test(r.url) && !r.sentOnExit);
+      assert.equal(hits.filter((r) => r.stage === 'caricamento').length, 1, `${s.id} visita ${i} ${v.url}`);
+      assert.equal(hits.filter((r) => r.stage === 'scroll').length, 0, `${s.id} visita ${i} ${v.url}`);
+      checked++;
+    }
+  }
+  assert.ok(checked >= 2, `pagine controllate: ${checked}`);
+  const m = of(MATOMO).find((f) => f.ruleId === 'richiesta-tracker-prima-del-consenso')!;
+  // raccolte e script contati a parte, mai sommati nella stessa frase sul momento
+  assert.ok(!m.details.some((d) => /^Al caricamento:/.test(d)), m.details.join(' | '));
+  const line = m.details.find((d) => /richieste? di raccolta dati \(al caricamento: \d+, dopo lo scroll e il movimento del mouse: 0\)/.test(d));
+  assert.ok(line, m.details.join(' | '));
+  assert.match(line!, /download di script o risorse \(al caricamento: \d+, dopo lo scroll/);
+  assert.match(m.description, /invia a Matomo \(statistica\) \d+ richieste di raccolta dati, oltre a \d+ download di script o risorse/);
+  const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
+  assert.doesNotMatch(html, /ci si aspetta al massimo una raccolta per pagina/);
+});
+
+test('fix 3: controllo di coerenza: più raccolte al caricamento che pagine visitate è un\'anomalia', async () => {
+  const { pageviewCoherence } = await import('../src/report/coherence.js');
+  const hit = (seq: number, visit: number) => ({
+    seq, at: '', msFromChoice: null, url: `https://www.esempio.it/matomo.php?idsite=1&rec=1&r=${seq}`, host: 'www.esempio.it', method: 'POST', resourceType: 'ping', party: 'prima', phase: 'prima', stage: 'caricamento',
+    pageUrl: 'https://www.esempio.it/', status: 204, tracker: { company: 'Matomo', category: 'statistica' }, visit,
+  });
+  const s = {
+    id: 'S001', site: 'https://www.esempio.it', scenario: 'nessuna-azione', choiceAt: null, requests: [hit(1, 0), hit(2, 1)],
+    visits: [{ url: 'https://www.esempio.it/', at: '2026-01-01T10:00:00Z' }, { url: 'https://www.esempio.it/b', at: '2026-01-01T10:00:10Z' }],
+  };
+  assert.deepEqual(pageviewCoherence([s as never]), []);
+  const out = pageviewCoherence([{ ...s, requests: [hit(1, 0), hit(2, 0), hit(3, 1)] } as never]);
+  assert.equal(out.length, 1);
+  assert.match(out[0], /Matomo ha 3 richieste di raccolta "al caricamento" su 2 pagine visitate/);
+  assert.match(out[0], /esempio: S001, https:\/\/www\.esempio\.it\/: 2 raccolte al caricamento/);
+  // rilevazioni precedenti alla 0.1.2, senza le visite: nessun controllo
+  assert.deepEqual(pageviewCoherence([{ ...s, visits: undefined, requests: [hit(1, 0), hit(2, 0), hit(3, 0)] } as never]), []);
+});
