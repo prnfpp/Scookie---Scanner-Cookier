@@ -13,6 +13,14 @@ Ogni voce vale per qualsiasi sito; i fatti restano rilievi, cambia come sono des
   parte: "Richieste di tracciamento di prima parte…", "…di prima e terza parte…", "Richieste a terze parti…", con
   "in assenza di banner" al posto di "prima della scelta"; la tabella "Rilievi per tipo" usa lo stesso titolo. Le
   colonne dell'inventario "Prima della scelta" diventano "Senza banner".
+- **Fix 2 — "non applicabile" al posto di 0.** Nell'inventario la colonna "Dopo rifiuto" distingue tre casi: un
+  numero (o "sì", "rinnovato", "ancora presente") se l'elemento è stato osservato; 0 (o "no") se il rifiuto è stato
+  eseguito e l'elemento non è comparso; "n/a" se il rifiuto non è stato eseguito (nessun banner, comando non trovato,
+  sessioni non valide). Una nota sotto ogni tabella lo spiega. Nei CSV nessuna cella vuota per questi casi:
+  `cookie.csv` e `richieste.csv` hanno la colonna `esito_scelta` (`eseguita`, `non-applicabile (nessun banner)`,
+  `non-applicabile (nessuna-azione)`, `non-applicabile (scelta non eseguita: …)`), `ms_dalla_scelta` vale
+  `non-applicabile` senza scelta, e `confronto-dichiarati.csv` ha `osservato_dopo_rifiuto` (`sì`, `no`,
+  `non-applicabile`) e valori espliciti per categoria osservata, differenza di categoria e scenari.
 
 - **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
   o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del

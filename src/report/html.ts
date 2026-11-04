@@ -301,6 +301,10 @@ ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.
     const ss = sessions.filter((s) => s.site === site && !s.blocked && !s.unreachable);
     const nb = noBanner.has(site);
     const beforeCol = nb ? 'Senza banner' : 'Prima della scelta';
+    // "Dopo rifiuto": 0 (o "no") se il rifiuto è stato eseguito e l'elemento non c'era; "n/a" se il rifiuto non è
+    // stato eseguito (nessun banner, comando non trovato, sessioni non valide)
+    const rejected = ss.some((s) => s.scenario === 'rifiuta' && s.interaction.outcome === 'eseguito');
+    const naNote = `<p class="muted">Colonna "Dopo rifiuto": un numero (o "sì", "rinnovato", "ancora presente") se l'elemento è stato osservato dopo il rifiuto; 0 (o "no") se il rifiuto è stato eseguito e l'elemento non è comparso; <strong>n/a</strong> se il rifiuto non è stato eseguito${!rejected ? (nb ? ' (qui: nessun banner)' : ' (qui: comando di rifiuto non trovato o sessioni non valide)') : ''}.</p>`;
     // Dopo il rifiuto: scritto dopo la scelta ("sì"), già presente e riscritto ("rinnovato"), solo rimasto ("ancora presente")
     const AFTER = ['', 'ancora presente', 'rinnovato', 'sì'] as const;
     const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: '' | 'al caricamento' | 'dopo scroll'; afterReject: (typeof AFTER)[number] }>();
@@ -323,9 +327,9 @@ ${[...cookies.values()]
   .sort((a, b) => a.c.name.localeCompare(b.c.name))
   .map(({ c, scen, pre, afterReject }) => {
     const d = declaredStatus.get(`${site}|${c.name}|${c.domain.replace(/^\./, '')}`);
-    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${esc(pre)}</td><td>${esc(afterReject)}</td><td>${esc([...scen].join(', '))}</td></tr>`;
+    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${esc(pre)}</td><td>${esc(rejected ? afterReject || 'no' : 'n/a')}</td><td>${esc([...scen].join(', '))}</td></tr>`;
   })
-  .join('')}</table>`);
+  .join('')}</table>${naNote}`);
 
     // Strumenti di tracciamento ospitati sul dominio del sito (es. Matomo): non sono terze parti ma raccolgono dati
     const own = groupBy(
@@ -339,9 +343,9 @@ ${[...own]
   .map(([h, list]) => {
     const t = list[0].q.tracker!;
     const kind = list.some((x) => requestEvidenceLevel([x.q]) === 'raccolta') ? 'raccolta di dati' : 'script o risorsa';
-    return `<tr><td>${esc(h)}</td><td>${kind}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
+    return `<tr><td>${esc(h)}</td><td>${kind}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${rejected ? list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length : 'n/a'}</td></tr>`;
   })
-  .join('')}</table>`);
+  .join('')}</table>${naNote}`);
     }
     const third = groupBy(
       ss.flatMap((s) => s.requests.filter((q) => q.party === 'terza').map((q) => ({ s, q }))),
@@ -352,9 +356,9 @@ ${[...third]
   .sort((a, b) => Number(NON_TECHNICAL.has(b[1][0].q.tracker?.category ?? 'sconosciuta')) - Number(NON_TECHNICAL.has(a[1][0].q.tracker?.category ?? 'sconosciuta')) || a[0].localeCompare(b[0]))
   .map(([h, list]) => {
     const t = list[0].q.tracker;
-    return `<tr><td>${esc(h)}</td><td>${esc(t?.company ?? '—')}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
+    return `<tr><td>${esc(h)}</td><td>${esc(t?.company ?? '—')}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${rejected ? list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length : 'n/a'}</td></tr>`;
   })
-  .join('')}</table>`);
+  .join('')}</table>${naNote}`);
   }
 
   // 5. Limiti: generali e di questa rilevazione (cosa non è stato visto e perché)
