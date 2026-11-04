@@ -7,6 +7,7 @@ import { consentModeSenzaConsenso } from './regole/consent-mode-senza-consenso.j
 import { cookiePrimaDelConsenso } from './regole/cookie-prima-del-consenso.js';
 import { rifiutoNonAlPrimoLivello, sceltaNonVerificata } from './regole/interazione-banner.js';
 import { richiestaTrackerPrimaDelConsenso } from './regole/richiesta-tracker-prima-del-consenso.js';
+import { informativaAssente } from './regole/informativa-assente.js';
 import { elementiNonClassificati } from './regole/elementi-non-classificati.js';
 import { datiPersonaliATerzi } from './regole/dati-personali.js';
 import { attivazioneDopoRevoca, esitoRevoca, personalizzazioneNonRispettata } from './regole/scenari-aggiuntivi.js';
@@ -31,6 +32,7 @@ export const RULES: Rule[] = [
   categoriePreattivate,
   revocaNonTrovata,
   linkInformativaAssente,
+  informativaAssente,
   strutturaBanner,
   evidenzaAsimmetrica,
   categorieNonPresentate,

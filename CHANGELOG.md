@@ -74,6 +74,23 @@ Ogni voce vale per qualsiasi sito; i fatti restano rilievi, cambia come sono des
   `regole.richiesta-tracker-prima-del-consenso.primaParteSenzaCookie.gravita` in `config/norme.yaml`, con lo stesso
   valore della regola, da decidere a cura del legale. Inventario: colonna "Cookie" nella tabella degli strumenti sul
   dominio del sito; sintesi: "Matomo di prima parte, senza cookie"; `dati.json`: `statoCookie` per sito.
+- **Fix 7 — informative scritte come testo e informativa assente.** Se l'elenco non viene dal gestore o da un file,
+  la cookie policy si cerca nell'ordine: indirizzo in configurazione, link nel banner, pagina "cookie" scoperta, link
+  nella pagina iniziale (piè di pagina, menu) con "cookie", "privacy", "informativa" o "note legali" nel testo o
+  nell'indirizzo e link `rel="privacy-policy"`, percorsi comuni (`/privacy-policy/`, `/cookie-policy/`, `/privacy/`,
+  `/informativa-privacy/`, `/informativa-cookie/`, `/cookie/`), URL della sitemap con quelle parole. Vale solo una
+  risposta 200 sullo stesso sito, con lo stato reale letto dal browser (una pagina d'errore con il piè di pagina non
+  conta). Il rapporto dice quale pagina è stata usata e come è stata trovata, e conserva tutti i tentativi con lo
+  stato e lo screenshot del piè di pagina. Senza tabelle leggibili si estrae una dichiarazione testuale: sezione sui
+  cookie, fornitori noti nominati (dall'elenco dei domini e alias come Google Analytics, YouTube, Facebook), affermazioni
+  tipiche ("solo cookie tecnici", "nessun cookie di profilazione", "nessun cookie per il tracciamento", "cookie di
+  terze parti"), ciascuno con una citazione di al massimo ~200 caratteri. Il riquadro "Elenco dichiarato" mostra
+  "testuale (N fornitori citati)"; la sezione 4 ha il confronto testuale per fornitore ("osservato e citato",
+  "osservato, non citato", "citato, non osservato") e, per le affermazioni, i cookie e gli storage non tecnici
+  osservati; nuovo `confronto-testuale.csv`. Nuova regola `informativa-assente` (priorità media, art. 13 GDPR e Linee
+  guida cookie del Garante 2021, da validare): nessuna pagina di informativa raggiungibile e nessun banner, con i
+  percorsi provati, il loro stato e il piè di pagina come prove. `link-informativa-assente` resta per il banner senza
+  link. Ricerca e lettura richiedono una nuova raccolta: con `rigenera` non si fanno.
 
 - **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
   o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del

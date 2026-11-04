@@ -291,3 +291,48 @@ test('fix 6: stato dei cookie di Matomo dai fatti: con cookie, non determinabile
   assert.deepEqual(matomoCookieMode([s({ requests: [hit('&_id=&uid=mario%40esempio.it&dimension1=abc&dimension2=')] })]).userData, ['uid (in 1 hit)', 'dimension1 (in 1 hit)']);
   assert.deepEqual(paqCommands('var _paq=[];_paq.push(["disableCookies"]); _paq.push([\'trackPageView\']);'), ['disableCookies', 'trackPageView']);
 });
+
+test('fix 7: informativa senza tabelle letta come dichiarazione testuale e confrontata per fornitore', () => {
+  const dati = JSON.parse(readFileSync(join(result.runDir, 'dati.json'), 'utf8')) as { declared: import('../src/types.js').DeclaredSet[] };
+  const d = dati.declared.find((x) => x.site.includes(MATOMO))!;
+  assert.equal(d.source, null);
+  assert.match(d.policy?.url ?? '', /\/privacy-policy\/$/);
+  assert.equal(d.policy?.how, 'link con rel="privacy-policy"');
+  assert.ok(d.textual, d.note);
+  assert.deepEqual(d.textual!.vendors.map((v) => v.name), ['Matomo']);
+  assert.match(d.textual!.vendors[0].quote, /Matomo Analytics/);
+  assert.ok(d.textual!.vendors[0].quote.length <= 200);
+  assert.deepEqual(d.textual!.claims.map((c) => c.claim), ['solo-tecnici']);
+  const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
+  assert.match(html, /testuale \(1 fornitore citato\)/);
+  const cmp = section(html, new RegExp(`${MATOMO}:\\d+ — confronto testuale con l'informativa`));
+  assert.match(cmp, /<td>Matomo<\/td><td>osservato e citato<\/td><td>[^<]*osservato senza cookie<\/td>/);
+  assert.match(cmp, /Affermazione &quot;solo cookie tecnici&quot;: nessun cookie o storage non tecnico osservato/);
+  assert.match(readFileSync(join(result.runDir, 'confronto-testuale.csv'), 'utf8'), /Matomo;osservato e citato/);
+  assert.ok(!of(MATOMO).some((f) => f.ruleId === 'informativa-assente'));
+});
+
+test('fix 7: nessuna informativa raggiungibile e nessun banner: rilievo informativa-assente con i percorsi e i 404', () => {
+  const f = of(SPOTIFY).find((x) => x.ruleId === 'informativa-assente');
+  assert.ok(f, of(SPOTIFY).map((x) => x.ruleId).join(', '));
+  assert.equal(f.severity, 'media');
+  assert.ok(f.norms.some((n) => n.key === 'gdpr13') && f.norms.some((n) => n.key === 'garante2021'));
+  for (const p of ['/privacy-policy/', '/cookie-policy/', '/privacy/']) assert.ok(f.details.some((d) => d.includes(`${p} — percorso comune: 404`)), `${p}: ${f.details.join(' | ')}`);
+  assert.match(f.description, /\/privacy-policy\/ 404/);
+  assert.ok(f.evidence.some((e) => /pie-di-pagina\.png$/.test(e.file)), f.evidence.map((e) => e.file).join(', '));
+  // il caso "banner senza link" resta dell'altra regola
+  assert.ok(!of(SPOTIFY).some((x) => x.ruleId === 'link-informativa-assente'));
+});
+
+test('fix 7: estrazione testuale: sezione cookie, fornitori noti, affermazioni tipiche', async () => {
+  const { extractTextual, vendorBase } = await import('../src/declared/textual.js');
+  const t = extractTextual('https://www.esempio.it/privacy/', 'percorso comune', {
+    full: 'Titolare. Usiamo Google Analytics per le statistiche. Cookie. Non sono utilizzati cookie di profilazione. Sono presenti cookie di terze parti di YouTube.',
+    section: { title: 'Cookie', text: 'Non sono utilizzati cookie di profilazione. Sono presenti cookie di terze parti di YouTube.' },
+  }, ['Google', 'Meta']);
+  assert.deepEqual(t!.vendors.map((v) => v.name).sort(), ['Google']);
+  assert.deepEqual(t!.claims.map((c) => c.claim).sort(), ['no-profilazione', 'terze-parti']);
+  assert.equal(vendorBase('Spotify (contenuto incorporato)'), 'Spotify');
+  assert.equal(vendorBase('Piwik'), 'Matomo');
+  assert.equal(extractTextual('u', 'h', { full: 'Pagina senza informazioni.', section: null }, []), null);
+});

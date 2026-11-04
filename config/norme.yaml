@@ -95,6 +95,11 @@ regole:
   link-informativa-assente:
     norme: [gdpr13, garante2021]
     gravita: bassa
+  # Nessuna pagina di privacy o cookie policy raggiungibile (nessun link, percorsi comuni con errore) e nessun banner.
+  # Riferimenti da validare a cura del legale: art. 13 GDPR (informazioni da fornire) e Linee guida cookie del Garante 2021.
+  informativa-assente:
+    norme: [gdpr13, garante2021]
+    gravita: media
   struttura-banner:
     norme: [garante2021]
     gravita: informativa

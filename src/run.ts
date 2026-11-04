@@ -10,6 +10,8 @@ import type { AuditConfig } from './config/schema.js';
 import { compareDeclared } from './declared/compare.js';
 import { loadDeclaredFile } from './declared/declared.js';
 import { readPolicyDeclared } from './declared/policy.js';
+import { findPolicy } from './declared/find.js';
+import { CLAIM_LABEL, extractTextual } from './declared/textual.js';
 import { discoverSite, type DiscoveryResult } from './discovery/discover.js';
 import { detectExit, type ExitInfo } from './browser/exit.js';
 import { runSession, type SessionPlan } from './browser/session.js';
@@ -647,15 +649,50 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       if (unreachableCount) log(`    ${nWords(unreachableCount, 'sessione', 'sessioni')} su ${siteResults.length} senza accesso al sito: ${plural(unreachableCount, 'esclusa', 'escluse')} dalle regole`);
       sessions.push(...siteResults);
       if (!decl.source) {
-        // Ultima fonte: le tabelle della cookie policy (indirizzo configurato, link nel banner, pagina "cookie" scoperta).
+        // Ultima fonte: la cookie policy. Indirizzo configurato; altrimenti la ricerca: link nel banner, pagina "cookie"
+        // scoperta, link nella pagina (piè di pagina, menu, rel="privacy-policy"), percorsi comuni, URL della sitemap,
+        // con lo stato HTTP reale. Si leggono le tabelle; senza tabelle, la dichiarazione testuale.
         const fromBanner = siteResults.find((s) => s.bannerAnalysis?.policyLink?.href)?.bannerAnalysis?.policyLink?.href;
         const fromSample = d.sample.find((p) => /cookie/i.test(new URL(p.url).pathname))?.url;
-        const policyUrl = site.cookiePolicy ?? (fromBanner && /cookie/i.test(fromBanner) ? fromBanner : undefined) ?? fromSample ?? fromBanner;
+        let policyUrl: string | undefined;
+        let how = '';
+        if (site.cookiePolicy) {
+          policyUrl = new URL(site.cookiePolicy, site.url).toString();
+          how = 'indirizzo nella configurazione';
+          decl.policy = { url: policyUrl, how, tried: [{ url: policyUrl, how, status: null, note: 'non verificato: indicato nella configurazione' }] };
+        } else if (siteResults.some((s) => !s.blocked && !s.unreachable)) {
+          const known = [
+            ...(fromBanner && /cookie/i.test(fromBanner) ? [{ url: new URL(fromBanner, site.url).toString(), how: 'link nel banner' }] : []),
+            ...(fromSample ? [{ url: fromSample, how: 'pagina "cookie" tra quelle scoperte' }] : []),
+            ...(fromBanner ? [{ url: new URL(fromBanner, site.url).toString(), how: 'link nel banner' }] : []),
+          ];
+          log('  ricerca della cookie policy o dell\'informativa…');
+          const found = await findPolicy(browser, {
+            site: d.site,
+            known,
+            sitemap: d.policyPages ?? [],
+            userAgent,
+            locale: config.browser.locale,
+            runDir,
+            shotName: slug(new URL(d.site).hostname, 40),
+          }).catch((e: Error) => {
+            log(`    ricerca non riuscita: ${e.message.split('\n')[0]}`);
+            return null;
+          });
+          if (found) {
+            decl.policy = found;
+            if (found.url) {
+              policyUrl = found.url;
+              how = found.how ?? '';
+              log(`    trovata: ${found.url} (${how})`);
+            } else log(`    nessuna pagina di informativa raggiungibile (${found.tried.length} indirizzi provati)`);
+          }
+        }
         if (policyUrl) {
           log(`  lettura dell'elenco dichiarato dalla cookie policy: ${policyUrl}`);
-          const { items, skipped } = await readPolicyDeclared(browser, new URL(policyUrl, site.url).toString(), userAgent, config.browser.locale).catch((e: Error) => {
+          const { items, skipped, text } = await readPolicyDeclared(browser, policyUrl, userAgent, config.browser.locale).catch((e: Error) => {
             log(`    non riuscita: ${e.message.split('\n')[0]}`);
-            return { items: [], skipped: [] as string[] };
+            return { items: [], skipped: [] as string[], text: undefined };
           });
           if (items.length) {
             decl.items = items;
@@ -663,10 +700,16 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
             decl.note =
               'Elenco ricavato dalle tabelle della cookie policy: va verificato a vista, la struttura delle pagine varia.' +
               (skipped.length ? ` ${skipped.length} righe non lette perché la prima colonna non contiene un nome di cookie (es. "${skipped.slice(0, 3).join('", "')}"): per un confronto completo fornire l'elenco a mano (file dei dichiarati).` : '');
+          } else if (text) {
+            const t = extractTextual(policyUrl, how, text, classifier.vendorNames());
+            if (t) {
+              decl.textual = t;
+              decl.note = `Informativa senza tabelle leggibili (${policyUrl}, trovata come ${how}): dichiarazione testuale, con ${t.vendors.length === 1 ? '1 fornitore citato' : `${t.vendors.length} fornitori citati`}${t.claims.length ? ` e le affermazioni ${t.claims.map((c) => `"${CLAIM_LABEL[c.claim]}"`).join(', ')}` : ''}. Il confronto è per fornitore, meno preciso di quello per nome di cookie.`;
+            }
           }
         }
       }
-      if (!decl.source) decl.note = 'Nessun elenco leggibile dal CMP, dalla cookie policy o da un file configurato: confronto con i dichiarati non eseguito.';
+      if (!decl.source && !decl.textual) decl.note = 'Nessun elenco leggibile dal CMP, dalla cookie policy o da un file configurato: confronto con i dichiarati non eseguito.';
     }
     checkStop();
   } catch (e) {
@@ -857,7 +900,7 @@ async function finishRun(
       return { sito: site, strumento: 'Matomo', stato: COOKIE_STATE_LABEL[m.state], fatti: m.facts, datiUtente: m.userData };
     });
   writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ statoCookie, discovery, sessions, sessioniScartate: discarded, declared, comparison, findings, noteAttribuzione: attributionNotes, datiDigitati: typedTestData() }, null, 2));
-  const csvs = writeCsvs(runDir, sessions, comparison, findings);
+  const csvs = writeCsvs(runDir, sessions, comparison, findings, declared);
   // Riepilogo leggero per l'interfaccia (l'elenco delle esecuzioni non deve leggere dati.json, che può essere grande)
   const unreachableSites = [...new Set(sessions.filter((s) => s.unreachable).map((s) => s.site))].filter((site) =>
     sessions.filter((s) => s.site === site).every((s) => s.unreachable || s.blocked),

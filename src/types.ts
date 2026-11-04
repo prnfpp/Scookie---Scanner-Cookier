@@ -293,7 +293,34 @@ export interface DeclaredSet {
   source: string | null;
   items: DeclaredItem[];
   note?: string;
+  /** Ricerca della pagina di informativa: pagina usata, come è stata trovata, tentativi con lo stato HTTP. */
+  policy?: PolicySearch;
+  /** Informativa senza tabelle leggibili: dichiarazione testuale (fornitori citati, affermazioni sui cookie). */
+  textual?: TextualDeclaration;
 }
+
+export interface PolicySearch {
+  /** Pagina usata (risposta 200 sullo stesso sito), oppure null se nessuna è raggiungibile. */
+  url: string | null;
+  /** Come è stata trovata (configurazione, link nel banner, link nel piè di pagina, rel="privacy-policy", percorso comune…). */
+  how: string | null;
+  tried: { url: string; how: string; status: number | null; note?: string }[];
+  /** Screenshot del piè di pagina della pagina iniziale. */
+  footerShot?: string;
+}
+
+export interface TextualDeclaration {
+  url: string;
+  how: string;
+  /** Titolo o inizio della sezione sui cookie usata, se trovata. */
+  section: string | null;
+  /** Fornitori e strumenti noti nominati nel testo, con una breve citazione. */
+  vendors: { name: string; quote: string }[];
+  /** Affermazioni tipiche sui cookie (es. "solo cookie tecnici"), con una breve citazione. */
+  claims: { claim: TextualClaim; quote: string }[];
+}
+
+export type TextualClaim = 'solo-tecnici' | 'no-profilazione' | 'no-tracciamento' | 'terze-parti';
 
 export interface ComparisonRow {
   site: string;

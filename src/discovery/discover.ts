@@ -25,7 +25,12 @@ export interface DiscoveryResult {
    * gestore del consenso (opzione scenari.saltaSenzaBanner): quali e su quante sessioni si basa la decisione.
    */
   skippedChoice?: { scenarios: string[]; sessions: number };
+  /** URL scoperte (sitemap, link) con "cookie", "privacy", "informativa" o "note legali" nel percorso. */
+  policyPages?: string[];
 }
+
+/** Parole che indicano una pagina di informativa (privacy o cookie policy) in un indirizzo o nel testo di un link. */
+export const POLICY_WORDS = /cookie|privacy|informativa|note[-_ ]?legali/i;
 
 const LOC_RE = /<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/gi;
 const SKIP_EXT = /\.(?:pdf|jpe?g|png|gif|webp|svg|zip|docx?|xlsx?|pptx?|mp4|mp3|xml|txt|css|js)$/i;
@@ -391,5 +396,7 @@ export async function discoverSite(
   if (s.length < 4 && !site.soloPagineExtra) {
     notes.push(`Campione ridotto: ${s.length === 1 ? '1 pagina' : `${s.length} pagine`}. Le pagine chiave (es. l'inizio del preventivo, i moduli) vanno indicate tra le pagine da includere sempre (pagineExtra).`);
   }
-  return { site: origin, sitemapUrls, found: candidates.length, byType, sample: s, notes, revokePages };
+  // Pagine di informativa tra le URL scoperte (sitemap e link): candidate per la cookie policy
+  const policyPages = candidates.map((c) => c.url).filter((u) => POLICY_WORDS.test(new URL(u).pathname)).slice(0, 10);
+  return { site: origin, sitemapUrls, found: candidates.length, byType, sample: s, notes, revokePages, ...(policyPages.length ? { policyPages } : {}) };
 }

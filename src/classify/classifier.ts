@@ -108,6 +108,11 @@ export class Classifier {
     }
   }
 
+  /** Nomi dei fornitori nell'elenco dei domini (per riconoscerli nel testo delle informative). */
+  vendorNames(): string[] {
+    return [...new Set(this.trackers.map((t) => t.azienda))];
+  }
+
   static loadExtraTrackers(path: string): TrackerEntry[] {
     if (!existsSync(path)) throw new Error(`File trackerExtra non trovato: ${path}`);
     return (parse(readFileSync(path, 'utf8')) as { tracker?: TrackerEntry[] }).tracker ?? [];

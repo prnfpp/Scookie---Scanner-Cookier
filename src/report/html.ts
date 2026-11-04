@@ -7,6 +7,7 @@ import { NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
 import { pageviewCoherence } from './coherence.js';
 import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode } from '../classify/firstparty.js';
+import { CLAIM_LABEL, compareTextual } from '../declared/textual.js';
 import { summaryItems } from './summary.js';
 import { categoriesUnreliable, NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
 import type { TestEntry } from '../util/pii.js';
@@ -255,8 +256,15 @@ ${sessionRows(sessions)
     parts.push(`<p><strong>Sessioni ripetute.</strong> Quando un sito mostra il banner in alcune sessioni e non in altre, o la connessione cade, la sessione viene ripetuta una volta. La sessione originale resta nei dati (<code>dati.json</code>, voce <code>sessioniScartate</code>) e nelle evidenze.</p>
 <ul>${retried.map((s) => `<li>${esc(s.retryOf)} → ${esc(s.id)}: ${esc(s.errors[0] ?? '')}</li>`).join('')}</ul>`);
   }
+  const policyCell = (d: (typeof r.declared)[number]) =>
+    d.policy?.url ? `<br><span class="muted">pagina usata: ${esc(d.policy.url)} (trovata come ${esc(d.policy.how ?? '—')})</span>` : d.policy ? `<br><span class="muted">nessuna pagina di informativa raggiungibile (${d.policy.tried.length} indirizzi provati)</span>` : '';
   parts.push(`<h3>Elenco dichiarato</h3><p class="muted">Fonte dell'elenco dei cookie dichiarati dal sito, usato per il confronto nella sezione 4.</p><table><tr><th>Sito</th><th>Fonte</th><th>Voci</th><th>Note</th></tr>${r.declared
-    .map((d) => `<tr><td>${esc(d.site)}</td><td>${esc(d.source ?? 'non disponibile')}</td><td>${d.items.length}</td><td>${esc(d.note ?? '')}</td></tr>`)
+    .map((d) => {
+      const t = d.textual;
+      const src = d.source ?? (t ? `testuale (${nWords(t.vendors.length, 'fornitore citato', 'fornitori citati')})` : 'non disponibile');
+      const quotes = t ? `<ul class="muted">${[...t.vendors.map((v) => `${v.name}: "${v.quote}"`), ...t.claims.map((c) => `${CLAIM_LABEL[c.claim]}: "${c.quote}"`)].map((q) => `<li>${esc(q)}</li>`).join('')}</ul>` : '';
+      return `<tr><td>${esc(d.site)}</td><td>${esc(src)}${policyCell(d)}</td><td>${t ? t.vendors.length : d.items.length}</td><td>${esc(d.note ?? '')}${quotes}</td></tr>`;
+    })
     .join('')}</table>`);
 
   // 3. Rilievi
@@ -293,9 +301,16 @@ ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.
       const rows = r.comparison.filter((c) => c.site === site);
       const has = r.declared.some((d) => d.site === site && d.source);
       const n = (st: string) => rows.filter((c) => c.status === st).length;
-      return `<tr><td>${esc(site)}</td>${has ? `<td>${n('dichiarato')}</td><td>${n('non-dichiarato')}</td><td>${n('dichiarato-non-osservato')}</td>` : '<td colspan="3" class="muted">elenco dichiarato non disponibile: confronto non eseguito</td>'}</tr>`;
+      const textual = r.declared.find((d) => d.site === site)?.textual;
+      return `<tr><td>${esc(site)}</td>${has ? `<td>${n('dichiarato')}</td><td>${n('non-dichiarato')}</td><td>${n('dichiarato-non-osservato')}</td>` : textual ? '<td colspan="3" class="muted">solo dichiarazione testuale: confronto per fornitore qui sotto</td>' : '<td colspan="3" class="muted">elenco dichiarato non disponibile: confronto non eseguito</td>'}</tr>`;
     })
     .join('')}</table>`);
+  for (const d of r.declared.filter((x) => x.textual && sites.includes(x.site))) {
+    const cmp = compareTextual(sessions.filter((s) => s.site === d.site && !s.blocked && !s.unreachable), d.textual!);
+    parts.push(`<h3>${esc(d.site)} — confronto testuale con l'informativa</h3><p class="muted">L'informativa (${esc(d.textual!.url)}) non ha tabelle di cookie: il confronto è per fornitore citato nel testo, ed è meno preciso del confronto per nome di cookie.</p>
+<table><tr><th>Fornitore</th><th>Esito</th><th>Osservato / citazione</th></tr>${cmp.rows.map((x) => `<tr><td>${esc(x.vendor)}</td><td>${esc(x.status)}</td><td>${esc(x.note)}</td></tr>`).join('')}</table>
+${cmp.claims.length ? `<ul>${cmp.claims.map((c) => `<li>Affermazione ${esc(c)}</li>`).join('')}</ul>` : ''}`);
+  }
   const declaredStatus = new Map(r.comparison.map((c) => [`${c.site}|${c.name}|${c.domain}`, c]));
   // Siti senza alcun meccanismo di consenso: le colonne "prima della scelta" diventano "senza banner"
   const noBanner = noBannerSites(sessions.filter((s) => !s.blocked && !s.unreachable));
@@ -372,7 +387,13 @@ ${[...third]
   const notSeen: string[] = [];
   if (allUnreachable.length) notSeen.push(`Nessun dato per ${allUnreachable.join(', ')}: le pagine non si sono caricate.`);
   if (blockedSites.length) notSeen.push(`Su ${blockedSites.join(', ')} alcune sessioni sono state intercettate da un sistema anti-bot e non sono state usate.`);
-  for (const d of r.declared.filter((x) => !x.source)) notSeen.push(`${host(d.site)}: elenco dichiarato non disponibile, confronto con i dichiarati non eseguito.`);
+  for (const d of r.declared.filter((x) => !x.source)) {
+    notSeen.push(
+      d.textual
+        ? `${host(d.site)}: elenco dichiarato solo testuale (${d.textual.url}): confronto per fornitore citato, non per nome di cookie.`
+        : `${host(d.site)}: elenco dichiarato non disponibile, confronto con i dichiarati non eseguito.`,
+    );
+  }
   const validAll = sessions.filter((s) => !s.blocked && !s.unreachable);
   const noBannerLim = noBannerSites(validAll);
   for (const site of sites) {

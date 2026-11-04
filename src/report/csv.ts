@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ComparisonRow, Finding, SessionResult } from '../types.js';
+import type { ComparisonRow, DeclaredSet, Finding, SessionResult } from '../types.js';
+import { compareTextual } from '../declared/textual.js';
 import { toCsv } from '../util/csv.js';
 import { repeatsShort } from './repeats.js';
 
@@ -38,7 +39,7 @@ export function choiceStatus(s: SessionResult): string {
 }
 
 /** Scrive i dati grezzi in CSV (separatore ";", UTF-8 con BOM per Excel). Ritorna i nomi dei file. */
-export function writeCsvs(dir: string, sessions: SessionResult[], comparison: ComparisonRow[], findings: Finding[]): string[] {
+export function writeCsvs(dir: string, sessions: SessionResult[], comparison: ComparisonRow[], findings: Finding[], declared: DeclaredSet[] = []): string[] {
   const files: [string, string][] = [
     [
       'sessioni.csv',
@@ -95,6 +96,17 @@ export function writeCsvs(dir: string, sessions: SessionResult[], comparison: Co
           c.site, c.kind, c.name, c.domain, c.status, c.declaredCategories, c.declaredAlwaysActive, c.observedCategory ?? 'non-osservato', c.categoryIssue ?? 'nessuna',
           c.scenarios.length ? c.scenarios : 'nessuno', afterReject(sessions, c),
         ]),
+      ),
+    ],
+    [
+      'confronto-testuale.csv',
+      toCsv(
+        ['sito', 'informativa', 'trovata_come', 'fornitore', 'esito', 'osservato_o_citazione'],
+        declared.filter((d) => d.textual).flatMap((d) => {
+          const t = d.textual!;
+          const cmp = compareTextual(sessions.filter((s) => s.site === d.site && !s.blocked && !s.unreachable), t);
+          return [...cmp.rows.map((x) => [d.site, t.url, t.how, x.vendor, x.status, x.note]), ...cmp.claims.map((c) => [d.site, t.url, t.how, NA, 'affermazione', c])];
+        }),
       ),
     ],
     [
