@@ -6,6 +6,7 @@ import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } fro
 import { NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
 import { pageviewCoherence } from './coherence.js';
+import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode } from '../classify/firstparty.js';
 import { summaryItems } from './summary.js';
 import { categoriesUnreliable, NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
 import type { TestEntry } from '../util/pii.js';
@@ -269,6 +270,7 @@ ${sessionRows(sessions)
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 <p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
 ${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}${f.evidenceExtra ? `; inoltre ${esc(f.evidenceExtra)}` : ''}.</p>` : ''}
+${f.unverifiable?.length ? `<p><strong>Condizioni rilevanti non verificabili dal browser.</strong></p><ul>${f.unverifiable.map((u) => `<li>${esc(u)}</li>`).join('')}</ul>` : ''}
 ${f.repeats ? `<p><strong>Ripetibilità.</strong> ${esc(repeatsText(f.repeats))}</p>` : ''}
 ${reviewOf(f)?.esito ? `<p><strong>Revisione manuale.</strong> ${esc(reviewOf(f)!.esito)}${reviewOf(f)!.nota ? ` — ${esc(reviewOf(f)!.nota)}` : ''}</p>` : ''}
 ${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo negli allegati: dati.json e CSV)</li>` : ''}</ul>` : ''}
@@ -338,13 +340,15 @@ ${[...cookies.values()]
       (x) => `${x.q.host}${(() => { try { return new URL(x.q.url).pathname; } catch { return ''; } })()}`,
     );
     if (own.size) {
-      parts.push(`<h3>${esc(site)} — strumenti di tracciamento sul dominio del sito (${own.size})</h3><p class="muted">Gli invii di dati (raccolta) e gli script dello strumento sono righe distinte: solo i primi sono raccolte.</p><table><tr><th>Indirizzo</th><th>Tipo</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>${beforeCol} (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
+      parts.push(`<h3>${esc(site)} — strumenti di tracciamento sul dominio del sito (${own.size})</h3><p class="muted">Gli invii di dati (raccolta) e gli script dello strumento sono righe distinte: solo i primi sono raccolte.</p><table><tr><th>Indirizzo</th><th>Tipo</th><th>Fornitore</th><th>Categoria</th><th>Cookie</th><th>Richieste</th><th>${beforeCol} (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
 ${[...own]
   .sort((a, b) => a[0].localeCompare(b[0]))
   .map(([h, list]) => {
     const t = list[0].q.tracker!;
     const kind = list.some((x) => requestEvidenceLevel([x.q]) === 'raccolta') ? 'raccolta di dati' : 'script o risorsa';
-    return `<tr><td>${esc(h)}</td><td>${kind}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${rejected ? list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length : 'n/a'}</td></tr>`;
+    // stato dei cookie dello strumento (solo Matomo/Piwik è determinabile dai fatti osservati)
+    const ck = isMatomo(t.company) ? COOKIE_STATE_LABEL[matomoCookieMode(ss).state] : COOKIE_STATE_LABEL['non-determinabile'];
+    return `<tr><td>${esc(h)}</td><td>${kind}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${esc(ck)}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${rejected ? list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length : 'n/a'}</td></tr>`;
   })
   .join('')}</table>${naNote}`);
     }

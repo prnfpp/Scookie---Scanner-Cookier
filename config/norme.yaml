@@ -49,6 +49,13 @@ regole:
   richiesta-tracker-prima-del-consenso:
     norme: [art122, eprivacy53, garante2021, edpb2_2023]
     gravita: alta
+    # Caso particolare: statistica di prima parte (Matomo/Piwik sul dominio del sito) riconosciuta "senza cookie"
+    # (nessun cookie _pk_*, identificativo _id vuoto negli hit, disableCookies o hasCookies() falso). Lo strumento non
+    # la qualifica come tecnica o esente: mascheramento dell'IP, conservazione, incroci con altre fonti e titolarità del
+    # server non sono verificabili dal browser. Il valore predefinito è uguale a quello della regola: lo decide il
+    # consulente legale (alta | media | bassa | informativa).
+    primaParteSenzaCookie:
+      gravita: alta
   consent-mode-senza-consenso:
     norme: [art122, eprivacy53, edpb2_2023]
     gravita: media

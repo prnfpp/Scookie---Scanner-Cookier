@@ -86,7 +86,10 @@ function vendors(fs: Finding[]): string {
   return listIt(
     [...by].map(([v, list]) => {
       const notes = [...new Set(list.map(consentNote))];
-      return notes.length === 1 && notes[0] ? `${v} (${notes[0]})` : v;
+      // precisazione sul fornitore uguale in tutte le sue schede (es. Matomo "di prima parte, senza cookie")
+      const sub = [...new Set(list.map((f) => f.subjectNote))];
+      const v2 = sub.length === 1 && sub[0] ? `${v} ${sub[0]}` : v;
+      return notes.length === 1 && notes[0] ? `${v2} (${notes[0]})` : v2;
     }),
   );
 }

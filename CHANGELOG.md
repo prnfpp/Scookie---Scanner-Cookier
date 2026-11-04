@@ -61,6 +61,19 @@ Ogni voce vale per qualsiasi sito; i fatti restano rilievi, cambia come sono des
   scrive un identificativo o invia telemetria e Session Replay produce i rilievi `cookie-prima-del-consenso` e
   `richiesta-tracker-prima-del-consenso` con la stessa priorità di un video YouTube non bloccato, non
   `elementi-non-classificati`. Le classificazioni si riapplicano con `rigenera`.
+- **Fix 6 — Matomo senza cookie.** Per Matomo/Piwik ospitato sul sito lo stato dei cookie si determina dai fatti:
+  "senza cookie" se nessun cookie `_pk_*` o `MATOMO_SESSID` è scritto, il parametro `_id` degli hit è vuoto o assente
+  e, come prova accessoria, la pagina ha `disableCookies` nella configurazione `_paq` oppure il tracker risponde
+  `hasCookies() === false` a fine pagina (lettura nuova, `statsProbe`; nelle rilevazioni precedenti i comandi `_paq` si
+  leggono, se possibile, dalle pagine salvate nel HAR); "con cookie" se sono scritti `_pk_id`/`_pk_ses`; altrimenti
+  "non determinabile". Nessuna qualificazione ("tecnico", "esente"): il rilievo dice "Matomo di prima parte, in
+  modalità senza cookie", la forza della prova resta "dati di navigazione inviati", i dettagli elencano i fatti e gli
+  eventuali parametri con dati dell'utente (`uid`, `_cvar`, `dimensionN` con valore), e il nuovo campo "Condizioni
+  rilevanti non verificabili dal browser" elenca mascheramento dell'IP, conservazione, incroci con altre fonti e
+  titolarità del server. La priorità non cambia da sola: nuova chiave
+  `regole.richiesta-tracker-prima-del-consenso.primaParteSenzaCookie.gravita` in `config/norme.yaml`, con lo stesso
+  valore della regola, da decidere a cura del legale. Inventario: colonna "Cookie" nella tabella degli strumenti sul
+  dominio del sito; sintesi: "Matomo di prima parte, senza cookie"; `dati.json`: `statoCookie` per sito.
 
 - **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
   o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del

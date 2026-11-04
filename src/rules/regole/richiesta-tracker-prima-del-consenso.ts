@@ -2,6 +2,7 @@ import { NON_TECHNICAL } from '../../types.js';
 import { describeGoogleConsent, embedLine, pagesOf, requestVendor, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 import type { RequestRecord } from '../../types.js';
+import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode, UNVERIFIABLE } from '../../classify/firstparty.js';
 
 const isCollect = (r: RequestRecord) => requestEvidenceLevel([r]) === 'raccolta';
 const nCol = (n: number) => `${n} ${n === 1 ? 'richiesta' : 'richieste'} di raccolta dati`;
@@ -79,15 +80,22 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
       const summary = googleConsentSummary(reqs);
       const uet = uetConsentSummary(reqs);
       const consentShort = summary.short ?? uet.short;
+      // Matomo/Piwik ospitato sul sito: stato dei cookie dai fatti osservati (nessuna qualificazione)
+      const ownMatomo = isMatomo(vendor) && reqs.every((x) => x.party === 'prima');
+      const mode = ownMatomo ? matomoCookieMode(sessions.filter((x) => x.site === s.site)) : null;
+      const cookieless = mode?.state === 'senza-cookie';
       out.push({
         site: s.site,
         scenario: s.scenario,
         pageUrl: r.pageUrl,
-        title: trackerTitle(reqs, nb),
+        title: `${trackerTitle(reqs, nb)}${cookieless ? ': Matomo di prima parte, in modalità senza cookie' : ''}`,
+        ...(cookieless ? { severityVariant: 'primaParteSenzaCookie', subjectNote: 'di prima parte, senza cookie' } : {}),
+        ...(mode && mode.state !== 'con-cookie' ? { unverifiable: UNVERIFIABLE } : {}),
         ...(nb ? { noBanner: true } : {}),
         description:
           `${when[0].toUpperCase()}${when.slice(1)}, ${sentPhrase(reqs, `${vendor} (${CATEGORY_LABEL[r.tracker!.category]})`)}: ${hostsSummary(reqs)}.` +
-          (level === 'risorsa' ? ' Le richieste scaricano risorse del fornitore: non è stato osservato un invio di dati di raccolta.' : ''),
+          (level === 'risorsa' ? ' Le richieste scaricano risorse del fornitore: non è stato osservato un invio di dati di raccolta.' : '') +
+          (cookieless ? ' Matomo è di prima parte (endpoint sul dominio del sito), in modalità senza cookie: nessun cookie scritto e identificativo del visitatore vuoto negli hit; i dati di navigazione sono comunque inviati.' : ''),
         // Solo script o contenuti scaricati: prova più debole di una raccolta di dati
         severity: level === 'risorsa' ? 'media' : undefined,
         evidenceLevel: level,
@@ -95,7 +103,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         groupKey: `${vendor}|${r.tracker!.category}`,
         headline:
           level === 'raccolta'
-            ? `${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) riceve dati di navigazione ${beforeChoice(nb)}${consentShort ? `, ${consentShort}` : ''}`
+            ? `${cookieless ? 'Matomo di prima parte, in modalità senza cookie,' : `${vendor} (${CATEGORY_LABEL[r.tracker!.category]})`} riceve dati di navigazione ${beforeChoice(nb)}${consentShort ? `, ${consentShort}` : ''}`
             : `Il sito scarica risorse di ${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) ${beforeChoice(nb)}`,
         details: [
           `Richiesta di esempio: ${firstAtLoad.method} ${firstAtLoad.url.slice(0, 200)}`,
@@ -104,6 +112,8 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
           ...(uet.detail ? [uet.detail] : []),
           ...[...new Set(reqs.map((x) => x.purpose).filter(Boolean))].map((x) => `Natura delle richieste: ${x}`),
           stageBreakdown(reqs),
+          ...(mode ? [`Stato dei cookie di Matomo: ${COOKIE_STATE_LABEL[mode.state]} — ${mode.facts.join('; ')}`] : []),
+          ...(mode ? [mode.userData.length ? `Parametri degli hit che indicano dati dell'utente inviati: ${mode.userData.join(', ')}` : "Negli hit non ci sono parametri con dati dell'utente (uid, _cvar, dimensioni personalizzate con valore)"] : []),
           ...(embedLine(reqs) ? [embedLine(reqs)!] : []),
           `Pagine: ${pages.slice(0, 10).join(', ')}`,
           ...(pagesOf(reqs).exitLine ? [pagesOf(reqs).exitLine!] : []),

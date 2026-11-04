@@ -141,6 +141,15 @@ export interface RequestRecord {
   visit?: number;
 }
 
+export interface StatsProbe {
+  url: string;
+  /** Comandi _paq della pagina (es. "disableCookies", "trackPageView"). */
+  paq: string[];
+  hasCookies: boolean | null;
+  consentRequired?: boolean | null;
+  source: 'pagina' | 'har';
+}
+
 export type ChoiceLayer = 'primo-livello' | 'secondo-livello' | 'chiusura-x';
 
 export interface InteractionReport {
@@ -238,6 +247,12 @@ export interface SessionResult {
    * se c'è stata. Assente nelle rilevazioni precedenti alla 0.1.2.
    */
   visits?: { url: string; at: string; interactionAt?: string }[];
+  /**
+   * Configurazione dello strumento di statistica ospitato sul sito (Matomo/Piwik) letta a fine pagina: comandi _paq
+   * scritti nella pagina e hasCookies() del tracker. Prova accessoria dello stato dei cookie. Nelle rilevazioni
+   * precedenti alla 0.1.2 si ricava, se possibile, dai documenti nel file HAR (source "har").
+   */
+  statsProbe?: StatsProbe[];
   /** Scenario "revoca": come è stato revocato il consenso e quali cookie non tecnici restavano nel browser. */
   revocation?: { outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null; remaining: string[] };
   /** Numero della ripetizione dello scenario (con scenari.ripetizioni > 1). */
@@ -340,4 +355,8 @@ export interface Finding {
   norms: NormRef[];
   /** Il sito non ha alcun meccanismo di consenso (nessun banner in nessuna sessione valida). */
   noBanner?: boolean;
+  /** Condizioni rilevanti per la valutazione che dal browser non si possono verificare. */
+  unverifiable?: string[];
+  /** Precisazione sul fornitore per la sintesi (es. "di prima parte, senza cookie"). */
+  subjectNote?: string;
 }

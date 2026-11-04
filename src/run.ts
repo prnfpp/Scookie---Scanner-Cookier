@@ -27,6 +27,7 @@ import type { RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
 import { attributeByHost, checkDeclared } from './report/attribution.js';
 import { attributeToEmbeds, enrichRequests, reclassify } from './classify/enrich.js';
+import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode, probesFromHar } from './classify/firstparty.js';
 import { reattributeFromHar } from './browser/har-frames.js';
 import { nWords, plural } from './util/text.js';
 
@@ -745,6 +746,14 @@ async function finishRun(
     o.log(`Classificazioni non aggiornate (${(e as Error).message.split('\n')[0]}): restano quelle della rilevazione.`);
   }
   enrichRequests(collected.sessions);
+  // Configurazione di Matomo/Piwik dalle pagine salvate nel HAR, per le sessioni senza la lettura a fine pagina
+  // (rilevazioni precedenti alla 0.1.2): prova accessoria dello stato dei cookie
+  try {
+    const n = probesFromHar(runDir, collected.sessions);
+    if (n && o.regeneratedAt) o.log(`Configurazione di Matomo letta dal file HAR in ${n === 1 ? '1 sessione' : `${n} sessioni`}.`);
+  } catch (e) {
+    o.log(`Configurazione di Matomo non letta dal file HAR (${(e as Error).message.split('\n')[0]}).`);
+  }
   // Rilevazioni raccolte prima della 0.1.1: le richieste degli iframe partite all'uscita da una pagina si riattribuiscono
   // alla pagina che li ospitava, con il frame di origine registrato nel file HAR
   if (o.regeneratedAt) {
@@ -840,7 +849,14 @@ async function finishRun(
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
   const endedAt = new Date().toISOString();
 
-  writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ discovery, sessions, sessioniScartate: discarded, declared, comparison, findings, noteAttribuzione: attributionNotes, datiDigitati: typedTestData() }, null, 2));
+  // Stato dei cookie degli strumenti di statistica ospitati sul sito (Matomo/Piwik), per sito
+  const statoCookie = [...new Set(validSessions.map((s) => s.site))]
+    .filter((site) => validSessions.some((s) => s.site === site && s.requests.some((r) => r.party === 'prima' && r.tracker && isMatomo(r.tracker.company))))
+    .map((site) => {
+      const m = matomoCookieMode(validSessions.filter((s) => s.site === site));
+      return { sito: site, strumento: 'Matomo', stato: COOKIE_STATE_LABEL[m.state], fatti: m.facts, datiUtente: m.userData };
+    });
+  writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ statoCookie, discovery, sessions, sessioniScartate: discarded, declared, comparison, findings, noteAttribuzione: attributionNotes, datiDigitati: typedTestData() }, null, 2));
   const csvs = writeCsvs(runDir, sessions, comparison, findings);
   // Riepilogo leggero per l'interfaccia (l'elenco delle esecuzioni non deve leggere dati.json, che può essere grande)
   const unreachableSites = [...new Set(sessions.filter((s) => s.unreachable).map((s) => s.site))].filter((site) =>

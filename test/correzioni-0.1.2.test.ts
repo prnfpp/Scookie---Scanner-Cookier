@@ -247,3 +247,47 @@ test('fix 5: Gravatar e risorsa del tema classificati, non tra gli elementi da v
   assert.ok(reqs.some((r) => r.host === 'secure.gravatar.com' && r.tracker?.company === 'Gravatar (Automattic)'));
   assert.ok(reqs.some((r) => r.host === 'themes.muffingroup.com' && r.tracker?.company === 'BeTheme (Muffin Group)'));
 });
+
+test('fix 6: Matomo di prima parte senza cookie (con disableCookies): titolo, testo, condizioni non verificabili, priorità', async () => {
+  const m = of(MATOMO).find((f) => f.ruleId === 'richiesta-tracker-prima-del-consenso' && (f.subjects ?? []).includes('Matomo'))!;
+  assert.match(m.ruleTitle, /Matomo di prima parte, in modalità senza cookie/);
+  assert.match(m.description, /in modalità senza cookie/);
+  assert.equal(m.evidenceLevel, 'raccolta');
+  assert.ok(m.details.some((d) => /^Stato dei cookie di Matomo: senza cookie — .*_id vuoto o assente.*disableCookies.*hasCookies\(\) del tracker falso/.test(d)), m.details.join(' | '));
+  assert.ok(m.unverifiable?.some((u) => /IP/.test(u)) && m.unverifiable.some((u) => /conservazione/.test(u)) && m.unverifiable.some((u) => /incroci/.test(u)) && m.unverifiable.some((u) => /titolarità/.test(u)));
+  // priorità invariata: la chiave dedicata in norme.yaml ha lo stesso valore della regola
+  const { loadNorms } = await import('../src/rules/engine.js');
+  const n = loadNorms().file.regole!['richiesta-tracker-prima-del-consenso'] as { gravita: string; primaParteSenzaCookie?: { gravita: string } };
+  assert.equal(n.primaParteSenzaCookie?.gravita, n.gravita);
+  assert.equal(m.severity, n.gravita);
+  assert.doesNotMatch(texts(m), /\b(tecnico|esente)\b/);
+  const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
+  assert.match(html, /Condizioni rilevanti non verificabili dal browser/);
+  const own = section(html, new RegExp(`${MATOMO}:\\d+ — strumenti di tracciamento sul dominio del sito`));
+  assert.match(own, /<th>Cookie<\/th>/);
+  assert.match(own, /<td>senza cookie<\/td>/);
+  const sint = html.slice(html.indexOf('<h2>1. Sintesi'), html.indexOf('<h2>2. Perimetro'));
+  assert.match(sint, /Matomo di prima parte, senza cookie/);
+});
+
+test('fix 6: Matomo senza cookie riconosciuto anche senza disableCookies (hasCookies falso)', () => {
+  const m = of(SPOTIFY).find((f) => f.ruleId === 'richiesta-tracker-prima-del-consenso' && (f.subjects ?? []).includes('Matomo'))!;
+  assert.ok(m);
+  assert.match(m.ruleTitle, /in modalità senza cookie/);
+  const st = m.details.find((d) => d.startsWith('Stato dei cookie di Matomo'))!;
+  assert.match(st, /senza cookie/);
+  assert.doesNotMatch(st, /disableCookies/);
+  assert.match(st, /hasCookies\(\) del tracker falso/);
+});
+
+test('fix 6: stato dei cookie di Matomo dai fatti: con cookie, non determinabile, dati utente negli hit', async () => {
+  const { matomoCookieMode, paqCommands } = await import('../src/classify/firstparty.js');
+  const hit = (q: string) => ({ url: `https://www.esempio.it/matomo.php?idsite=1&rec=1${q}`, method: 'POST', tracker: { company: 'Matomo', category: 'statistica' }, party: 'prima' });
+  const s = (over: object) => ({ cookies: [], requests: [hit('&_id=')], statsProbe: [{ url: 'x', paq: ['disableCookies'], hasCookies: null, source: 'pagina' }], ...over }) as never;
+  assert.equal(matomoCookieMode([s({})]).state, 'senza-cookie');
+  assert.equal(matomoCookieMode([s({ cookies: [{ name: '_pk_id.1.ab12' }] })]).state, 'con-cookie');
+  assert.equal(matomoCookieMode([s({ requests: [hit('&_id=0123456789abcdef')] })]).state, 'non-determinabile');
+  assert.equal(matomoCookieMode([s({ statsProbe: undefined })]).state, 'non-determinabile');
+  assert.deepEqual(matomoCookieMode([s({ requests: [hit('&_id=&uid=mario%40esempio.it&dimension1=abc&dimension2=')] })]).userData, ['uid (in 1 hit)', 'dimension1 (in 1 hit)']);
+  assert.deepEqual(paqCommands('var _paq=[];_paq.push(["disableCookies"]); _paq.push([\'trackPageView\']);'), ['disableCookies', 'trackPageView']);
+});
