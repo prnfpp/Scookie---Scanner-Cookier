@@ -549,7 +549,47 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       const plans = job.plans.filter((p) => !p.manual);
       log(`\n[${site.url}] sessioni automatiche…`);
       const siteResults: SessionResult[] = [];
-      for (const plan of plans) siteResults.push(await exec(job, plan));
+      // Prima tutte le sessioni "nessuna azione": dicono se il sito ha un banner. Senza banner in nessuna di esse (e
+      // con l'opzione attiva) gli scenari con scelta non si eseguono: ripeterebbero "nessuna azione" su più pagine.
+      const valid0 = (s: SessionResult) => !s.blocked && !s.unreachable;
+      const hasBanner = (s: SessionResult) => s.interaction.bannerVisibleBefore || s.interaction.detectedCmps.length > 0;
+      const results = new Map<SessionPlan, SessionResult>();
+      for (const plan of plans.filter((p) => p.scenario === 'nessuna-azione')) results.set(plan, await exec(job, plan));
+      const choicePlans = plans.filter((p) => p.scenario !== 'nessuna-azione');
+      if (config.scenari.saltaSenzaBanner && choicePlans.length) {
+        let base = [...results.values()].filter(valid0);
+        // Una sola sessione valida senza banner: se ne fa una di conferma, perché lo script del gestore può non essersi
+        // caricato per un errore di rete (in quel caso la sessione senza banner è sostituita, come le altre ripetizioni)
+        if (base.length === 1 && !hasBanner(base[0])) {
+          const first = base[0];
+          const plan = [...results].find(([, r]) => r === first)![0];
+          log(`    nessun banner nell'unica sessione "nessuna azione": sessione di conferma di ${first.id}`);
+          progress.extra(d.site);
+          const confirm = await exec(job, { ...plan, id: `${plan.id}_conferma` });
+          if (hasBanner(confirm) && valid0(confirm)) {
+            confirm.retryOf = first.id;
+            confirm.errors.unshift(`Ripetizione di ${first.id}: in quella sessione il banner non è comparso${failedHosts(first) ? `; richieste senza risposta verso ${failedHosts(first)}` : ''}.`);
+            discarded.push(first);
+            results.set(plan, confirm);
+          } else {
+            // conferma senza banner: è una sessione valida in più, con le sue prove
+            confirm.errors.unshift(`Sessione di conferma di ${first.id}: nessun banner, come nella prima; gli scenari con scelta non si eseguono.`);
+            siteResults.push(confirm);
+          }
+          base = [...results.values(), ...siteResults].filter(valid0);
+        }
+        // un banner visto nelle navigazioni manuali dello stesso sito basta per eseguire tutti gli scenari
+        if (base.length && !base.some(hasBanner) && !job.manual.some((s) => valid0(s) && hasBanner(s))) {
+          const skipped = [...new Set(choicePlans.map((p) => p.scenario))];
+          d.skippedChoice = { scenarios: skipped, sessions: base.length };
+          log(`    nessun banner in ${nWords(base.length, 'sessione', 'sessioni')} "nessuna azione": scenari con scelta non eseguiti (${skipped.join(', ')})`);
+          progress.skip(d.site, choicePlans.length);
+          choicePlans.length = 0;
+        }
+      }
+      for (const plan of choicePlans) results.set(plan, await exec(job, plan));
+      // nell'ordine del piano (le sessioni di conferma senza banner in coda)
+      siteResults.unshift(...plans.filter((p) => results.has(p)).map((p) => results.get(p)!));
 
       // Sessioni fallite per mancanza di connessione (es. computer in stop): si aspetta il ripristino e si ripetono una volta.
       // La sessione fallita resta tra i dati scartati.
@@ -561,7 +601,8 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
         const back = await waitOnline(browser, site.url, log);
         progress.wait(null);
         if (!back) break;
-        const plan = plans.find((p) => p.id === first.id)!;
+        const plan = plans.find((p) => p.id === first.id);
+        if (!plan) continue;
         progress.extra(d.site);
         const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta` });
         retry.retryOf = first.id;
@@ -583,7 +624,8 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
           const first = siteResults[k];
           if (first.interaction.bannerVisibleBefore || !valid(first)) continue;
           retries++;
-          const plan = plans.find((p) => p.id === first.id.replace(/_ripetuta$/, ''))!;
+          const plan = plans.find((p) => p.id === first.id.replace(/_(ripetuta|conferma)$/, ''));
+          if (!plan) continue;
           log(`    banner assente solo in questa sessione: ripetizione di ${first.id}`);
           progress.extra(d.site);
           const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta${first.retryOf ? '2' : ''}` });

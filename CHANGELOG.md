@@ -34,6 +34,17 @@ Ogni voce vale per qualsiasi sito; i fatti restano rilievi, cambia come sono des
   le pagine visitate. Nuovo `scripts/conta-richieste.mjs` per contare, pagina per pagina, le richieste di una
   rilevazione e il momento assegnato, dai dati e dal HAR. Il momento si ricalcola solo con una nuova raccolta: in
   `rigenera` restano i momenti registrati.
+- **Fix 4 — niente scenari con scelta se non c'è nessun CMP.** Le sessioni "nessuna azione" di un sito si eseguono
+  per prime; se in nessuna di quelle valide (né nelle navigazioni manuali) compare un banner o un gestore del consenso,
+  anche solo riconosciuto dall'euristica, gli scenari rifiuta, accetta, personalizza, revoca e chiudi non si eseguono
+  per quel sito. Con una sola sessione "nessuna azione" se ne fa prima una di conferma (se il banner compare, la prima
+  è sostituita come nelle altre ripetizioni). Se il banner si vede anche una sola volta, si eseguono tutti gli scenari
+  come prima (regola `banner-intermittente`). Nei Limiti una sola riga: "scenari con scelta non eseguiti: nessun
+  banner rilevato in N sessioni"; il perimetro lo indica accanto agli scenari. Anche nelle rilevazioni precedenti
+  rigenerate, per i siti senza banner, i Limiti hanno una riga sola invece di una per scenario. Opzione
+  `scenari.saltaSenzaBanner` (predefinita `true`) nello schema, in `config/esempio.yaml` e nell'interfaccia (Opzioni
+  → avanzate); l'avanzamento toglie dal totale le sessioni saltate e la stima della durata indica quanto dura un
+  audit di siti senza banner. Su un sito senza banner l'audit passa da circa 6 × 3 sessioni a quelle "nessuna azione".
 
 - **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
   o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del

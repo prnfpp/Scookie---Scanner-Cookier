@@ -175,9 +175,17 @@ export const configSchema = z
         attivi: z
           .array(z.enum(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi']))
           .default(['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi']),
+        /**
+         * Se in nessuna sessione "nessuna azione" valida di un sito compare un banner o un gestore del consenso (anche
+         * riconosciuto dall'euristica), gli scenari con scelta (rifiuta, accetta, personalizza, revoca, chiudi) per quel
+         * sito non si eseguono: senza banner non c'è una scelta da fare e le sessioni ripeterebbero "nessuna azione".
+         * Con una sola sessione "nessuna azione" se ne fa prima una di conferma. Se il banner compare anche una sola
+         * volta, gli scenari si eseguono tutti.
+         */
+        saltaSenzaBanner: z.boolean().default(true),
       })
       .strict()
-      .default({ modalita: 'percorso', pagineDopoScelta: 3, ripetizioni: 1, attivi: ['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi'] }),
+      .default({ modalita: 'percorso', pagineDopoScelta: 3, ripetizioni: 1, attivi: ['nessuna-azione', 'rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi'], saltaSenzaBanner: true }),
     campionamento: z
       .object({
         /** Pagine per tipo nel primo giro di campionamento; se i tipi sono pochi, il campione si completa fino a maxPagine. */

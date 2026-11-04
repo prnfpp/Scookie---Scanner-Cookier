@@ -197,7 +197,7 @@ ${r.configFile ? `<tr><td>Configurazione</td><td><code>${esc(r.configFile)}</cod
 <tr><td>User agent</td><td><code>${esc(r.userAgent)}</code>${config.browser.uaNormale ? '<br><span class="muted">Esecuzione di controllo: user agent di un browser comune, senza la dichiarazione dello strumento, e browser che non si dichiara automatizzato (navigator.webdriver falso).</span>' : ''}</td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
 <tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (fonte ${esc(r.exit.source)}; l'indirizzo IP è in <code>manifest.json</code>)` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
-<tr><td>Scenari di consenso</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta</td></tr>
+<tr><td>Scenari di consenso</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta${r.discovery.filter((d) => d.skippedChoice).map((d) => `<br><span class="muted">${esc(host(d.site))}: eseguito solo "nessuna-azione"; scenari con scelta non eseguiti perché nessun banner è comparso in ${nWords(d.skippedChoice!.sessions, 'sessione', 'sessioni')} (opzione <code>scenari.saltaSenzaBanner</code>)</span>`).join('')}</td></tr>
 <tr><td>Ripetizioni</td><td>${reps > 1 ? `ogni scenario ripetuto ${reps} volte, ogni volta con un profilo browser nuovo` : 'ogni scenario eseguito una volta, con un profilo browser nuovo'}</td></tr>
 ${config.datiDiProva?.length || r.typedData?.length ? `<tr><td>Dati di prova</td><td>${config.datiDiProva?.length ? `Dichiarati nella configurazione, fittizi o concordati con il committente: ${config.datiDiProva.map((t) => `${esc(t.etichetta || t.tipo)} <code>${esc(t.valore)}</code>`).join('; ')}.` : ''}${r.typedData?.length ? ` Digitati dall'operatore nei moduli durante le navigazioni manuali e registrati dallo strumento${config.datiDiProva?.length ? ' (diversi da quelli dichiarati o in aggiunta)' : ''}: ${r.typedData.map((t) => `${esc(t.etichetta || t.tipo)} <code>${esc(t.valore)}</code>`).join('; ')}.` : ''} Questi valori, e il codice fiscale che il sito ne calcola, sono riconosciuti in ogni forma e riportati in chiaro nei rilievi; gli altri valori che somigliano a dati personali sono mascherati.</td></tr>` : ''}
 <tr><td>Protocollo di osservazione</td><td>Per ogni pagina: caricamento completo, attesa della rete inattiva (max 5 s), attesa fissa di ${config.protocollo.attesaDopoCaricamento} ms${config.protocollo.scroll ? `, movimento del mouse e scroll con la rotella fino a fondo pagina (al massimo 12 passi) e attesa di ${config.protocollo.attesaDopoScroll} ms` : ''}. Sulla prima pagina il banner viene fotografato e l'eventuale scelta avviene <em>prima</em> dello scroll; dopo la scelta si attendono ${config.protocollo.attesaDopoScelta} ms. In tutti gli scenari con scelta il percorso dopo la scelta è lo stesso: si ricarica la pagina di partenza e si visitano le stesse pagine nello stesso ordine; nello scenario di revoca lo stesso percorso si ripete dopo la revoca. Pausa tra sessioni: ${config.protocollo.pausaTraSessioni} ms.</td></tr>
@@ -367,12 +367,23 @@ ${[...third]
   if (allUnreachable.length) notSeen.push(`Nessun dato per ${allUnreachable.join(', ')}: le pagine non si sono caricate.`);
   if (blockedSites.length) notSeen.push(`Su ${blockedSites.join(', ')} alcune sessioni sono state intercettate da un sistema anti-bot e non sono state usate.`);
   for (const d of r.declared.filter((x) => !x.source)) notSeen.push(`${host(d.site)}: elenco dichiarato non disponibile, confronto con i dichiarati non eseguito.`);
+  const validAll = sessions.filter((s) => !s.blocked && !s.unreachable);
+  const noBannerLim = noBannerSites(validAll);
   for (const site of sites) {
     const ss = sessions.filter((s) => s.site === site);
+    // Senza banner: gli scenari con scelta non sono stati eseguiti (saltati, o eseguiti senza poter scegliere nelle
+    // rilevazioni precedenti): lo si dice una volta sola, non scenario per scenario
+    const skipped = r.discovery.find((d) => d.site === site)?.skippedChoice;
+    const degenerate = ss.filter((s) => s.scenario !== 'nessuna-azione' && !s.manual && !s.replay && !s.unreachable && !s.blocked && s.interaction.outcome !== 'eseguito');
+    if (skipped || (noBannerLim.has(site) && degenerate.length)) {
+      const n = skipped?.sessions ?? validAll.filter((s) => s.site === site).length;
+      const which = skipped?.scenarios ?? [...new Set(degenerate.map((s) => s.scenario))];
+      notSeen.push(`${host(site)}: scenari con scelta non eseguiti: nessun banner rilevato in ${nWords(n, 'sessione', 'sessioni')} (${which.join(', ')}).`);
+    }
     const notDone = (sc: string) => ss.filter((s) => s.scenario === sc && !s.manual && !s.replay && s.interaction.outcome !== 'eseguito' && !s.unreachable && !s.blocked);
     for (const sc of ['rifiuta', 'accetta', 'personalizza', 'chiudi'] as const) {
       const list = notDone(sc);
-      if (!list.length) continue;
+      if (!list.length || noBannerLim.has(site)) continue;
       if (sc === 'personalizza' && list.every((x) => NO_STATS_CATEGORY.test(x.interaction.detail))) {
         notSeen.push(`${host(site)}: scenario "personalizza" non applicabile: il gestore non ha una categoria statistica separata e rifiutabile (è un fatto della struttura del banner, descritto nella scheda dedicata).`);
       } else if (sc === 'chiudi' && list.every((x) => x.interaction.outcome === 'non-trovato')) {
@@ -386,7 +397,7 @@ ${[...third]
       notSeen.push(`${host(site)}: ${msg} (${list.length === 1 ? 'sessione' : 'sessioni'} ${list.map((x) => x.id).join(', ')}).`);
     }
     const rev = ss.filter((s) => s.scenario === 'revoca' && s.revocation && s.revocation.outcome !== 'eseguita');
-    if (rev.length) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
+    if (rev.length && !noBannerLim.has(site)) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
     for (const s of ss.filter((x) => x.manual && !x.attributedFrom && (x.manual.pages.length <= 1 || x.manual.seconds < 60))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);
     for (const s of ss.filter((x) => x.replay?.stoppedAt)) notSeen.push(`${host(site)}: percorso registrato interrotto in ${s.id} (${s.replay!.stoppedAt}).`);
   }

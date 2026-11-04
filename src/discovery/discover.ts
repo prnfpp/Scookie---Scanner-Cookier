@@ -20,6 +20,11 @@ export interface DiscoveryResult {
   notes: string[];
   /** Pagine dedicate alla gestione dei cookie trovate tra le URL scoperte (es. /preferenze-cookies). */
   revokePages?: string[];
+  /**
+   * Scenari con scelta non eseguiti perché in nessuna sessione "nessuna azione" valida è comparso un banner o un
+   * gestore del consenso (opzione scenari.saltaSenzaBanner): quali e su quante sessioni si basa la decisione.
+   */
+  skippedChoice?: { scenarios: string[]; sessions: number };
 }
 
 const LOC_RE = /<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/gi;

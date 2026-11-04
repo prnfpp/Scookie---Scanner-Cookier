@@ -91,7 +91,6 @@ test('fix 2: "Dopo rifiuto" vale n/a se il rifiuto non è stato eseguito; valore
   assert.ok(iMs > 0 && iEsito > 0, head.join(';'));
   const rows = req.slice(1).filter(Boolean).map((l) => l.split(';'));
   assert.ok(rows.every((r) => r[iMs] !== ''), 'nessuna cella vuota per i millisecondi dalla scelta');
-  assert.ok(rows.some((r) => /non-applicabile \(nessun banner\)/.test(r[iEsito])));
   assert.ok(rows.some((r) => /non-applicabile \(nessuna-azione\)/.test(r[iEsito])));
   assert.match(csv('cookie.csv').split('\n')[0], /esito_scelta/);
 });
@@ -147,4 +146,39 @@ test('fix 3: controllo di coerenza: più raccolte al caricamento che pagine visi
   assert.match(out[0], /esempio: S001, https:\/\/www\.esempio\.it\/: 2 raccolte al caricamento/);
   // rilevazioni precedenti alla 0.1.2, senza le visite: nessun controllo
   assert.deepEqual(pageviewCoherence([{ ...s, visits: undefined, requests: [hit(1, 0), hit(2, 0), hit(3, 0)] } as never]), []);
+});
+
+test('fix 4: senza banner gli scenari con scelta non si eseguono e i Limiti lo dicono una volta', async () => {
+  for (const host of [MATOMO, SPOTIFY]) {
+    const ss = result.sessions.filter((s) => s.site.includes(host));
+    assert.ok(ss.length, host);
+    assert.deepEqual([...new Set(ss.map((s) => s.scenario))], ['nessuna-azione'], host);
+  }
+  const dati = JSON.parse(readFileSync(join(result.runDir, 'dati.json'), 'utf8')) as { discovery: { site: string; skippedChoice?: { scenarios: string[]; sessions: number } }[] };
+  const d = dati.discovery.find((x) => x.site.includes(MATOMO))!;
+  assert.deepEqual(d.skippedChoice?.scenarios, ['rifiuta', 'accetta', 'personalizza', 'revoca', 'chiudi']);
+  // sito con una sola pagina nel campione: una sessione di conferma prima di saltare gli scenari
+  const sp = result.sessions.filter((s) => s.site.includes(SPOTIFY));
+  assert.ok(sp.some((s) => s.id.endsWith('_conferma')), sp.map((s) => s.id).join(', '));
+  const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
+  const lim = html.slice(html.indexOf('<h2>5. Limiti'), html.indexOf('<h2>6. Allegati'));
+  for (const host of [MATOMO, SPOTIFY]) {
+    const lines = lim.match(new RegExp(`${host}: scenari con scelta non eseguiti: nessun banner rilevato in \\d+ sessioni`, 'g')) ?? [];
+    assert.equal(lines.length, 1, `${host}: ${lim}`);
+  }
+  assert.doesNotMatch(lim, /scenario "(rifiuta|accetta|chiudi|personalizza)" non eseguito/);
+  const { configSchema: auditConfigSchema } = await import('../src/config/schema.js');
+  const cfg = auditConfigSchema.parse({ cliente: 'x', siti: [{ url: 'https://www.esempio.it/' }] });
+  assert.equal(cfg.scenari.saltaSenzaBanner, true);
+  assert.equal(auditConfigSchema.parse({ cliente: 'x', scenari: { saltaSenzaBanner: false }, siti: [{ url: 'https://www.esempio.it/' }] }).scenari.saltaSenzaBanner, false);
+});
+
+test('fix 4: avanzamento: le sessioni saltate escono dal totale', async () => {
+  const { ProgressTracker } = await import('../src/progress.js');
+  const seen: { total: number; sites: { total: number }[] }[] = [];
+  const p = new ProgressTracker((x) => seen.push(x), 0);
+  p.plan('https://www.esempio.it', 8, 0);
+  p.skip('https://www.esempio.it', 5);
+  assert.equal(seen.at(-1)!.total, 3);
+  assert.equal(seen.at(-1)!.sites[0].total, 3);
 });
