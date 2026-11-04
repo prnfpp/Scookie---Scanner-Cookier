@@ -9,6 +9,9 @@
 #   parametri: (opzionale) regex sulla query (senza "?"); se presenti devono corrispondere tutte
 #   dominio "*": qualsiasi host, anche il sito stesso (strumenti ospitati sul sito); richiede percorsi o parametri
 #   nota:      (opzionale) testo mostrato nel report
+#   raggruppa: (opzionale) contenuto incorporato (iframe): le richieste e lo storage che partono dal suo documento,
+#              anche verso altri fornitori, appartengono a lui (es. Sentry caricato dal lettore Spotify)
+#   dominio con "*" (es. "image-cdn-*.spotifycdn.com"): "*" sta per una parte di un'etichetta del nome
 #
 # Le voci con "percorsi" vengono valutate prima di quelle senza. Vince la voce con dominio più specifico.
 # Per aggiungere domini senza toccare questo file: chiave "trackerExtra" nella configurazione.
@@ -169,6 +172,23 @@ tracker:
   - { dominio: stonly.com, azienda: Stonly, categoria: funzionalita, nota: "Guide interattive / assistenza" }
   - { dominio: trustpilot.com, azienda: Trustpilot, categoria: funzionalita, nota: "Widget recensioni" }
   - { dominio: stape.io, azienda: Stape, categoria: marketing, nota: "Tagging lato server" }
+
+  # --- Spotify (contenuto incorporato): lettore di podcast e brani in un iframe ---
+  - { dominio: open.spotify.com, azienda: Spotify (contenuto incorporato), categoria: funzionalita, percorsi: ["^/embed(-podcast|-legacy)?/"], raggruppa: true, nota: "Lettore Spotify incorporato nella pagina (iframe): contenuto di Spotify" }
+  - { dominio: embed-cdn.spotifycdn.com, azienda: Spotify (contenuto incorporato), categoria: funzionalita, nota: "Script e risorse del lettore Spotify incorporato" }
+  - { dominio: "image-cdn-*.spotifycdn.com", azienda: Spotify (contenuto incorporato), categoria: funzionalita, nota: "Immagini del lettore Spotify incorporato (copertine)" }
+  - { dominio: encore.scdn.co, azienda: Spotify (contenuto incorporato), categoria: funzionalita, nota: "Stili e caratteri del lettore Spotify incorporato" }
+  - { dominio: apresolve.spotify.com, azienda: Spotify (contenuto incorporato), categoria: funzionalita, nota: "Scelta del server di Spotify per il lettore incorporato" }
+  # Telemetria del lettore: invio di eventi (gabo-receiver-service, melody); gli altri percorsi di spclient sono contenuto
+  - { dominio: "*-spclient.spotify.com", azienda: Spotify (contenuto incorporato), categoria: statistica, percorsi: ["^/(gabo-receiver-service|melody|event-service)/"], nota: "Telemetria del lettore Spotify: invio di eventi di utilizzo al fornitore" }
+  - { dominio: "*-spclient.spotify.com", azienda: Spotify (contenuto incorporato), categoria: funzionalita, nota: "Servizio del lettore Spotify incorporato (metadati e contenuti)" }
+  # --- Monitoraggio di errori e prestazioni ---
+  - { dominio: ingest.sentry.io, azienda: Sentry, categoria: statistica, nota: "Monitoraggio di errori e prestazioni (Sentry); può trasportare anche la registrazione della sessione (Session Replay)" }
+  - { dominio: ingest.us.sentry.io, azienda: Sentry, categoria: statistica, nota: "Monitoraggio di errori e prestazioni (Sentry); può trasportare anche la registrazione della sessione (Session Replay)" }
+  - { dominio: ingest.de.sentry.io, azienda: Sentry, categoria: statistica, nota: "Monitoraggio di errori e prestazioni (Sentry); può trasportare anche la registrazione della sessione (Session Replay)" }
+  # --- Avatar e risorse dei temi servite dai server degli sviluppatori ---
+  - { dominio: gravatar.com, azienda: Gravatar (Automattic), categoria: funzionalita, nota: "Avatar Gravatar incorporato: l'URL contiene l'hash dell'email dell'autore o del commentatore; il visitatore invia IP e referrer ad Automattic" }
+  - { dominio: themes.muffingroup.com, azienda: BeTheme (Muffin Group), categoria: funzionalita, nota: "Risorsa del tema servita dal server dello sviluppatore del tema: trasmette IP e referrer allo sviluppatore del tema" }
 
   # --- Widget e contenuti incorporati ---
   - { dominio: acsbapp.com, azienda: accessiBe, categoria: funzionalita, nota: "Widget di accessibilità di terza parte (accessiBe): da valutare se raccoglie dati" }

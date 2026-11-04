@@ -333,11 +333,12 @@ export function canonicalVendor(name: string): string {
 }
 export const cookieVendor = (c: CookieRecord) => canonicalVendor(c.classification.platform ?? c.domain);
 /**
- * Fornitore di una richiesta: quello del dominio, oppure il contenuto incorporato da cui parte se è dello stesso
- * fornitore (es. il log di Google inviato dal widget di Google Calendar → "Google Calendar (contenuti incorporati)").
+ * Fornitore di una richiesta: il contenuto incorporato che riunisce tutto ciò che parte dal suo documento (es.
+ * "Spotify (contenuto incorporato)", anche per Sentry caricato dal lettore); altrimenti quello del dominio, oppure il
+ * contenuto incorporato da cui parte se è dello stesso fornitore (es. il log di Google inviato dal widget di Google Calendar → "Google Calendar (contenuti incorporati)").
  */
 export const requestVendor = (r: Req) =>
-  canonicalVendor(r.embed && r.embed !== r.tracker!.company && canonicalVendor(r.embed).startsWith(canonicalVendor(r.tracker!.company)) ? r.embed : r.tracker!.company);
+  r.embedGroup && r.embed ? r.embed : canonicalVendor(r.embed && r.embed !== r.tracker!.company && canonicalVendor(r.embed).startsWith(canonicalVendor(r.tracker!.company)) ? r.embed : r.tracker!.company);
 
 /** Riga dei dettagli: da quale contenuto incorporato partono le richieste (documento dell'iframe). */
 export function embedLine(rs: Req[]): string | null {

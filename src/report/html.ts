@@ -357,7 +357,9 @@ ${[...third]
   .sort((a, b) => Number(NON_TECHNICAL.has(b[1][0].q.tracker?.category ?? 'sconosciuta')) - Number(NON_TECHNICAL.has(a[1][0].q.tracker?.category ?? 'sconosciuta')) || a[0].localeCompare(b[0]))
   .map(([h, list]) => {
     const t = list[0].q.tracker;
-    return `<tr><td>${esc(h)}</td><td>${esc(t?.company ?? '—')}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${rejected ? list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length : 'n/a'}</td></tr>`;
+    // fornitore caricato da un contenuto incorporato che lo riunisce (es. "Sentry, caricato da Spotify (contenuto incorporato)")
+    const by = list.find((x) => x.q.embedGroup && x.q.embed && x.q.embed !== t?.company)?.q.embed;
+    return `<tr><td>${esc(h)}</td><td>${esc(t?.company ?? '—')}${by ? `<br><span class="muted">caricato da ${esc(by)}</span>` : ''}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${rejected ? list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length : 'n/a'}</td></tr>`;
   })
   .join('')}</table>${naNote}`);
   }

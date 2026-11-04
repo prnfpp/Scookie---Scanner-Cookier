@@ -89,8 +89,11 @@ function params(u: string): URLSearchParams {
  */
 export function attributeToEmbeds(sessions: SessionResult[], classifier: Classifier): void {
   for (const s of sessions) {
+    /** Origini dei documenti incorporati che riuniscono tutto ciò che parte da loro, con il nome del contenuto. */
+    const grouping = new Map<string, string>();
     for (const r of s.requests) {
       delete r.embed;
+      delete r.embedGroup;
       if (!r.frameUrl) continue;
       let u: URL;
       try {
@@ -99,7 +102,39 @@ export function attributeToEmbeds(sessions: SessionResult[], classifier: Classif
         continue;
       }
       const t = classifier.classifyHost(u.hostname, u.pathname, u.search);
-      if (t) r.embed = t.azienda;
+      if (!t) continue;
+      r.embed = t.azienda;
+      if (!t.raggruppa) continue;
+      grouping.set(u.origin, t.azienda);
+      r.embedGroup = true;
+      if (!r.tracker) {
+        // risorsa di un dominio non in elenco caricata dal contenuto incorporato: è parte di quel contenuto
+        r.tracker = { company: t.azienda, category: 'funzionalita' };
+        r.purpose = `Risorsa caricata da ${t.azienda}`;
+      } else if (r.tracker.company !== t.azienda) {
+        const note = classifier.classifyHost(r.host, safePath(r.url))?.nota;
+        r.purpose = `${r.tracker.company}${note ? ` (${note})` : ''}, caricato da ${t.azienda}`;
+      }
     }
+    // Storage scritto dentro il documento incorporato: appartiene al contenuto, anche se il nome è di un altro
+    // fornitore (es. la registrazione della sessione di Sentry nel lettore Spotify)
+    for (const st of s.storage) {
+      const embed = grouping.get(st.origin);
+      if (!embed || st.classification.platform === embed) continue;
+      const by = st.classification.platform;
+      st.classification = {
+        ...st.classification,
+        platform: embed,
+        note: `${by ? `${by}, caricato da ${embed}` : `scritto da ${embed}`}${st.classification.note ? `: ${st.classification.note}` : ''}`,
+      };
+    }
+  }
+}
+
+function safePath(u: string): string {
+  try {
+    return new URL(u).pathname;
+  } catch {
+    return '/';
   }
 }

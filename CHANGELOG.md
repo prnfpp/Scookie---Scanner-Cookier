@@ -45,6 +45,22 @@ Ogni voce vale per qualsiasi sito; i fatti restano rilievi, cambia come sono des
   `scenari.saltaSenzaBanner` (predefinita `true`) nello schema, in `config/esempio.yaml` e nell'interfaccia (Opzioni
   → avanzate); l'avanzamento toglie dal totale le sessioni saltate e la stima della durata indica quanto dura un
   audit di siti senza banner. Su un sito senza banner l'audit passa da circa 6 × 3 sessioni a quelle "nessuna azione".
+- **Fix 5 — Spotify, Sentry, Gravatar e risorse dei temi classificati.** In `data/trackers.yaml`: lettore Spotify
+  incorporato (`open.spotify.com/embed…`, `embed-cdn.spotifycdn.com`, `image-cdn-*.spotifycdn.com`, `encore.scdn.co`,
+  `apresolve.spotify.com`, servizi `*-spclient.spotify.com`) come "Spotify (contenuto incorporato)"; la telemetria del
+  lettore (`*-spclient.spotify.com` con percorsi `/gabo-receiver-service/`, `/melody/`, `/event-service/`) come
+  statistica; Sentry (`ingest.sentry.io`, `ingest.us.sentry.io`, `ingest.de.sentry.io`) come monitoraggio di errori e
+  prestazioni; Gravatar (Automattic) con la nota sull'hash dell'email dell'autore; `themes.muffingroup.com` come risorsa
+  del tema servita dal server dello sviluppatore. I domini delle voci accettano un modello con `*`. In
+  `data/cookies.yaml`: `sp_t` (identificativo del dispositivo e del visitatore, circa 1 anno) come marketing,
+  `sp_landing` come statistica da valutare, `sentryReplaySession` come registrazione delle sessioni; l'elenco curato
+  prevale su Open Cookie Database e la fonte si legge "elenco curato Scookie". Nuova opzione `raggruppa` delle voci:
+  tutto ciò che parte dal documento di un contenuto incorporato (richieste, anche verso altri fornitori, e storage) è
+  riunito sotto di lui, con "Sentry, caricato da Spotify (contenuto incorporato)" nella natura delle richieste e
+  nell'inventario, come per il widget di Google Calendar. Così un lettore che, senza banner o prima della scelta,
+  scrive un identificativo o invia telemetria e Session Replay produce i rilievi `cookie-prima-del-consenso` e
+  `richiesta-tracker-prima-del-consenso` con la stessa priorità di un video YouTube non bloccato, non
+  `elementi-non-classificati`. Le classificazioni si riapplicano con `rigenera`.
 
 - **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
   o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del

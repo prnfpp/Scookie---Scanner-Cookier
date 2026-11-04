@@ -122,6 +122,11 @@ export interface RequestRecord {
   frameUrl?: string;
   /** Contenuto incorporato da cui parte la richiesta, se riconosciuto (es. il widget di prenotazione di Google Calendar). */
   embed?: string;
+  /**
+   * Il contenuto incorporato riunisce tutto ciò che parte dal suo documento (voce con "raggruppa" nell'elenco dei
+   * domini): la richiesta appartiene a `embed` anche se va a un altro fornitore (es. Sentry caricato dal lettore).
+   */
+  embedGroup?: boolean;
   status: number | null;
   tracker?: { company: string; category: Category };
   /** Parametri di consenso Google (gcs, gcd, npa) se presenti. */

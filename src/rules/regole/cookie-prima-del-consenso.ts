@@ -1,5 +1,5 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { CATEGORY_LABEL, fmtDate, groupBy, hostsSummary, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, stageLabel, stageWhen, strongestRequest, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
+import { CATEGORY_LABEL, fmtDate, groupBy, hostsSummary, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, stageLabel, stageWhen, strongestRequest, requestVendor, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Cookie o storage non tecnici scritti prima di qualsiasi scelta sul banner. */
@@ -63,7 +63,7 @@ export const cookiePrimaDelConsenso: Rule = {
       // anche la raccolta, non solo l'identificativo memorizzato
       const vendor = first.cls.platform;
       const sent = vendor
-        ? sessions.filter((x) => x.site === first.s.site).flatMap((x) => x.requests.filter((r) => r.phase === 'prima' && r.tracker?.company === vendor && NON_TECHNICAL.has(r.tracker.category) && requestEvidenceLevel([r]) === 'raccolta'))
+        ? sessions.filter((x) => x.site === first.s.site).flatMap((x) => x.requests.filter((r) => r.phase === 'prima' && !!r.tracker && requestVendor(r) === vendor && NON_TECHNICAL.has(r.tracker.category) && requestEvidenceLevel([r]) === 'raccolta'))
         : [];
       const sentSample = sent.length ? strongestRequest(sent) : null;
       out.push({

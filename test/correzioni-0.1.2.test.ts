@@ -182,3 +182,68 @@ test('fix 4: avanzamento: le sessioni saltate escono dal totale', async () => {
   assert.equal(seen.at(-1)!.total, 3);
   assert.equal(seen.at(-1)!.sites[0].total, 3);
 });
+
+test('fix 5: classificazione di Spotify, Sentry, Gravatar e risorse dei temi; elenco curato prima di Open Cookie Database', async () => {
+  const { Classifier } = await import('../src/classify/classifier.js');
+  const c = new Classifier();
+  const emb = 'Spotify (contenuto incorporato)';
+  assert.equal(c.classifyHost('open.spotify.com', '/embed/show/abc')?.azienda, emb);
+  assert.equal(c.classifyHost('open.spotify.com', '/embed/show/abc')?.raggruppa, true);
+  for (const h of ['embed-cdn.spotifycdn.com', 'image-cdn-ak.spotifycdn.com', 'image-cdn-fa.spotifycdn.com', 'encore.scdn.co', 'apresolve.spotify.com']) {
+    const t = c.classifyHost(h, '/x');
+    assert.equal(t?.azienda, emb, h);
+    assert.equal(t?.categoria, 'funzionalita', h);
+  }
+  assert.equal(c.classifyHost('gew4-spclient.spotify.com', '/gabo-receiver-service/public/v3/events')?.categoria, 'statistica');
+  assert.equal(c.classifyHost('gae2-spclient.spotify.com', '/melody/v1/msg/batch')?.categoria, 'statistica');
+  assert.equal(c.classifyHost('gew4-spclient.spotify.com', '/metadata/4/show/x')?.categoria, 'funzionalita');
+  // il modello non vale per nomi diversi
+  assert.equal(c.classifyHost('image-cdn.esempio.it', '/x'), undefined);
+  for (const h of ['o22381.ingest.sentry.io', 'o22381.ingest.us.sentry.io', 'o1.ingest.de.sentry.io']) assert.equal(c.classifyHost(h, '/api/1/envelope/')?.azienda, 'Sentry', h);
+  const g = c.classifyHost('secure.gravatar.com', '/avatar/abc')!;
+  assert.equal(g.azienda, 'Gravatar (Automattic)');
+  assert.match(g.nota ?? '', /hash dell'email dell'autore o del commentatore; il visitatore invia IP e referrer ad Automattic/);
+  const th = c.classifyHost('themes.muffingroup.com', '/be/business5/wp-content/uploads/x.svg')!;
+  assert.equal(th.categoria, 'funzionalita');
+  assert.match(th.nota ?? '', /trasmette IP e referrer allo sviluppatore del tema/);
+  const sp = c.classifyName('sp_t', '.spotify.com');
+  assert.equal(sp.category, 'marketing');
+  assert.equal(sp.platform, emb);
+  assert.equal(sp.source, 'elenco curato Scookie');
+  assert.notEqual(c.classifyName('sp_landing', '.spotify.com').category, 'funzionalita');
+  assert.equal(c.classifyName('sentryReplaySession', 'open.spotify.com').category, 'registrazione-sessioni');
+});
+
+test('fix 5: embed Spotify: identificativo, telemetria e Session Replay di Sentry in un rilievo con la priorità di YouTube', async () => {
+  const fs = of(SPOTIFY);
+  const emb = 'Spotify (contenuto incorporato)';
+  const ck = fs.find((f) => f.ruleId === 'cookie-prima-del-consenso' && (f.subjects ?? []).includes(emb));
+  assert.ok(ck, fs.map((f) => `${f.ruleId}:${f.subjects}`).join(' | '));
+  // stessa regola e priorità dei cookie di un video YouTube non bloccato (config/norme.yaml)
+  const { loadNorms } = await import('../src/rules/engine.js');
+  assert.equal(ck.severity, loadNorms().file.regole?.['cookie-prima-del-consenso']?.gravita);
+  assert.equal(ck.severity, 'alta');
+  assert.equal(ck.evidenceLevel, 'identificativo');
+  assert.ok(ck.details.some((d) => /^cookie "sp_t"/.test(d)), ck.details.join(' | '));
+  assert.ok(ck.details.some((d) => /sentryReplaySession.*Sentry, caricato da Spotify \(contenuto incorporato\)/.test(d)), ck.details.join(' | '));
+  assert.match(ck.description, /solo dopo lo scroll/);
+  assert.match(ck.evidenceExtra ?? '', /dati di navigazione inviati/);
+  const rq = fs.find((f) => f.ruleId === 'richiesta-tracker-prima-del-consenso' && (f.subjects ?? []).includes(emb))!;
+  assert.ok(rq, 'telemetria del lettore');
+  assert.equal(rq.severity, 'alta');
+  assert.ok(rq.details.some((d) => /Natura delle richieste: Sentry .*caricato da Spotify \(contenuto incorporato\)/.test(d)), rq.details.join(' | '));
+  assert.match(rq.description, /solo dopo lo scroll/);
+  // nessun dominio di Spotify o Sentry tra i non classificati
+  const unk = fs.find((f) => f.ruleId === 'elementi-non-classificati');
+  if (unk) assert.ok(!unk.details.some((d) => /spotify|scdn|sentry/i.test(d)), unk.details.join(' | '));
+  const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
+  assert.match(html, /Sentry<br><span class="muted">caricato da Spotify \(contenuto incorporato\)<\/span>/);
+});
+
+test('fix 5: Gravatar e risorsa del tema classificati, non tra gli elementi da valutare', () => {
+  const unk = of(MATOMO).find((f) => f.ruleId === 'elementi-non-classificati');
+  if (unk) assert.ok(!unk.details.some((d) => /gravatar|muffingroup/.test(d)), unk.details.join(' | '));
+  const reqs = result.sessions.filter((s) => s.site.includes(MATOMO)).flatMap((s) => s.requests);
+  assert.ok(reqs.some((r) => r.host === 'secure.gravatar.com' && r.tracker?.company === 'Gravatar (Automattic)'));
+  assert.ok(reqs.some((r) => r.host === 'themes.muffingroup.com' && r.tracker?.company === 'BeTheme (Muffin Group)'));
+});
