@@ -66,20 +66,52 @@ export function hostsSummary(reqs: RequestRecord[], max = 5): string {
 }
 
 /**
+ * Siti senza alcun meccanismo di consenso: in nessuna sessione valida è comparso un banner né è stato riconosciuto un
+ * gestore del consenso. Lo stesso criterio della regola "banner-assente".
+ */
+export function noBannerSites(sessions: SessionResult[]): Set<string> {
+  const out = new Set<string>();
+  for (const [site, list] of groupBy(sessions, (s) => s.site)) {
+    if (!list.some((s) => s.interaction.bannerVisibleBefore || s.interaction.detectedCmps.length)) out.add(site);
+  }
+  return out;
+}
+
+/** Momento rispetto al consenso: "prima di qualsiasi scelta sul banner" oppure, se il banner non c'è, "senza alcun meccanismo". */
+export const NO_BANNER = 'senza alcun meccanismo di consenso (nessun banner rilevato)';
+export const beforeChoice = (noBanner: boolean) => (noBanner ? NO_BANNER : 'prima di qualsiasi scelta sul banner');
+
+/**
  * Descrive quando compaiono gli elementi di una criticità "prima della scelta":
  * già al caricamento oppure solo dopo lo scroll (che non è una scelta sul banner).
+ * Senza banner nel sito la scelta non esiste: si dice che manca qualsiasi meccanismo di consenso.
  */
-export function stageWhen(stages: Stage[]): { when: string; onlyAfterScroll: boolean } {
+export function stageWhen(stages: Stage[], noBanner = false): { when: string; onlyAfterScroll: boolean } {
   const onlyAfterScroll = stages.length > 0 && stages.every((s) => s === 'scroll');
   return {
     onlyAfterScroll,
     when: onlyAfterScroll
-      ? 'prima di qualsiasi scelta sul banner, ma solo dopo lo scroll della pagina e il movimento del mouse'
-      : 'prima di qualsiasi scelta sul banner, già al caricamento della pagina',
+      ? `${beforeChoice(noBanner)}, ma solo dopo lo scroll della pagina e il movimento del mouse`
+      : `${beforeChoice(noBanner)}, già al caricamento della pagina`,
   };
 }
 
-export const stageLabel = (s: Stage) => STAGE_LABEL[s];
+/**
+ * Riga "Scenari" di un rilievo: solo gli scenari eseguiti davvero. Uno scenario con scelta in cui la scelta non c'è
+ * stata (nessun banner, comando non trovato) ha osservato soltanto lo stato senza scelta: si elenca a parte, come non
+ * eseguito, con il motivo.
+ */
+export function scenariosLine(sessions: SessionResult[], noBanner: boolean): string {
+  const done = [...new Set(sessions.filter(executedScenario).map((s) => s.scenario))];
+  const skipped = [...new Set(sessions.filter((s) => !executedScenario(s)).map((s) => s.scenario))].filter((x) => !done.includes(x));
+  const why = noBanner ? 'nessun banner' : 'scelta non eseguita';
+  return `Scenari: ${done.join(', ') || 'nessuno'}${skipped.length ? `; ${skipped.length === 1 ? `${skipped[0]} non eseguito` : `non eseguiti: ${skipped.join(', ')}`} (${why})` : ''}`;
+}
+
+/** Scenario eseguito: "nessuna azione", oppure uno scenario con scelta in cui la scelta è avvenuta. */
+export const executedScenario = (s: SessionResult) => s.scenario === 'nessuna-azione' || s.interaction.outcome === 'eseguito';
+
+export const stageLabel = (s: Stage, noBanner = false) => (noBanner && s === 'scroll' ? 'dopo lo scroll della pagina e il movimento del mouse, in assenza di banner' : STAGE_LABEL[s]);
 
 /** "1 richiesta", "3 richieste". */
 export const nReq = (n: number) => `${n} ${n === 1 ? 'richiesta' : 'richieste'}`;

@@ -1,7 +1,7 @@
 import type { ExitInfo } from '../browser/exit.js';
 import type { AuditConfig } from '../config/schema.js';
 import type { DiscoveryResult } from '../discovery/discover.js';
-import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy, requestEvidenceLevel } from '../rules/helpers.js';
+import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy, noBannerSites, requestEvidenceLevel } from '../rules/helpers.js';
 import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } from '../types.js';
 import { NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
@@ -294,9 +294,13 @@ ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.
     })
     .join('')}</table>`);
   const declaredStatus = new Map(r.comparison.map((c) => [`${c.site}|${c.name}|${c.domain}`, c]));
+  // Siti senza alcun meccanismo di consenso: le colonne "prima della scelta" diventano "senza banner"
+  const noBanner = noBannerSites(sessions.filter((s) => !s.blocked && !s.unreachable));
   for (const site of sites) {
     // L'inventario usa solo le sessioni valide (non intercettate da sistemi anti-bot).
     const ss = sessions.filter((s) => s.site === site && !s.blocked && !s.unreachable);
+    const nb = noBanner.has(site);
+    const beforeCol = nb ? 'Senza banner' : 'Prima della scelta';
     // Dopo il rifiuto: scritto dopo la scelta ("sì"), già presente e riscritto ("rinnovato"), solo rimasto ("ancora presente")
     const AFTER = ['', 'ancora presente', 'rinnovato', 'sì'] as const;
     const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: '' | 'al caricamento' | 'dopo scroll'; afterReject: (typeof AFTER)[number] }>();
@@ -314,7 +318,7 @@ ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.
         cookies.set(k, cur);
       }
     }
-    parts.push(`<h3>${esc(site)} — cookie (${cookies.size})</h3><table><tr><th>Nome</th><th>Dominio</th><th>Parte</th><th>Scadenza</th><th>Categoria (fonte)</th><th>Dichiarato</th><th>Prima della scelta</th><th>Dopo rifiuto</th><th>Scenari</th></tr>
+    parts.push(`<h3>${esc(site)} — cookie (${cookies.size})</h3><table><tr><th>Nome</th><th>Dominio</th><th>Parte</th><th>Scadenza</th><th>Categoria (fonte)</th><th>Dichiarato</th><th>${beforeCol}</th><th>Dopo rifiuto</th><th>Scenari</th></tr>
 ${[...cookies.values()]
   .sort((a, b) => a.c.name.localeCompare(b.c.name))
   .map(({ c, scen, pre, afterReject }) => {
@@ -329,7 +333,7 @@ ${[...cookies.values()]
       (x) => `${x.q.host}${(() => { try { return new URL(x.q.url).pathname; } catch { return ''; } })()}`,
     );
     if (own.size) {
-      parts.push(`<h3>${esc(site)} — strumenti di tracciamento sul dominio del sito (${own.size})</h3><p class="muted">Gli invii di dati (raccolta) e gli script dello strumento sono righe distinte: solo i primi sono raccolte.</p><table><tr><th>Indirizzo</th><th>Tipo</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
+      parts.push(`<h3>${esc(site)} — strumenti di tracciamento sul dominio del sito (${own.size})</h3><p class="muted">Gli invii di dati (raccolta) e gli script dello strumento sono righe distinte: solo i primi sono raccolte.</p><table><tr><th>Indirizzo</th><th>Tipo</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>${beforeCol} (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
 ${[...own]
   .sort((a, b) => a[0].localeCompare(b[0]))
   .map(([h, list]) => {
@@ -343,7 +347,7 @@ ${[...own]
       ss.flatMap((s) => s.requests.filter((q) => q.party === 'terza').map((q) => ({ s, q }))),
       (x) => x.q.host,
     );
-    parts.push(`<h3>${esc(site)} — terze parti contattate (${third.size})</h3><table><tr><th>Host</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
+    parts.push(`<h3>${esc(site)} — terze parti contattate (${third.size})</h3><table><tr><th>Host</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>${beforeCol} (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
 ${[...third]
   .sort((a, b) => Number(NON_TECHNICAL.has(b[1][0].q.tracker?.category ?? 'sconosciuta')) - Number(NON_TECHNICAL.has(a[1][0].q.tracker?.category ?? 'sconosciuta')) || a[0].localeCompare(b[0]))
   .map(([h, list]) => {

@@ -40,7 +40,7 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
     for (const raw of rule.evaluate(ctx)) {
       all.push({
         ruleId: rule.id,
-        ruleTitle: rule.title,
+        ruleTitle: raw.title ?? rule.title,
         // la gravità del caso specifico (es. "informativa") prevale; altrimenti quella della tabella o della regola
         severity: raw.severity ?? override?.gravita ?? rule.defaultSeverity,
         site: raw.site,
@@ -59,6 +59,7 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
           : `${rule.id}|${shortHost(raw.site)}|${raw.scenario ?? ''}|${raw.headline ?? raw.description.slice(0, 160)}`,
         norms: refs,
         groupKey: raw.groupKey,
+        ...(raw.noBanner ? { noBanner: true } : {}),
       } as Omit<Finding, 'id'> & { groupKey?: string });
     }
   }

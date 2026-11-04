@@ -40,6 +40,10 @@ export interface RawFinding {
   groupKey?: string;
   /** Sostituisce la gravità predefinita della regola per questo caso. */
   severity?: Severity;
+  /** Sostituisce il titolo della regola per questo caso (es. richieste di prima parte, sito senza banner). */
+  title?: string;
+  /** Il sito non ha alcun meccanismo di consenso (nessun banner in nessuna sessione valida). */
+  noBanner?: boolean;
 }
 
 /**

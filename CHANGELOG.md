@@ -1,6 +1,18 @@
 # Changelog
 
-## Non rilasciato
+## 0.1.2 — 2026-11-04
+
+Correzioni dopo la verifica manuale di due rilevazioni su siti WordPress senza banner, con Matomo ospitato sul sito.
+Ogni voce vale per qualsiasi sito; i fatti restano rilievi, cambia come sono descritti, classificati e ordinati.
+
+- **Fix 1 — testi coerenti quando il banner non c'è.** Se in nessuna sessione valida del sito compare un banner o un
+  gestore del consenso, rilievi e sintesi dicono "senza alcun meccanismo di consenso (nessun banner rilevato)" invece
+  di "prima di qualsiasi scelta sul banner" (il momento "al caricamento / dopo lo scroll" resta). La riga "Scenari"
+  elenca solo gli scenari eseguiti; quelli con scelta in cui il banner non c'era sono indicati come "non eseguiti
+  (nessun banner)" e non contano nella ripetibilità ("k su N"). Il titolo del rilievo sulle richieste dipende dalla
+  parte: "Richieste di tracciamento di prima parte…", "…di prima e terza parte…", "Richieste a terze parti…", con
+  "in assenza di banner" al posto di "prima della scelta"; la tabella "Rilievi per tipo" usa lo stesso titolo. Le
+  colonne dell'inventario "Prima della scelta" diventano "Senza banner".
 
 - **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
   o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del

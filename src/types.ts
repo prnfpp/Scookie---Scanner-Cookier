@@ -326,4 +326,6 @@ export interface Finding {
   /** Con ripetizioni: in quante esecuzioni dello scenario il fatto si è osservato, su quante. */
   repeats?: Repeats & { perSite?: (Repeats & { host: string })[] };
   norms: NormRef[];
+  /** Il sito non ha alcun meccanismo di consenso (nessun banner in nessuna sessione valida). */
+  noBanner?: boolean;
 }

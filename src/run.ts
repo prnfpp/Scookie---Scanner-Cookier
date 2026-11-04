@@ -73,7 +73,8 @@ export function launchOptions(cfg: AuditConfig, headless = cfg.browser.headless)
   if (cfg.browser.hostResolverRules) {
     // Solo per i test: tutti gli host puntano a 127.0.0.1 e la protezione della rete locale di Chromium
     // bloccherebbe le letture di robots.txt e sitemap fatte dal documento fittizio (vedi discovery).
-    args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`, '--disable-features=LocalNetworkAccessChecks');
+    // I contenuti incorporati di prova sono serviti anche in HTTPS con un certificato autofirmato (test/fixtures/tls).
+    args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`, '--disable-features=LocalNetworkAccessChecks', '--ignore-certificate-errors');
   }
   // Esecuzione di controllo: navigator.webdriver resta false, come in un browser comune
   if (cfg.browser.uaNormale) args.push('--disable-blink-features=AutomationControlled');
@@ -761,7 +762,9 @@ async function finishRun(
       };
       const seen = new Map<string, number>();
       if (reps > 1) {
-        for (let r = 1; r <= reps; r++) for (const k of rawKeys(validSessions.filter((s) => s.repeat === r))) seen.set(k, (seen.get(k) ?? 0) + 1);
+        // Uno scenario con scelta in cui il banner non è comparso non ha eseguito la scelta: non conta tra le ripetizioni
+        const counted = (s: SessionResult) => s.scenario === 'nessuna-azione' || s.interaction.outcome === 'eseguito' || s.interaction.bannerVisibleBefore;
+        for (let r = 1; r <= reps; r++) for (const k of rawKeys(validSessions.filter((s) => s.repeat === r && counted(s)))) seen.set(k, (seen.get(k) ?? 0) + 1);
       } else {
         for (const k of rawKeys(validSessions.filter((s) => !s.manual))) seen.set(k, 1);
       }

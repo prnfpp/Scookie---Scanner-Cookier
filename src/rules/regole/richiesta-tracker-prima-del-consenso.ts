@@ -1,6 +1,20 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { describeGoogleConsent, embedLine, pagesOf, requestBreakdown, requestVendor, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen } from '../helpers.js';
+import { describeGoogleConsent, embedLine, pagesOf, requestBreakdown, requestVendor, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+import type { RequestRecord } from '../../types.js';
+
+/**
+ * Titolo secondo la parte delle richieste: un endpoint sul dominio del sito (es. Matomo ospitato sul sito) non è una
+ * terza parte. Senza banner nel sito "prima della scelta" diventa "in assenza di banner".
+ */
+export function trackerTitle(reqs: RequestRecord[], noBanner: boolean): string {
+  const first = reqs.some((r) => r.party === 'prima');
+  const third = reqs.some((r) => r.party === 'terza');
+  const when = noBanner ? 'in assenza di banner' : 'prima della scelta';
+  if (first && third) return `Richieste di tracciamento di prima e terza parte ${when}`;
+  if (first) return `Richieste di tracciamento di prima parte ${when}`;
+  return `Richieste a terze parti di tracciamento ${when}`;
+}
 
 /** Richieste verso tracker (pubblicità, statistica, registrazione sessioni, social) prima della scelta. */
 export const richiestaTrackerPrimaDelConsenso: Rule = {
@@ -9,6 +23,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
   defaultSeverity: 'alta',
   defaultNorms: ['art122', 'eprivacy53', 'garante2021', 'edpb2_2023'],
   evaluate({ sessions }) {
+    const noBanner = noBannerSites(sessions);
     // Raccolte sul dominio del sito di un fornitore che ha già scritto cookie non tecnici prima della scelta: sono
     // riportate (accorpate) nel rilievo sui cookie dello stesso fornitore, come dati inviati
     const withCookies = new Set(sessions.flatMap((s) => s.cookies.filter((c) => c.phase === 'prima' && NON_TECHNICAL.has(c.classification.category) && c.classification.platform).map((c) => `${s.site}|${c.classification.platform}`)));
@@ -25,7 +40,8 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
       const vendor = requestVendor(r);
       const reqs = group.map((g) => g.r);
       const pages = [...new Set(reqs.map((x) => x.pageUrl))];
-      const { when, onlyAfterScroll } = stageWhen(reqs.map((x) => x.stage));
+      const nb = noBanner.has(s.site);
+      const { when, onlyAfterScroll } = stageWhen(reqs.map((x) => x.stage), nb);
       // Come estratto si mostra la richiesta più significativa: una raccolta di dati, se c'è.
       const level = requestEvidenceLevel(reqs);
       const atLoad = reqs.filter((x) => x.stage === 'caricamento');
@@ -40,6 +56,8 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         site: s.site,
         scenario: s.scenario,
         pageUrl: r.pageUrl,
+        title: trackerTitle(reqs, nb),
+        ...(nb ? { noBanner: true } : {}),
         description:
           `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${nReq(reqs.length)}${requestBreakdown(reqs)} a ${vendor} ` +
           `(${CATEGORY_LABEL[r.tracker!.category]}): ${hostsSummary(reqs)}.` +
@@ -51,8 +69,8 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         groupKey: `${vendor}|${r.tracker!.category}`,
         headline:
           level === 'raccolta'
-            ? `${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) riceve dati di navigazione prima di qualsiasi scelta sul banner${consentShort ? `, ${consentShort}` : ''}`
-            : `Il sito scarica risorse di ${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) prima di qualsiasi scelta sul banner`,
+            ? `${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) riceve dati di navigazione ${beforeChoice(nb)}${consentShort ? `, ${consentShort}` : ''}`
+            : `Il sito scarica risorse di ${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) ${beforeChoice(nb)}`,
         details: [
           `Richiesta di esempio: ${firstAtLoad.method} ${firstAtLoad.url.slice(0, 200)}`,
           ...(consent ? [`Consenso Google dichiarato nella richiesta di esempio: ${consent}${firstAtLoad.fromServiceWorker ? ' (richiesta inviata da un service worker del sito)' : ''}`] : []),
@@ -63,7 +81,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
           ...(embedLine(reqs) ? [embedLine(reqs)!] : []),
           `Pagine: ${pages.slice(0, 10).join(', ')}`,
           ...(pagesOf(reqs).exitLine ? [pagesOf(reqs).exitLine!] : []),
-          `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`,
+          scenariosLine([...new Set(group.map((g) => g.s))], nb),
         ],
         evidence: sessionEvidence(s, onlyAfterScroll ? ['1-banner', '3-fine'] : ['1-banner']),
         requestExcerpt: requestExcerpt(firstAtLoad, s),
