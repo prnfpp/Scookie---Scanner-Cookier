@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Spotify Embed (prova)</title>
+<link rel="stylesheet" href="https://encore.scdn.co:{{HTTPS_PORT}}/embed/encore.css">
+</head>
+<body style="margin:0;background:#121212;color:#fff">
+<img alt="" width="64" height="64" src="https://image-cdn-ak.spotifycdn.com:{{HTTPS_PORT}}/image/ab6765630000ba8a">
+<div>Lettore di podcast incorporato (prova)</div>
+<script src="https://embed-cdn.spotifycdn.com:{{HTTPS_PORT}}/_next/static/embed.js"></script>
+<script>
+  // Come il lettore incorporato reale: identificativo del dispositivo per un anno, pagina d'arrivo, registrazione della
+  // sessione di Sentry, telemetria del fornitore ed eventi a Sentry.
+  document.cookie = 'sp_t=4c9a0d2b7e1f43a8b6c5d4e3f2a1b0c9; max-age=31536000; path=/; domain=.spotify.com; SameSite=None; Secure';
+  document.cookie = 'sp_landing=https%3A%2F%2Fopen.spotify.com%2Fembed%2Fshow; max-age=86400; path=/; domain=.spotify.com; SameSite=None; Secure';
+  sessionStorage.setItem('sentryReplaySession', JSON.stringify({ id: 'f1e2d3c4b5a6', started: Date.now(), sampled: 'session' }));
+  var p = location.port;
+  fetch('https://apresolve.spotify.com:' + p + '/?type=dealer&type=spclient');
+  navigator.sendBeacon('https://gew4-spclient.spotify.com:' + p + '/gabo-receiver-service/public/v3/events', JSON.stringify({ events: [{ name: 'EmbedPlayerLoaded' }] }));
+  navigator.sendBeacon('https://o22381.ingest.us.sentry.io:' + p + '/api/5541339/envelope/?sentry_key=abc&sentry_version=7', '{"type":"replay_event"}');
+</script>
+</body></html>

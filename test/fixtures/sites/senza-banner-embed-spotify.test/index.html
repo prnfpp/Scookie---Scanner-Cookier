@@ -1,0 +1,18 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Blog senza banner con podcast incorporato</title>
+<script>
+  // Matomo ospitato sul sito, senza "disableCookies": la modalità senza cookie è impostata altrove (plugin o server)
+  var _paq = window._paq = window._paq || [];
+  _paq.push(["trackPageView"]);
+  _paq.push(["enableLinkTracking"]);
+  _paq.push(["setTrackerUrl", "/wp-content/plugins/matomo/app/matomo.php"]);
+  _paq.push(["setSiteId", "2"]);
+</script>
+<script async src="/matomo.js"></script>
+</head>
+<body style="font-family:sans-serif">
+<h1>Blog</h1><p>Articoli e podcast.</p>
+<div style="height:9000px">Contenuto lungo (il lettore è molto sotto la piega: con loading="lazy" si carica solo scorrendo).</div>
+<h2>Ascolta il podcast</h2>
+<iframe loading="lazy" title="Podcast" width="100%" height="232" frameborder="0" src="https://open.spotify.com:{{HTTPS_PORT}}/embed/show/4rOoJ6Egrf8K2IrywzwOMk?utm_source=generator"></iframe>
+<footer><p>Copyright © All rights reserved | Blogtimes di Themeansar</p></footer>
+</body></html>

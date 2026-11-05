@@ -1,0 +1,23 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Sito senza banner, Matomo senza cookie</title>
+<style>
+/* Classi del tema che somigliano a quelle di un gestore del consenso (CookieYes usa il prefisso cky-): non sono un banner */
+.mfn-sticky-layout-width, .cky-layout-width { max-width: 1200px; margin: 0 auto; }
+.cky-sticky-header { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #ddd; padding: 8px 16px; }
+</style>
+<script>
+  // Configurazione di Matomo come la genera il plugin WordPress, in modalità senza cookie
+  var _paq = window._paq = window._paq || [];
+  _paq.push(["disableCookies"]);
+  _paq.push(["trackPageView"]);
+  _paq.push(["enableLinkTracking"]);
+  _paq.push(["alwaysUseSendBeacon"]);
+  _paq.push(["setTrackerUrl", "/wp-content/plugins/matomo/app/matomo.php"]);
+  _paq.push(["setSiteId", "1"]);
+</script>
+<script async src="/matomo.js"></script>
+</head>
+<body style="font-family:sans-serif;min-height:2600px">
+<header class="cky-sticky-header mfn-sticky-layout-width cky-layout-width"><nav><a href="/">Home</a> · <a href="/articolo/">Articolo</a></nav></header>
+<main class="cky-layout-width"><h1>Sito senza banner</h1><p>Contenuto di prova.</p></main>
+<footer class="cky-layout-width" style="margin-top:2000px"><a rel="privacy-policy" href="/privacy-policy/">Privacy policy e Cookie Policy</a></footer>
+</body></html>

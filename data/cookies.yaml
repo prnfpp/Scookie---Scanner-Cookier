@@ -45,3 +45,8 @@ cookie:
   # --- Statistica ospitata sul sito ---
   - { nome: "^_pk_(id|ses|ref|cvar|hsr|testcookie)(\\.|$)", fornitore: Matomo, categoria: statistica, nota: "Matomo (già Piwik): identificativo del visitatore e della visita" }
   - { nome: "^(MATOMO_SESSID|mtm_consent|mtm_consent_removed|mtm_cookie_consent)$", fornitore: Matomo, categoria: tecnico, nota: "Matomo: sessione o registrazione della scelta sul consenso" }
+
+  # --- Contenuti incorporati: identificativi del fornitore (prevalgono su Open Cookie Database) ---
+  - { nome: "^sp_t$", dominio: spotify.com, fornitore: Spotify (contenuto incorporato), categoria: marketing, nota: "Identificativo del dispositivo e del visitatore di Spotify (scadenza circa 1 anno), scritto dal lettore incorporato" }
+  - { nome: "^sp_landing$", dominio: spotify.com, fornitore: Spotify (contenuto incorporato), categoria: statistica, nota: "Pagina d'arrivo sul lettore Spotify (scadenza circa 1 giorno): registra informazioni sull'uso del contenuto; da valutare" }
+  - { nome: "^sentryReplaySession$", fornitore: Sentry, categoria: registrazione-sessioni, nota: "Sessione di Sentry Session Replay: registrazione della sessione nel documento che la scrive" }

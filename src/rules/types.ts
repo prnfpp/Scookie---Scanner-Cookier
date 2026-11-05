@@ -40,6 +40,19 @@ export interface RawFinding {
   groupKey?: string;
   /** Sostituisce la gravità predefinita della regola per questo caso. */
   severity?: Severity;
+  /** Sostituisce il titolo della regola per questo caso (es. richieste di prima parte, sito senza banner). */
+  title?: string;
+  /** Il sito non ha alcun meccanismo di consenso (nessun banner in nessuna sessione valida). */
+  noBanner?: boolean;
+  /** Condizioni rilevanti per la valutazione che dal browser non si possono verificare. */
+  unverifiable?: string[];
+  /**
+   * Caso particolare con una gravità propria nella tabella delle norme (es. "primaParteSenzaCookie": chiave
+   * regole.<regola>.primaParteSenzaCookie.gravita); senza la chiave vale la gravità della regola.
+   */
+  severityVariant?: string;
+  /** Precisazione sul fornitore per la sintesi (es. "di prima parte, senza cookie"). */
+  subjectNote?: string;
 }
 
 /**

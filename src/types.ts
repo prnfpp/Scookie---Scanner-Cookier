@@ -10,9 +10,9 @@ export type ScenarioName = 'nessuna-azione' | 'rifiuta' | 'accetta' | 'personali
 export type Phase = 'prima' | 'dopo';
 
 /**
- * Momento preciso in cui un elemento compare:
- * - caricamento: pagina caricata, nessuna interazione dell'utente;
- * - scroll: dopo lo scroll della pagina (con mouse e rotella), senza alcuna scelta sul banner;
+ * Momento preciso in cui un elemento compare, rispetto alla pagina in cui avviene:
+ * - caricamento: prima della prima interazione simulata (mouse o rotella) su quella pagina;
+ * - scroll: dopo la prima interazione simulata su quella pagina, senza alcuna scelta sul banner;
  * - scelta: dopo il click sul banner.
  * Separare lo scroll serve per i banner che (illegittimamente) lo trattano come consenso.
  */
@@ -122,6 +122,11 @@ export interface RequestRecord {
   frameUrl?: string;
   /** Contenuto incorporato da cui parte la richiesta, se riconosciuto (es. il widget di prenotazione di Google Calendar). */
   embed?: string;
+  /**
+   * Il contenuto incorporato riunisce tutto ciò che parte dal suo documento (voce con "raggruppa" nell'elenco dei
+   * domini): la richiesta appartiene a `embed` anche se va a un altro fornitore (es. Sentry caricato dal lettore).
+   */
+  embedGroup?: boolean;
   status: number | null;
   tracker?: { company: string; category: Category };
   /** Parametri di consenso Google (gcs, gcd, npa) se presenti. */
@@ -132,6 +137,17 @@ export interface RequestRecord {
   serverSide?: string;
   /** Motivo del fallimento, se la richiesta non ha ricevuto risposta (es. net::ERR_TIMED_OUT). */
   failure?: string;
+  /** Indice della visita di pagina nella sessione (SessionResult.visits). Assente nelle rilevazioni precedenti alla 0.1.2. */
+  visit?: number;
+}
+
+export interface StatsProbe {
+  url: string;
+  /** Comandi _paq della pagina (es. "disableCookies", "trackPageView"). */
+  paq: string[];
+  hasCookies: boolean | null;
+  consentRequired?: boolean | null;
+  source: 'pagina' | 'har';
 }
 
 export type ChoiceLayer = 'primo-livello' | 'secondo-livello' | 'chiusura-x';
@@ -226,6 +242,17 @@ export interface SessionResult {
   errors: string[];
   /** Se la sessione è la ripetizione di un'altra, l'id di quella scartata. */
   retryOf?: string;
+  /**
+   * Visite di pagina nell'ordine: indirizzo, inizio del caricamento e prima interazione simulata (mouse o rotella),
+   * se c'è stata. Assente nelle rilevazioni precedenti alla 0.1.2.
+   */
+  visits?: { url: string; at: string; interactionAt?: string }[];
+  /**
+   * Configurazione dello strumento di statistica ospitato sul sito (Matomo/Piwik) letta a fine pagina: comandi _paq
+   * scritti nella pagina e hasCookies() del tracker. Prova accessoria dello stato dei cookie. Nelle rilevazioni
+   * precedenti alla 0.1.2 si ricava, se possibile, dai documenti nel file HAR (source "har").
+   */
+  statsProbe?: StatsProbe[];
   /** Scenario "revoca": come è stato revocato il consenso e quali cookie non tecnici restavano nel browser. */
   revocation?: { outcome: 'eseguita' | 'non-trovata'; how: string; via: 'link' | 'pagina' | 'api' | null; remaining: string[] };
   /** Numero della ripetizione dello scenario (con scenari.ripetizioni > 1). */
@@ -266,7 +293,34 @@ export interface DeclaredSet {
   source: string | null;
   items: DeclaredItem[];
   note?: string;
+  /** Ricerca della pagina di informativa: pagina usata, come è stata trovata, tentativi con lo stato HTTP. */
+  policy?: PolicySearch;
+  /** Informativa senza tabelle leggibili: dichiarazione testuale (fornitori citati, affermazioni sui cookie). */
+  textual?: TextualDeclaration;
 }
+
+export interface PolicySearch {
+  /** Pagina usata (risposta 200 sullo stesso sito), oppure null se nessuna è raggiungibile. */
+  url: string | null;
+  /** Come è stata trovata (configurazione, link nel banner, link nel piè di pagina, rel="privacy-policy", percorso comune…). */
+  how: string | null;
+  tried: { url: string; how: string; status: number | null; note?: string }[];
+  /** Screenshot del piè di pagina della pagina iniziale. */
+  footerShot?: string;
+}
+
+export interface TextualDeclaration {
+  url: string;
+  how: string;
+  /** Titolo o inizio della sezione sui cookie usata, se trovata. */
+  section: string | null;
+  /** Fornitori e strumenti noti nominati nel testo, con una breve citazione. */
+  vendors: { name: string; quote: string }[];
+  /** Affermazioni tipiche sui cookie (es. "solo cookie tecnici"), con una breve citazione. */
+  claims: { claim: TextualClaim; quote: string }[];
+}
+
+export type TextualClaim = 'solo-tecnici' | 'no-profilazione' | 'no-tracciamento' | 'terze-parti';
 
 export interface ComparisonRow {
   site: string;
@@ -326,4 +380,10 @@ export interface Finding {
   /** Con ripetizioni: in quante esecuzioni dello scenario il fatto si è osservato, su quante. */
   repeats?: Repeats & { perSite?: (Repeats & { host: string })[] };
   norms: NormRef[];
+  /** Il sito non ha alcun meccanismo di consenso (nessun banner in nessuna sessione valida). */
+  noBanner?: boolean;
+  /** Condizioni rilevanti per la valutazione che dal browser non si possono verificare. */
+  unverifiable?: string[];
+  /** Precisazione sul fornitore per la sintesi (es. "di prima parte, senza cookie"). */
+  subjectNote?: string;
 }

@@ -10,6 +10,8 @@ import type { AuditConfig } from './config/schema.js';
 import { compareDeclared } from './declared/compare.js';
 import { loadDeclaredFile } from './declared/declared.js';
 import { readPolicyDeclared } from './declared/policy.js';
+import { findPolicy } from './declared/find.js';
+import { CLAIM_LABEL, extractTextual } from './declared/textual.js';
 import { discoverSite, type DiscoveryResult } from './discovery/discover.js';
 import { detectExit, type ExitInfo } from './browser/exit.js';
 import { runSession, type SessionPlan } from './browser/session.js';
@@ -27,6 +29,7 @@ import type { RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
 import { attributeByHost, checkDeclared } from './report/attribution.js';
 import { attributeToEmbeds, enrichRequests, reclassify } from './classify/enrich.js';
+import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode, probesFromHar } from './classify/firstparty.js';
 import { reattributeFromHar } from './browser/har-frames.js';
 import { nWords, plural } from './util/text.js';
 
@@ -73,7 +76,8 @@ export function launchOptions(cfg: AuditConfig, headless = cfg.browser.headless)
   if (cfg.browser.hostResolverRules) {
     // Solo per i test: tutti gli host puntano a 127.0.0.1 e la protezione della rete locale di Chromium
     // bloccherebbe le letture di robots.txt e sitemap fatte dal documento fittizio (vedi discovery).
-    args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`, '--disable-features=LocalNetworkAccessChecks');
+    // I contenuti incorporati di prova sono serviti anche in HTTPS con un certificato autofirmato (test/fixtures/tls).
+    args.push(`--host-resolver-rules=${cfg.browser.hostResolverRules}`, '--disable-features=LocalNetworkAccessChecks', '--ignore-certificate-errors');
   }
   // Esecuzione di controllo: navigator.webdriver resta false, come in un browser comune
   if (cfg.browser.uaNormale) args.push('--disable-blink-features=AutomationControlled');
@@ -548,7 +552,47 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       const plans = job.plans.filter((p) => !p.manual);
       log(`\n[${site.url}] sessioni automatiche…`);
       const siteResults: SessionResult[] = [];
-      for (const plan of plans) siteResults.push(await exec(job, plan));
+      // Prima tutte le sessioni "nessuna azione": dicono se il sito ha un banner. Senza banner in nessuna di esse (e
+      // con l'opzione attiva) gli scenari con scelta non si eseguono: ripeterebbero "nessuna azione" su più pagine.
+      const valid0 = (s: SessionResult) => !s.blocked && !s.unreachable;
+      const hasBanner = (s: SessionResult) => s.interaction.bannerVisibleBefore || s.interaction.detectedCmps.length > 0;
+      const results = new Map<SessionPlan, SessionResult>();
+      for (const plan of plans.filter((p) => p.scenario === 'nessuna-azione')) results.set(plan, await exec(job, plan));
+      const choicePlans = plans.filter((p) => p.scenario !== 'nessuna-azione');
+      if (config.scenari.saltaSenzaBanner && choicePlans.length) {
+        let base = [...results.values()].filter(valid0);
+        // Una sola sessione valida senza banner: se ne fa una di conferma, perché lo script del gestore può non essersi
+        // caricato per un errore di rete (in quel caso la sessione senza banner è sostituita, come le altre ripetizioni)
+        if (base.length === 1 && !hasBanner(base[0])) {
+          const first = base[0];
+          const plan = [...results].find(([, r]) => r === first)![0];
+          log(`    nessun banner nell'unica sessione "nessuna azione": sessione di conferma di ${first.id}`);
+          progress.extra(d.site);
+          const confirm = await exec(job, { ...plan, id: `${plan.id}_conferma` });
+          if (hasBanner(confirm) && valid0(confirm)) {
+            confirm.retryOf = first.id;
+            confirm.errors.unshift(`Ripetizione di ${first.id}: in quella sessione il banner non è comparso${failedHosts(first) ? `; richieste senza risposta verso ${failedHosts(first)}` : ''}.`);
+            discarded.push(first);
+            results.set(plan, confirm);
+          } else {
+            // conferma senza banner: è una sessione valida in più, con le sue prove
+            confirm.errors.unshift(`Sessione di conferma di ${first.id}: nessun banner, come nella prima; gli scenari con scelta non si eseguono.`);
+            siteResults.push(confirm);
+          }
+          base = [...results.values(), ...siteResults].filter(valid0);
+        }
+        // un banner visto nelle navigazioni manuali dello stesso sito basta per eseguire tutti gli scenari
+        if (base.length && !base.some(hasBanner) && !job.manual.some((s) => valid0(s) && hasBanner(s))) {
+          const skipped = [...new Set(choicePlans.map((p) => p.scenario))];
+          d.skippedChoice = { scenarios: skipped, sessions: base.length };
+          log(`    nessun banner in ${nWords(base.length, 'sessione', 'sessioni')} "nessuna azione": scenari con scelta non eseguiti (${skipped.join(', ')})`);
+          progress.skip(d.site, choicePlans.length);
+          choicePlans.length = 0;
+        }
+      }
+      for (const plan of choicePlans) results.set(plan, await exec(job, plan));
+      // nell'ordine del piano (le sessioni di conferma senza banner in coda)
+      siteResults.unshift(...plans.filter((p) => results.has(p)).map((p) => results.get(p)!));
 
       // Sessioni fallite per mancanza di connessione (es. computer in stop): si aspetta il ripristino e si ripetono una volta.
       // La sessione fallita resta tra i dati scartati.
@@ -560,7 +604,8 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
         const back = await waitOnline(browser, site.url, log);
         progress.wait(null);
         if (!back) break;
-        const plan = plans.find((p) => p.id === first.id)!;
+        const plan = plans.find((p) => p.id === first.id);
+        if (!plan) continue;
         progress.extra(d.site);
         const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta` });
         retry.retryOf = first.id;
@@ -582,7 +627,8 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
           const first = siteResults[k];
           if (first.interaction.bannerVisibleBefore || !valid(first)) continue;
           retries++;
-          const plan = plans.find((p) => p.id === first.id.replace(/_ripetuta$/, ''))!;
+          const plan = plans.find((p) => p.id === first.id.replace(/_(ripetuta|conferma)$/, ''));
+          if (!plan) continue;
           log(`    banner assente solo in questa sessione: ripetizione di ${first.id}`);
           progress.extra(d.site);
           const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta${first.retryOf ? '2' : ''}` });
@@ -603,15 +649,50 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       if (unreachableCount) log(`    ${nWords(unreachableCount, 'sessione', 'sessioni')} su ${siteResults.length} senza accesso al sito: ${plural(unreachableCount, 'esclusa', 'escluse')} dalle regole`);
       sessions.push(...siteResults);
       if (!decl.source) {
-        // Ultima fonte: le tabelle della cookie policy (indirizzo configurato, link nel banner, pagina "cookie" scoperta).
+        // Ultima fonte: la cookie policy. Indirizzo configurato; altrimenti la ricerca: link nel banner, pagina "cookie"
+        // scoperta, link nella pagina (piè di pagina, menu, rel="privacy-policy"), percorsi comuni, URL della sitemap,
+        // con lo stato HTTP reale. Si leggono le tabelle; senza tabelle, la dichiarazione testuale.
         const fromBanner = siteResults.find((s) => s.bannerAnalysis?.policyLink?.href)?.bannerAnalysis?.policyLink?.href;
         const fromSample = d.sample.find((p) => /cookie/i.test(new URL(p.url).pathname))?.url;
-        const policyUrl = site.cookiePolicy ?? (fromBanner && /cookie/i.test(fromBanner) ? fromBanner : undefined) ?? fromSample ?? fromBanner;
+        let policyUrl: string | undefined;
+        let how = '';
+        if (site.cookiePolicy) {
+          policyUrl = new URL(site.cookiePolicy, site.url).toString();
+          how = 'indirizzo nella configurazione';
+          decl.policy = { url: policyUrl, how, tried: [{ url: policyUrl, how, status: null, note: 'non verificato: indicato nella configurazione' }] };
+        } else if (siteResults.some((s) => !s.blocked && !s.unreachable)) {
+          const known = [
+            ...(fromBanner && /cookie/i.test(fromBanner) ? [{ url: new URL(fromBanner, site.url).toString(), how: 'link nel banner' }] : []),
+            ...(fromSample ? [{ url: fromSample, how: 'pagina "cookie" tra quelle scoperte' }] : []),
+            ...(fromBanner ? [{ url: new URL(fromBanner, site.url).toString(), how: 'link nel banner' }] : []),
+          ];
+          log('  ricerca della cookie policy o dell\'informativa…');
+          const found = await findPolicy(browser, {
+            site: d.site,
+            known,
+            sitemap: d.policyPages ?? [],
+            userAgent,
+            locale: config.browser.locale,
+            runDir,
+            shotName: slug(new URL(d.site).hostname, 40),
+          }).catch((e: Error) => {
+            log(`    ricerca non riuscita: ${e.message.split('\n')[0]}`);
+            return null;
+          });
+          if (found) {
+            decl.policy = found;
+            if (found.url) {
+              policyUrl = found.url;
+              how = found.how ?? '';
+              log(`    trovata: ${found.url} (${how})`);
+            } else log(`    nessuna pagina di informativa raggiungibile (${found.tried.length} indirizzi provati)`);
+          }
+        }
         if (policyUrl) {
           log(`  lettura dell'elenco dichiarato dalla cookie policy: ${policyUrl}`);
-          const { items, skipped } = await readPolicyDeclared(browser, new URL(policyUrl, site.url).toString(), userAgent, config.browser.locale).catch((e: Error) => {
+          const { items, skipped, text } = await readPolicyDeclared(browser, policyUrl, userAgent, config.browser.locale).catch((e: Error) => {
             log(`    non riuscita: ${e.message.split('\n')[0]}`);
-            return { items: [], skipped: [] as string[] };
+            return { items: [], skipped: [] as string[], text: undefined };
           });
           if (items.length) {
             decl.items = items;
@@ -619,10 +700,16 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
             decl.note =
               'Elenco ricavato dalle tabelle della cookie policy: va verificato a vista, la struttura delle pagine varia.' +
               (skipped.length ? ` ${skipped.length} righe non lette perché la prima colonna non contiene un nome di cookie (es. "${skipped.slice(0, 3).join('", "')}"): per un confronto completo fornire l'elenco a mano (file dei dichiarati).` : '');
+          } else if (text) {
+            const t = extractTextual(policyUrl, how, text, classifier.vendorNames());
+            if (t) {
+              decl.textual = t;
+              decl.note = `Informativa senza tabelle leggibili (${policyUrl}, trovata come ${how}): dichiarazione testuale, con ${t.vendors.length === 1 ? '1 fornitore citato' : `${t.vendors.length} fornitori citati`}${t.claims.length ? ` e le affermazioni ${t.claims.map((c) => `"${CLAIM_LABEL[c.claim]}"`).join(', ')}` : ''}. Il confronto è per fornitore, meno preciso di quello per nome di cookie.`;
+            }
           }
         }
       }
-      if (!decl.source) decl.note = 'Nessun elenco leggibile dal CMP, dalla cookie policy o da un file configurato: confronto con i dichiarati non eseguito.';
+      if (!decl.source && !decl.textual) decl.note = 'Nessun elenco leggibile dal CMP, dalla cookie policy o da un file configurato: confronto con i dichiarati non eseguito.';
     }
     checkStop();
   } catch (e) {
@@ -702,6 +789,14 @@ async function finishRun(
     o.log(`Classificazioni non aggiornate (${(e as Error).message.split('\n')[0]}): restano quelle della rilevazione.`);
   }
   enrichRequests(collected.sessions);
+  // Configurazione di Matomo/Piwik dalle pagine salvate nel HAR, per le sessioni senza la lettura a fine pagina
+  // (rilevazioni precedenti alla 0.1.2): prova accessoria dello stato dei cookie
+  try {
+    const n = probesFromHar(runDir, collected.sessions);
+    if (n && o.regeneratedAt) o.log(`Configurazione di Matomo letta dal file HAR in ${n === 1 ? '1 sessione' : `${n} sessioni`}.`);
+  } catch (e) {
+    o.log(`Configurazione di Matomo non letta dal file HAR (${(e as Error).message.split('\n')[0]}).`);
+  }
   // Rilevazioni raccolte prima della 0.1.1: le richieste degli iframe partite all'uscita da una pagina si riattribuiscono
   // alla pagina che li ospitava, con il frame di origine registrato nel file HAR
   if (o.regeneratedAt) {
@@ -761,7 +856,9 @@ async function finishRun(
       };
       const seen = new Map<string, number>();
       if (reps > 1) {
-        for (let r = 1; r <= reps; r++) for (const k of rawKeys(validSessions.filter((s) => s.repeat === r))) seen.set(k, (seen.get(k) ?? 0) + 1);
+        // Uno scenario con scelta in cui il banner non è comparso non ha eseguito la scelta: non conta tra le ripetizioni
+        const counted = (s: SessionResult) => s.scenario === 'nessuna-azione' || s.interaction.outcome === 'eseguito' || s.interaction.bannerVisibleBefore;
+        for (let r = 1; r <= reps; r++) for (const k of rawKeys(validSessions.filter((s) => s.repeat === r && counted(s)))) seen.set(k, (seen.get(k) ?? 0) + 1);
       } else {
         for (const k of rawKeys(validSessions.filter((s) => !s.manual))) seen.set(k, 1);
       }
@@ -795,8 +892,15 @@ async function finishRun(
   const evidenceFiles = await hashFiles(runDir, listFiles(join(runDir, 'evidenze')).map((p) => join('evidenze', p)));
   const endedAt = new Date().toISOString();
 
-  writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ discovery, sessions, sessioniScartate: discarded, declared, comparison, findings, noteAttribuzione: attributionNotes, datiDigitati: typedTestData() }, null, 2));
-  const csvs = writeCsvs(runDir, sessions, comparison, findings);
+  // Stato dei cookie degli strumenti di statistica ospitati sul sito (Matomo/Piwik), per sito
+  const statoCookie = [...new Set(validSessions.map((s) => s.site))]
+    .filter((site) => validSessions.some((s) => s.site === site && s.requests.some((r) => r.party === 'prima' && r.tracker && isMatomo(r.tracker.company))))
+    .map((site) => {
+      const m = matomoCookieMode(validSessions.filter((s) => s.site === site));
+      return { sito: site, strumento: 'Matomo', stato: COOKIE_STATE_LABEL[m.state], fatti: m.facts, datiUtente: m.userData };
+    });
+  writeFileSync(join(runDir, 'dati.json'), JSON.stringify({ statoCookie, discovery, sessions, sessioniScartate: discarded, declared, comparison, findings, noteAttribuzione: attributionNotes, datiDigitati: typedTestData() }, null, 2));
+  const csvs = writeCsvs(runDir, sessions, comparison, findings, declared);
   // Riepilogo leggero per l'interfaccia (l'elenco delle esecuzioni non deve leggere dati.json, che può essere grande)
   const unreachableSites = [...new Set(sessions.filter((s) => s.unreachable).map((s) => s.site))].filter((site) =>
     sessions.filter((s) => s.site === site).every((s) => s.unreachable || s.blocked),

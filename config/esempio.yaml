@@ -26,6 +26,9 @@ scenari:
   # attivi: [nessuna-azione, rifiuta, accetta, personalizza, revoca]   # predefinito: tutti
   pagineDopoScelta: 3
   # ripetizioni: 2        # 1-3: ogni scenario si ripete; le schede dicono "osservato in k esecuzioni su N"
+  # saltaSenzaBanner: true  # predefinito: se nessuna sessione "nessuna azione" mostra un banner o un gestore del
+  #                         # consenso, gli scenari con scelta (rifiuta, accetta, personalizza, revoca, chiudi) non si
+  #                         # eseguono per quel sito e i Limiti lo dichiarano; false per eseguirli comunque
 
 campionamento:
   perTipo: 2

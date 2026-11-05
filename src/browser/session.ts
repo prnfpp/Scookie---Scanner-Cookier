@@ -4,7 +4,7 @@ import type { Classifier } from '../classify/classifier.js';
 import type { AuditConfig, SiteConfig } from '../config/schema.js';
 import { analyzeBanner } from '../cmp/analysis.js';
 import { bannerVisible, detectCmps, observeBanner, performChoice, performClose, performPersonalize, performRevocation } from '../cmp/interact.js';
-import { NON_TECHNICAL, type BannerAnalysis, type DeclaredItem, type Evidence, type InteractionReport, type ScenarioName, type SessionResult } from '../types.js';
+import { NON_TECHNICAL, type StatsProbe, type BannerAnalysis, type DeclaredItem, type Evidence, type InteractionReport, type ScenarioName, type SessionResult } from '../types.js';
 import { PartyResolver, registrableDomain } from '../util/domains.js';
 import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { detectBotChallenge, type BotBlock } from './antibot.js';
@@ -57,11 +57,15 @@ const DEFAULT_BANNER_WAIT = 6000;
  * interazione e li attivano anche con la rotella (es. plugin di ottimizzazione che ritardano gli script). Se la rotella non
  * sposta la pagina (cursore su un riquadro scorrevole, scroll bloccato) si scorre via script. Alla fine torna in cima.
  */
-async function scrollPage(page: Page) {
+async function scrollPage(page: Page, onFirstInteraction: () => void) {
   const vp = page.viewportSize() ?? { width: 1366, height: 900 };
   try {
-    // Nella parte alta del contenuto, lontano dal fondo dove stanno di solito i banner; il mouse non clicca nulla
+    // Nella parte alta del contenuto, lontano dal fondo dove stanno di solito i banner; il mouse non clicca nulla.
+    // Il primo movimento porta il cursore sopra la pagina, come per un visitatore qualsiasi: non è un'interazione e
+    // ciò che ne deriva resta "al caricamento". L'interazione inizia con il movimento successivo e la rotella.
     await page.mouse.move(vp.width * 0.3, vp.height * 0.3);
+    await page.waitForTimeout(250);
+    onFirstInteraction();
     await page.mouse.move(vp.width * 0.6, vp.height * 0.4, { steps: 8 });
     const step = Math.max(200, Math.floor(vp.height * 0.8));
     for (let i = 0; i < 12; i++) {
@@ -162,12 +166,44 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   const settle = async () => {
     stage = `attesa e scroll su ${maskPii(collector.currentUrl)}`;
     if (p.scroll) {
-      // Lo scroll è un'azione dell'utente: ciò che compare da qui in poi non è più "al caricamento".
-      collector.markScroll();
-      await scrollPage(page);
+      // Lo scroll è un'azione dell'utente: ciò che compare da qui in poi, su questa pagina, non è più "al caricamento".
+      await scrollPage(page, () => collector.markScroll());
       await page.waitForTimeout(p.attesaDopoScroll);
     }
     await collector.snapshot(page);
+    await readStatsProbe();
+  };
+
+  /**
+   * Configurazione di Matomo/Piwik ospitato sul sito, a fine pagina: comandi _paq scritti nella pagina (il tracker
+   * sostituisce l'array _paq dopo averlo letto, quindi si leggono anche gli script in linea) e hasCookies() del tracker.
+   */
+  const statsProbe: StatsProbe[] = [];
+  const readStatsProbe = async () => {
+    const r = await withTimeout(
+      page.evaluate(() => {
+        const w = window as unknown as { _paq?: unknown; Matomo?: { getAsyncTrackers?: () => unknown[] }; Piwik?: { getAsyncTrackers?: () => unknown[] } };
+        const cmds = new Set<string>();
+        if (Array.isArray(w._paq)) for (const c of w._paq) if (Array.isArray(c) && typeof c[0] === 'string') cmds.add(c[0]);
+        for (const sc of Array.from(document.scripts)) {
+          if (sc.src || !sc.textContent?.includes('_paq')) continue;
+          for (const m of sc.textContent.matchAll(/_paq\.push\(\s*\[\s*['"]([A-Za-z]+)['"]/g)) cmds.add(m[1]);
+        }
+        let hasCookies: boolean | null = null;
+        let consentRequired: boolean | null = null;
+        try {
+          const t = (w.Matomo ?? w.Piwik)?.getAsyncTrackers?.()[0] as { hasCookies?: () => boolean; isConsentRequired?: () => boolean } | undefined;
+          if (t && typeof t.hasCookies === 'function') hasCookies = !!t.hasCookies();
+          if (t && typeof t.isConsentRequired === 'function') consentRequired = !!t.isConsentRequired();
+        } catch {
+          // tracker non leggibile
+        }
+        return cmds.size || hasCookies !== null ? { url: location.href, paq: [...cmds], hasCookies, consentRequired } : null;
+      }),
+      5000,
+      'lettura della configurazione di Matomo',
+    ).catch(() => null);
+    if (r) statsProbe.push({ ...r, url: maskPii(r.url), source: 'pagina' });
   };
 
   let interaction: InteractionReport = {
@@ -359,7 +395,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     }
   }
 
-  const { cookies, storage, requests } = collector.results();
+  const { cookies, storage, requests, visits } = collector.results();
   return {
     id: plan.id,
     site: plan.site,
@@ -377,6 +413,8 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     screenshots,
     har: harRel,
     errors,
+    visits,
+    ...(statsProbe.length ? { statsProbe } : {}),
     ...(blocked ? { blocked } : {}),
     ...(bannerAnalysis ? { bannerAnalysis } : {}),
     ...(revocation ? { revocation } : {}),

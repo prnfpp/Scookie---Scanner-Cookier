@@ -1,4 +1,4 @@
-import { choiceHow, describeGoogleConsent, nReq, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen } from '../helpers.js';
+import { choiceHow, describeGoogleConsent, nReq, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, stageWhen, noBannerSites, scenariosLine } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /**
@@ -12,6 +12,7 @@ export const consentModeSenzaConsenso: Rule = {
   defaultSeverity: 'media',
   defaultNorms: ['art122', 'eprivacy53', 'edpb2_2023'],
   evaluate({ sessions }) {
+    const noBanner = noBannerSites(sessions);
     const items = sessions.flatMap((s) =>
       s.requests
         .filter((r) => isConsentModeDeniedPing(r) && (r.phase === 'prima' || s.scenario === 'rifiuta'))
@@ -22,7 +23,8 @@ export const consentModeSenzaConsenso: Rule = {
       const { s, r } = group[0];
       const reqs = group.map((g) => g.r);
       const gcs = [...new Set(reqs.map((x) => x.consentParams!.gcs))];
-      const when = r.phase === 'prima' ? stageWhen(reqs.map((x) => x.stage)).when : `dopo il rifiuto (eseguito ${choiceHow(s.interaction)})`;
+      const nb = noBanner.has(s.site);
+      const when = r.phase === 'prima' ? stageWhen(reqs.map((x) => x.stage), nb).when : `dopo il rifiuto (eseguito ${choiceHow(s.interaction)})`;
       out.push({
         site: s.site,
         scenario: s.scenario,
@@ -33,8 +35,9 @@ export const consentModeSenzaConsenso: Rule = {
           `Le richieste partono comunque e trasmettono dati della navigazione.`,
         evidenceLevel: 'raccolta',
         groupKey: r.phase,
-        headline: `Google riceve segnali di Consent Mode con consenso negato o non impostato ${r.phase === 'prima' ? 'prima della scelta' : 'dopo il rifiuto'}`,
-        details: [`Esempio: ${r.url.slice(0, 250)}`, ...[...new Set(reqs.map((x) => describeGoogleConsent(x.consentParams)).filter(Boolean))].map((d) => `Significato: ${d}`), `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`],
+        headline: `Google riceve segnali di Consent Mode con consenso negato o non impostato ${r.phase === 'prima' ? (nb ? 'in assenza di banner' : 'prima della scelta') : 'dopo il rifiuto'}`,
+        ...(nb ? { noBanner: true } : {}),
+        details: [`Esempio: ${r.url.slice(0, 250)}`, ...[...new Set(reqs.map((x) => describeGoogleConsent(x.consentParams)).filter(Boolean))].map((d) => `Significato: ${d}`), scenariosLine([...new Set(group.map((g) => g.s))], nb)],
         evidence: sessionEvidence(s, r.phase === 'prima' ? ['1-banner'] : ['2-dopo-scelta', '3-fine']),
         requestExcerpt: requestExcerpt(r, s),
       });

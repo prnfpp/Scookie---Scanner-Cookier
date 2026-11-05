@@ -1,5 +1,5 @@
 import type { Classification, ScenarioName } from '../../types.js';
-import { groupBy, sessionEvidence } from '../helpers.js';
+import { groupBy, noBannerSites, scenariosLine, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 import { nWords, plural } from '../../util/text.js';
 
@@ -17,6 +17,7 @@ export const elementiNonClassificati: Rule = {
   defaultSeverity: 'bassa',
   defaultNorms: ['art122', 'eprivacy53', 'garante2021'],
   evaluate({ sessions }) {
+    const noBanner = noBannerSites(sessions);
     const relevant = (phase: string, scenario: ScenarioName) => phase === 'prima' || scenario === 'rifiuta';
     const rows = sessions.flatMap((s) => [
       ...s.cookies
@@ -36,23 +37,28 @@ export const elementiNonClassificati: Rule = {
       // Una terza parte sconosciuta contattata prima della scelta va verificata con priorità media.
       const unknownBefore = count('host-prima');
       const first = list[0].s;
+      const nb = noBanner.has(site);
+      // senza banner non c'è una scelta né un rifiuto: gli elementi sono osservati in assenza di banner
+      const seen = nb ? 'osservato in assenza di banner' : 'osservato prima della scelta o dopo il rifiuto';
+      const seenPl = nb ? 'osservati in assenza di banner' : 'osservati prima della scelta o dopo il rifiuto';
       out.push({
         site,
         scenario: null,
         pageUrl: null,
         severity: unknownBefore ? 'media' : undefined,
         groupKey: 'tutti',
-        headline: unknownBefore ? `${unknownBefore} terze parti non classificate vengono contattate prima della scelta` : undefined,
+        ...(nb ? { noBanner: true } : {}),
+        headline: unknownBefore ? `${unknownBefore} terze parti non classificate vengono contattate ${nb ? 'in assenza di banner' : 'prima della scelta'}` : undefined,
         description:
-          `${plural(unique.length, '1 elemento osservato prima della scelta o dopo il rifiuto non è riconosciuto', `${unique.length} elementi osservati prima della scelta o dopo il rifiuto non sono riconosciuti`)} dalle fonti di classificazione ` +
+          `${plural(unique.length, `1 elemento ${seen} non è riconosciuto`, `${unique.length} elementi ${seenPl} non sono riconosciuti`)} dalle fonti di classificazione ` +
           // solo le voci presenti: niente "0 cookie" o "di cui 0 contattati"
           `(${[
             count('cookie') ? `${count('cookie')} cookie` : '',
             count('storage') ? `${nWords(count('storage'), 'chiave di storage', 'chiavi di storage')} di terze parti` : '',
-            count('host', 'host-prima') ? `${nWords(count('host', 'host-prima'), 'dominio', 'domini')} di terze parti${unknownBefore ? `, di cui ${nWords(unknownBefore, 'contattato', 'contattati')} prima della scelta` : ''}` : '',
+            count('host', 'host-prima') ? `${nWords(count('host', 'host-prima'), 'dominio', 'domini')} di terze parti${unknownBefore ? `, di cui ${nWords(unknownBefore, 'contattato', 'contattati')} ${nb ? 'in assenza di banner' : 'prima della scelta'}` : ''}` : '',
           ].filter(Boolean).join(', ')}). ` +
           `Non sono stati valutati dalle altre regole: la loro natura (tecnica o di tracciamento) va verificata.`,
-        details: unique.map((u) => `${u.key} — scenari: ${[...new Set(list.filter((l) => l.key === u.key).map((l) => l.s.scenario))].join(', ')}`),
+        details: unique.map((u) => `${u.key} — ${scenariosLine([...new Set(list.filter((l) => l.key === u.key).map((l) => l.s))], nb).replace(/^Scenari/, 'scenari')}`),
         evidence: sessionEvidence(first, ['1-banner']).filter((e) => !e.file.endsWith('.har')),
       });
     }

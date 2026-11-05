@@ -1,0 +1,4 @@
+Certificato autofirmato usato SOLO dal server dei siti di prova (test/fixtures/server.ts) per servire in HTTPS i
+contenuti incorporati di prova (es. un iframe che scrive un cookie SameSite=None; Secure, possibile solo in HTTPS).
+Non protegge nulla: chiave e certificato sono pubblici. Nei test Chromium accetta il certificato perché la
+configurazione di prova (browser.hostResolverRules) aggiunge --ignore-certificate-errors.

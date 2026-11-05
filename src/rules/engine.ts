@@ -10,7 +10,8 @@ export const DEFAULT_NORMS_FILE = fileURLToPath(new URL('../../../config/norme.y
 
 interface NormsFile {
   norme: Record<string, { titolo: string; riferimento: string; url?: string }>;
-  regole?: Record<string, { norme?: string[]; gravita?: Severity }>;
+  /** Per regola: norme, gravità e gravità dei casi particolari (es. primaParteSenzaCookie: { gravita }). */
+  regole?: Record<string, { norme?: string[]; gravita?: Severity } & Record<string, unknown>>;
 }
 
 export interface NormsTable {
@@ -40,9 +41,9 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
     for (const raw of rule.evaluate(ctx)) {
       all.push({
         ruleId: rule.id,
-        ruleTitle: rule.title,
+        ruleTitle: raw.title ?? rule.title,
         // la gravità del caso specifico (es. "informativa") prevale; altrimenti quella della tabella o della regola
-        severity: raw.severity ?? override?.gravita ?? rule.defaultSeverity,
+        severity: raw.severity ?? variantSeverity(override, raw.severityVariant) ?? override?.gravita ?? rule.defaultSeverity,
         site: raw.site,
         scenario: raw.scenario,
         pageUrl: raw.pageUrl,
@@ -59,12 +60,22 @@ export function evaluateRules(ctx: RuleContext, norms: NormsTable, opts: { merge
           : `${rule.id}|${shortHost(raw.site)}|${raw.scenario ?? ''}|${raw.headline ?? raw.description.slice(0, 160)}`,
         norms: refs,
         groupKey: raw.groupKey,
+        ...(raw.noBanner ? { noBanner: true } : {}),
+        ...(raw.unverifiable?.length ? { unverifiable: raw.unverifiable } : {}),
+        ...(raw.subjectNote ? { subjectNote: raw.subjectNote } : {}),
       } as Omit<Finding, 'id'> & { groupKey?: string });
     }
   }
   const merged = opts.merge === false ? all.map(({ groupKey: _g, ...f }: Omit<Finding, 'id'> & { groupKey?: string }) => f) : mergeAcrossSites(all as (Omit<Finding, 'id'> & { groupKey?: string })[]);
   merged.sort((a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity) || a.site.localeCompare(b.site));
   return merged.map((f, i) => ({ id: `R-${String(i + 1).padStart(3, '0')}`, ...f }));
+}
+
+/** Gravità di un caso particolare della regola nella tabella delle norme (regole.<regola>.<caso>.gravita). */
+function variantSeverity(override: NormsFile['regole'] extends Record<string, infer V> | undefined ? V | undefined : never, variant: string | undefined): Severity | undefined {
+  if (!variant || !override) return undefined;
+  const v = override[variant] as { gravita?: Severity } | undefined;
+  return v && typeof v === 'object' && ORDER.includes(v.gravita as Severity) ? v.gravita : undefined;
 }
 
 const REF = /\{\{rilievi:([a-z0-9-]+):([^}:]*)(?::([a-z-]+))?\}\}/g;

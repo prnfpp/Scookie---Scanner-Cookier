@@ -16,6 +16,22 @@ export interface TrackerEntry {
   /** Espressioni regolari sulla query (senza "?"): devono corrispondere tutte. */
   parametri?: string[];
   nota?: string;
+  /**
+   * Contenuto incorporato (iframe): le richieste e lo storage che partono dal suo documento, anche verso altri
+   * fornitori (es. Sentry caricato dal lettore), appartengono a questo contenuto e si riuniscono sotto di lui.
+   */
+  raggruppa?: boolean;
+}
+
+/**
+ * Host che corrisponde al dominio di una voce: il dominio stesso o un suo sottodominio; un dominio con "*" (es.
+ * "image-cdn-*.spotifycdn.com", "*-spclient.spotify.com") è un modello in cui "*" sta per una parte di un'etichetta.
+ */
+export function entryHostMatches(host: string, dominio: string): boolean {
+  if (dominio === '*') return true;
+  if (!dominio.includes('*')) return hostMatches(host, dominio);
+  const re = new RegExp(`(^|\\.)${dominio.replace(/^\./, '').split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^.]*')}$`, 'i');
+  return re.test(host.replace(/^\./, ''));
 }
 
 interface OcdEntry {
@@ -62,6 +78,9 @@ export function normalizeDeclaredCategory(label: string): Category {
   return 'sconosciuta';
 }
 
+/** Fonte delle classificazioni di data/cookies.yaml: hanno la precedenza su Open Cookie Database. */
+export const CURATED_SOURCE = 'elenco curato Scookie';
+
 /** Voce dell'elenco curato data/cookies.yaml. */
 interface CuratedCookie {
   nome: string;
@@ -87,6 +106,11 @@ export class Classifier {
     for (const t of this.trackers) {
       if (t.dominio === '*' && !t.percorsi?.length && !t.parametri?.length) throw new Error(`Voce tracker con dominio "*" senza percorsi né parametri (${t.azienda}): varrebbe per qualsiasi richiesta`);
     }
+  }
+
+  /** Nomi dei fornitori nell'elenco dei domini (per riconoscerli nel testo delle informative). */
+  vendorNames(): string[] {
+    return [...new Set(this.trackers.map((t) => t.azienda))];
   }
 
   static loadExtraTrackers(path: string): TrackerEntry[] {
@@ -174,7 +198,7 @@ export class Classifier {
     const q = query.replace(/^\?/, '');
     const candidates = this.trackers.filter(
       (t) =>
-        (t.dominio === '*' || hostMatches(host, t.dominio)) &&
+        entryHostMatches(host, t.dominio) &&
         (!t.percorsi || t.percorsi.some((p) => new RegExp(p).test(path))) &&
         (!t.parametri || t.parametri.every((p) => new RegExp(p).test(q))),
     );
@@ -192,7 +216,7 @@ export class Classifier {
   classifyName(name: string, domain: string): Classification {
     const d = domain.replace(/^\./, '');
     const curated = this.lookupCurated(name, d);
-    if (curated) return { category: curated.categoria, source: 'elenco-curato', platform: curated.fornitore, note: curated.nota };
+    if (curated) return { category: curated.categoria, source: CURATED_SOURCE, platform: curated.fornitore, note: curated.nota };
     const ocd = this.lookupOcd(name, d);
     if (ocd && ocd.category !== 'sconosciuta') {
       return { category: ocd.category, source: 'open-cookie-database', platform: ocd.platform };

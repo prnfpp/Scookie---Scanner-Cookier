@@ -1,6 +1,48 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { describeGoogleConsent, embedLine, pagesOf, requestBreakdown, requestVendor, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen } from '../helpers.js';
+import { describeGoogleConsent, embedLine, pagesOf, requestVendor, googleConsentSummary, strongestRequest, requestEvidenceLevel, nReq, CATEGORY_LABEL, groupBy, hostsSummary, isConsentModeDeniedPing, requestExcerpt, sessionEvidence, uetConsentSummary, stageWhen, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
+import type { RequestRecord } from '../../types.js';
+import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode, UNVERIFIABLE } from '../../classify/firstparty.js';
+
+const isCollect = (r: RequestRecord) => requestEvidenceLevel([r]) === 'raccolta';
+const nCol = (n: number) => `${n} ${n === 1 ? 'richiesta' : 'richieste'} di raccolta dati`;
+const nRes = (n: number) => `${n} ${n === 1 ? 'download' : 'download'} di script o risorse`;
+
+/**
+ * Cosa parte verso il fornitore, con raccolte e script contati a parte e mai sommati:
+ * "il browser invia a Matomo (statistica) 12 richieste di raccolta dati e 12 download di script o risorse".
+ */
+export function sentPhrase(reqs: RequestRecord[], who: string): string {
+  const col = reqs.filter(isCollect).length;
+  const res = reqs.length - col;
+  if (col && res) return `il browser invia a ${who} ${nCol(col)}, oltre a ${nRes(res)}`;
+  if (col) return `il browser invia a ${who} ${nCol(col)}`;
+  return `il browser esegue ${nRes(res)} da ${who}`;
+}
+
+/**
+ * Momento delle richieste, separato per tipo: le raccolte e gli script hanno ciascuno il proprio conteggio
+ * "al caricamento" / "dopo lo scroll" (rispetto alla pagina in cui partono).
+ */
+export function stageBreakdown(reqs: RequestRecord[]): string {
+  const part = (rs: RequestRecord[]) => `al caricamento: ${rs.filter((x) => x.stage === 'caricamento').length}, dopo lo scroll e il movimento del mouse: ${rs.filter((x) => x.stage === 'scroll').length}`;
+  const col = reqs.filter(isCollect);
+  const res = reqs.filter((r) => !isCollect(r));
+  return [col.length ? `${nCol(col.length)} (${part(col)})` : '', res.length ? `${nRes(res.length)} (${part(res)})` : ''].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase());
+}
+
+/**
+ * Titolo secondo la parte delle richieste: un endpoint sul dominio del sito (es. Matomo ospitato sul sito) non è una
+ * terza parte. Senza banner nel sito "prima della scelta" diventa "in assenza di banner".
+ */
+export function trackerTitle(reqs: RequestRecord[], noBanner: boolean): string {
+  const first = reqs.some((r) => r.party === 'prima');
+  const third = reqs.some((r) => r.party === 'terza');
+  const when = noBanner ? 'in assenza di banner' : 'prima della scelta';
+  if (first && third) return `Richieste di tracciamento di prima e terza parte ${when}`;
+  if (first) return `Richieste di tracciamento di prima parte ${when}`;
+  return `Richieste a terze parti di tracciamento ${when}`;
+}
 
 /** Richieste verso tracker (pubblicità, statistica, registrazione sessioni, social) prima della scelta. */
 export const richiestaTrackerPrimaDelConsenso: Rule = {
@@ -9,6 +51,7 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
   defaultSeverity: 'alta',
   defaultNorms: ['art122', 'eprivacy53', 'garante2021', 'edpb2_2023'],
   evaluate({ sessions }) {
+    const noBanner = noBannerSites(sessions);
     // Raccolte sul dominio del sito di un fornitore che ha già scritto cookie non tecnici prima della scelta: sono
     // riportate (accorpate) nel rilievo sui cookie dello stesso fornitore, come dati inviati
     const withCookies = new Set(sessions.flatMap((s) => s.cookies.filter((c) => c.phase === 'prima' && NON_TECHNICAL.has(c.classification.category) && c.classification.platform).map((c) => `${s.site}|${c.classification.platform}`)));
@@ -25,7 +68,8 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
       const vendor = requestVendor(r);
       const reqs = group.map((g) => g.r);
       const pages = [...new Set(reqs.map((x) => x.pageUrl))];
-      const { when, onlyAfterScroll } = stageWhen(reqs.map((x) => x.stage));
+      const nb = noBanner.has(s.site);
+      const { when, onlyAfterScroll } = stageWhen(reqs.map((x) => x.stage), nb);
       // Come estratto si mostra la richiesta più significativa: una raccolta di dati, se c'è.
       const level = requestEvidenceLevel(reqs);
       const atLoad = reqs.filter((x) => x.stage === 'caricamento');
@@ -36,14 +80,22 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
       const summary = googleConsentSummary(reqs);
       const uet = uetConsentSummary(reqs);
       const consentShort = summary.short ?? uet.short;
+      // Matomo/Piwik ospitato sul sito: stato dei cookie dai fatti osservati (nessuna qualificazione)
+      const ownMatomo = isMatomo(vendor) && reqs.every((x) => x.party === 'prima');
+      const mode = ownMatomo ? matomoCookieMode(sessions.filter((x) => x.site === s.site)) : null;
+      const cookieless = mode?.state === 'senza-cookie';
       out.push({
         site: s.site,
         scenario: s.scenario,
         pageUrl: r.pageUrl,
+        title: `${trackerTitle(reqs, nb)}${cookieless ? ': Matomo di prima parte, in modalità senza cookie' : ''}`,
+        ...(cookieless ? { severityVariant: 'primaParteSenzaCookie', subjectNote: 'di prima parte, senza cookie' } : {}),
+        ...(mode && mode.state !== 'con-cookie' ? { unverifiable: UNVERIFIABLE } : {}),
+        ...(nb ? { noBanner: true } : {}),
         description:
-          `${when[0].toUpperCase()}${when.slice(1)}, il browser invia ${nReq(reqs.length)}${requestBreakdown(reqs)} a ${vendor} ` +
-          `(${CATEGORY_LABEL[r.tracker!.category]}): ${hostsSummary(reqs)}.` +
-          (level === 'risorsa' ? ' Le richieste scaricano risorse del fornitore: non è stato osservato un invio di dati di raccolta.' : ''),
+          `${when[0].toUpperCase()}${when.slice(1)}, ${sentPhrase(reqs, `${vendor} (${CATEGORY_LABEL[r.tracker!.category]})`)}: ${hostsSummary(reqs)}.` +
+          (level === 'risorsa' ? ' Le richieste scaricano risorse del fornitore: non è stato osservato un invio di dati di raccolta.' : '') +
+          (cookieless ? ' Matomo è di prima parte (endpoint sul dominio del sito), in modalità senza cookie: nessun cookie scritto e identificativo del visitatore vuoto negli hit; i dati di navigazione sono comunque inviati.' : ''),
         // Solo script o contenuti scaricati: prova più debole di una raccolta di dati
         severity: level === 'risorsa' ? 'media' : undefined,
         evidenceLevel: level,
@@ -51,19 +103,21 @@ export const richiestaTrackerPrimaDelConsenso: Rule = {
         groupKey: `${vendor}|${r.tracker!.category}`,
         headline:
           level === 'raccolta'
-            ? `${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) riceve dati di navigazione prima di qualsiasi scelta sul banner${consentShort ? `, ${consentShort}` : ''}`
-            : `Il sito scarica risorse di ${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) prima di qualsiasi scelta sul banner`,
+            ? `${cookieless ? 'Matomo di prima parte, in modalità senza cookie,' : `${vendor} (${CATEGORY_LABEL[r.tracker!.category]})`} riceve dati di navigazione ${beforeChoice(nb)}${consentShort ? `, ${consentShort}` : ''}`
+            : `Il sito scarica risorse di ${vendor} (${CATEGORY_LABEL[r.tracker!.category]}) ${beforeChoice(nb)}`,
         details: [
           `Richiesta di esempio: ${firstAtLoad.method} ${firstAtLoad.url.slice(0, 200)}`,
           ...(consent ? [`Consenso Google dichiarato nella richiesta di esempio: ${consent}${firstAtLoad.fromServiceWorker ? ' (richiesta inviata da un service worker del sito)' : ''}`] : []),
           ...(summary.detail ? [summary.detail] : []),
           ...(uet.detail ? [uet.detail] : []),
           ...[...new Set(reqs.map((x) => x.purpose).filter(Boolean))].map((x) => `Natura delle richieste: ${x}`),
-          `Al caricamento: ${reqs.filter((x) => x.stage === 'caricamento').length}; solo dopo lo scroll e il movimento del mouse: ${reqs.filter((x) => x.stage === 'scroll').length}`,
+          stageBreakdown(reqs),
+          ...(mode ? [`Stato dei cookie di Matomo: ${COOKIE_STATE_LABEL[mode.state]} — ${mode.facts.join('; ')}`] : []),
+          ...(mode ? [mode.userData.length ? `Parametri degli hit che indicano dati dell'utente inviati: ${mode.userData.join(', ')}` : "Negli hit non ci sono parametri con dati dell'utente (uid, _cvar, dimensioni personalizzate con valore)"] : []),
           ...(embedLine(reqs) ? [embedLine(reqs)!] : []),
           `Pagine: ${pages.slice(0, 10).join(', ')}`,
           ...(pagesOf(reqs).exitLine ? [pagesOf(reqs).exitLine!] : []),
-          `Scenari: ${[...new Set(group.map((g) => g.s.scenario))].join(', ')}`,
+          scenariosLine([...new Set(group.map((g) => g.s))], nb),
         ],
         evidence: sessionEvidence(s, onlyAfterScroll ? ['1-banner', '3-fine'] : ['1-banner']),
         requestExcerpt: requestExcerpt(firstAtLoad, s),

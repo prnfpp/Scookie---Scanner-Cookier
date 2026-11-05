@@ -272,6 +272,7 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
               <label class="check"><input type="checkbox" id="f-pdf" checked><div><b>Genera il PDF</b><span>Oltre al report HTML</span></div></label>
               <label class="check"><input type="checkbox" id="f-visibile"><div><b>Mostra il browser</b><span>Utile con siti protetti da anti-bot</span></div></label>
               <label class="check"><input type="checkbox" id="f-controllo"><div><b>Esecuzione di controllo</b><span>User agent di un browser normale, senza dichiarazione dell'audit</span></div></label>
+              <label class="check"><input type="checkbox" id="f-saltaSenzaBanner" checked><div><b>Salta gli scenari con scelta se non c'è un banner</b><span>Se nessuna sessione "nessuna azione" mostra un banner, rifiuta, accetta, personalizza, revoca e chiudi non si eseguono (audit più breve)</span></div></label>
             </div>
           </div>
         </details>
@@ -659,6 +660,7 @@ function fillForm(d) {
   $('#f-canale').value = br.canale || 'chromium';
   $('#f-visibile').checked = br.headless === false;
   $('#f-controllo').checked = br.uaNormale === true;
+  $('#f-saltaSenzaBanner').checked = sc.saltaSenzaBanner !== false;
   $('#f-paese').value = br.paeseUscita || '';
   $('#f-sottotitolo').value = rp.sottotitolo || '';
   $('#dp-list').innerHTML = '';
@@ -710,6 +712,7 @@ function readForm() {
   setOrDelete(group('scenari'), 'ripetizioni', $('#f-ripetizioni').value === '1' ? undefined : Number($('#f-ripetizioni').value));
   const attivi = SCENARI.filter(([, id]) => $(id).checked).map(([n]) => n);
   setOrDelete(group('scenari'), 'attivi', attivi.length === SCENARI.length ? undefined : attivi);
+  setOrDelete(group('scenari'), 'saltaSenzaBanner', $('#f-saltaSenzaBanner').checked ? undefined : false);
   setOrDelete(group('browser'), 'canale', $('#f-canale').value === 'chromium' ? undefined : $('#f-canale').value);
   setOrDelete(group('browser'), 'headless', $('#f-visibile').checked ? false : undefined);
   setOrDelete(group('browser'), 'uaNormale', $('#f-controllo').checked ? true : undefined);
@@ -742,12 +745,16 @@ function plan() {
     // con un percorso registrato le navigazioni manuali diventano sessioni automatiche, ripetute
     const recorded = (state.recordings || []).some((r) => r.sito === s.url);
     const manual = recorded ? 0 : nManual;
-    return { site: s.url, pages, sessions: sessions + (recorded ? nManual * reps : 0), manual, found: disc?.found, estimated: !disc };
+    // senza banner (e con l'opzione attiva) si eseguono solo le sessioni "nessuna azione", più al massimo una di conferma
+    const noBanner = (attivi.includes('nessuna-azione') ? pages * reps + (pages * reps < 2 ? 1 : 0) : sessions / reps) + (recorded ? nManual * reps : 0);
+    return { site: s.url, pages, sessions: sessions + (recorded ? nManual * reps : 0), noBanner, manual, found: disc?.found, estimated: !disc };
   });
   const sessions = rows.reduce((a, r) => a + r.sessions, 0);
   const manual = rows.reduce((a, r) => a + r.manual, 0);
   const sec = 120 + rows.length * 60 + sessions * 30 + 60;
-  return { d, rows, sessions, manual, sec, attivi, reps };
+  const skip = $('#f-saltaSenzaBanner').checked && attivi.some((a) => a !== 'nessuna-azione');
+  const secNoBanner = skip ? 120 + rows.length * 60 + rows.reduce((a, r) => a + r.noBanner, 0) * 30 + 60 : null;
+  return { d, rows, sessions, manual, sec, secNoBanner, attivi, reps };
 }
 
 function refreshSummary() {
@@ -770,7 +777,7 @@ function refreshSummary() {
   ];
   $('#checklist').innerHTML = items.map(([k, b, t]) => `<div class="ci ${k}"><span class="ic">${k === 'ok' ? '✓' : '!'}</span><div><b>${esc(b)}</b><span>${esc(t)}</span></div></div>`).join('');
   $('#est-time').textContent = mins(p.sec);
-  $('#est-detail').textContent = `${p.sessions} sessioni automatiche${p.manual ? ` e ${p.manual} manuali` : ''}${p.rows.some((r) => r.estimated) ? ' (stima: fai l\'anteprima per un numero preciso)' : ''}. La stima si aggiorna durante l'audit.`;
+  $('#est-detail').textContent = `${p.sessions} sessioni automatiche${p.manual ? ` e ${p.manual} manuali` : ''}${p.rows.some((r) => r.estimated) ? ' (stima: fai l\'anteprima per un numero preciso)' : ''}.${p.secNoBanner !== null && p.secNoBanner < p.sec ? ` Se un sito non mostra alcun banner, gli scenari con scelta si saltano: per un sito così l'audit dura meno (${mins(p.secNoBanner)} se nessun sito ha un banner).` : ''} La stima si aggiorna durante l'audit.`;
   $('#est-steps').innerHTML = [
     'Verifica dell\'uscita e scoperta delle pagine',
     ...(p.manual ? ['<b>Navigazione manuale: tocca a te</b>'] : []),

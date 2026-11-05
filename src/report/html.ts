@@ -1,10 +1,13 @@
 import type { ExitInfo } from '../browser/exit.js';
 import type { AuditConfig } from '../config/schema.js';
 import type { DiscoveryResult } from '../discovery/discover.js';
-import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy, requestEvidenceLevel } from '../rules/helpers.js';
+import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy, noBannerSites, requestEvidenceLevel } from '../rules/helpers.js';
 import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } from '../types.js';
 import { NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
+import { pageviewCoherence } from './coherence.js';
+import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode } from '../classify/firstparty.js';
+import { CLAIM_LABEL, compareTextual } from '../declared/textual.js';
 import { summaryItems } from './summary.js';
 import { categoriesUnreliable, NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
 import type { TestEntry } from '../util/pii.js';
@@ -196,7 +199,7 @@ ${r.configFile ? `<tr><td>Configurazione</td><td><code>${esc(r.configFile)}</cod
 <tr><td>User agent</td><td><code>${esc(r.userAgent)}</code>${config.browser.uaNormale ? '<br><span class="muted">Esecuzione di controllo: user agent di un browser comune, senza la dichiarazione dello strumento, e browser che non si dichiara automatizzato (navigator.webdriver falso).</span>' : ''}</td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
 <tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (fonte ${esc(r.exit.source)}; l'indirizzo IP è in <code>manifest.json</code>)` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
-<tr><td>Scenari di consenso</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta</td></tr>
+<tr><td>Scenari di consenso</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta${r.discovery.filter((d) => d.skippedChoice).map((d) => `<br><span class="muted">${esc(host(d.site))}: eseguito solo "nessuna-azione"; scenari con scelta non eseguiti perché nessun banner è comparso in ${nWords(d.skippedChoice!.sessions, 'sessione', 'sessioni')} (opzione <code>scenari.saltaSenzaBanner</code>)</span>`).join('')}</td></tr>
 <tr><td>Ripetizioni</td><td>${reps > 1 ? `ogni scenario ripetuto ${reps} volte, ogni volta con un profilo browser nuovo` : 'ogni scenario eseguito una volta, con un profilo browser nuovo'}</td></tr>
 ${config.datiDiProva?.length || r.typedData?.length ? `<tr><td>Dati di prova</td><td>${config.datiDiProva?.length ? `Dichiarati nella configurazione, fittizi o concordati con il committente: ${config.datiDiProva.map((t) => `${esc(t.etichetta || t.tipo)} <code>${esc(t.valore)}</code>`).join('; ')}.` : ''}${r.typedData?.length ? ` Digitati dall'operatore nei moduli durante le navigazioni manuali e registrati dallo strumento${config.datiDiProva?.length ? ' (diversi da quelli dichiarati o in aggiunta)' : ''}: ${r.typedData.map((t) => `${esc(t.etichetta || t.tipo)} <code>${esc(t.valore)}</code>`).join('; ')}.` : ''} Questi valori, e il codice fiscale che il sito ne calcola, sono riconosciuti in ogni forma e riportati in chiaro nei rilievi; gli altri valori che somigliano a dati personali sono mascherati.</td></tr>` : ''}
 <tr><td>Protocollo di osservazione</td><td>Per ogni pagina: caricamento completo, attesa della rete inattiva (max 5 s), attesa fissa di ${config.protocollo.attesaDopoCaricamento} ms${config.protocollo.scroll ? `, movimento del mouse e scroll con la rotella fino a fondo pagina (al massimo 12 passi) e attesa di ${config.protocollo.attesaDopoScroll} ms` : ''}. Sulla prima pagina il banner viene fotografato e l'eventuale scelta avviene <em>prima</em> dello scroll; dopo la scelta si attendono ${config.protocollo.attesaDopoScelta} ms. In tutti gli scenari con scelta il percorso dopo la scelta è lo stesso: si ricarica la pagina di partenza e si visitano le stesse pagine nello stesso ordine; nello scenario di revoca lo stesso percorso si ripete dopo la revoca. Pausa tra sessioni: ${config.protocollo.pausaTraSessioni} ms.</td></tr>
@@ -253,8 +256,15 @@ ${sessionRows(sessions)
     parts.push(`<p><strong>Sessioni ripetute.</strong> Quando un sito mostra il banner in alcune sessioni e non in altre, o la connessione cade, la sessione viene ripetuta una volta. La sessione originale resta nei dati (<code>dati.json</code>, voce <code>sessioniScartate</code>) e nelle evidenze.</p>
 <ul>${retried.map((s) => `<li>${esc(s.retryOf)} → ${esc(s.id)}: ${esc(s.errors[0] ?? '')}</li>`).join('')}</ul>`);
   }
+  const policyCell = (d: (typeof r.declared)[number]) =>
+    d.policy?.url ? `<br><span class="muted">pagina usata: ${esc(d.policy.url)} (trovata come ${esc(d.policy.how ?? '—')})</span>` : d.policy ? `<br><span class="muted">nessuna pagina di informativa raggiungibile (${d.policy.tried.length} indirizzi provati)</span>` : '';
   parts.push(`<h3>Elenco dichiarato</h3><p class="muted">Fonte dell'elenco dei cookie dichiarati dal sito, usato per il confronto nella sezione 4.</p><table><tr><th>Sito</th><th>Fonte</th><th>Voci</th><th>Note</th></tr>${r.declared
-    .map((d) => `<tr><td>${esc(d.site)}</td><td>${esc(d.source ?? 'non disponibile')}</td><td>${d.items.length}</td><td>${esc(d.note ?? '')}</td></tr>`)
+    .map((d) => {
+      const t = d.textual;
+      const src = d.source ?? (t ? `testuale (${nWords(t.vendors.length, 'fornitore citato', 'fornitori citati')})` : 'non disponibile');
+      const quotes = t ? `<ul class="muted">${[...t.vendors.map((v) => `${v.name}: "${v.quote}"`), ...t.claims.map((c) => `${CLAIM_LABEL[c.claim]}: "${c.quote}"`)].map((q) => `<li>${esc(q)}</li>`).join('')}</ul>` : '';
+      return `<tr><td>${esc(d.site)}</td><td>${esc(src)}${policyCell(d)}</td><td>${t ? t.vendors.length : d.items.length}</td><td>${esc(d.note ?? '')}${quotes}</td></tr>`;
+    })
     .join('')}</table>`);
 
   // 3. Rilievi
@@ -268,6 +278,7 @@ ${sessionRows(sessions)
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 <p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
 ${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}${f.evidenceExtra ? `; inoltre ${esc(f.evidenceExtra)}` : ''}.</p>` : ''}
+${f.unverifiable?.length ? `<p><strong>Condizioni rilevanti non verificabili dal browser.</strong></p><ul>${f.unverifiable.map((u) => `<li>${esc(u)}</li>`).join('')}</ul>` : ''}
 ${f.repeats ? `<p><strong>Ripetibilità.</strong> ${esc(repeatsText(f.repeats))}</p>` : ''}
 ${reviewOf(f)?.esito ? `<p><strong>Revisione manuale.</strong> ${esc(reviewOf(f)!.esito)}${reviewOf(f)!.nota ? ` — ${esc(reviewOf(f)!.nota)}` : ''}</p>` : ''}
 ${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo negli allegati: dati.json e CSV)</li>` : ''}</ul>` : ''}
@@ -290,13 +301,28 @@ ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.
       const rows = r.comparison.filter((c) => c.site === site);
       const has = r.declared.some((d) => d.site === site && d.source);
       const n = (st: string) => rows.filter((c) => c.status === st).length;
-      return `<tr><td>${esc(site)}</td>${has ? `<td>${n('dichiarato')}</td><td>${n('non-dichiarato')}</td><td>${n('dichiarato-non-osservato')}</td>` : '<td colspan="3" class="muted">elenco dichiarato non disponibile: confronto non eseguito</td>'}</tr>`;
+      const textual = r.declared.find((d) => d.site === site)?.textual;
+      return `<tr><td>${esc(site)}</td>${has ? `<td>${n('dichiarato')}</td><td>${n('non-dichiarato')}</td><td>${n('dichiarato-non-osservato')}</td>` : textual ? '<td colspan="3" class="muted">solo dichiarazione testuale: confronto per fornitore qui sotto</td>' : '<td colspan="3" class="muted">elenco dichiarato non disponibile: confronto non eseguito</td>'}</tr>`;
     })
     .join('')}</table>`);
+  for (const d of r.declared.filter((x) => x.textual && sites.includes(x.site))) {
+    const cmp = compareTextual(sessions.filter((s) => s.site === d.site && !s.blocked && !s.unreachable), d.textual!);
+    parts.push(`<h3>${esc(d.site)} — confronto testuale con l'informativa</h3><p class="muted">L'informativa (${esc(d.textual!.url)}) non ha tabelle di cookie: il confronto è per fornitore citato nel testo, ed è meno preciso del confronto per nome di cookie.</p>
+<table><tr><th>Fornitore</th><th>Esito</th><th>Osservato / citazione</th></tr>${cmp.rows.map((x) => `<tr><td>${esc(x.vendor)}</td><td>${esc(x.status)}</td><td>${esc(x.note)}</td></tr>`).join('')}</table>
+${cmp.claims.length ? `<ul>${cmp.claims.map((c) => `<li>Affermazione ${esc(c)}</li>`).join('')}</ul>` : ''}`);
+  }
   const declaredStatus = new Map(r.comparison.map((c) => [`${c.site}|${c.name}|${c.domain}`, c]));
+  // Siti senza alcun meccanismo di consenso: le colonne "prima della scelta" diventano "senza banner"
+  const noBanner = noBannerSites(sessions.filter((s) => !s.blocked && !s.unreachable));
   for (const site of sites) {
     // L'inventario usa solo le sessioni valide (non intercettate da sistemi anti-bot).
     const ss = sessions.filter((s) => s.site === site && !s.blocked && !s.unreachable);
+    const nb = noBanner.has(site);
+    const beforeCol = nb ? 'Senza banner' : 'Prima della scelta';
+    // "Dopo rifiuto": 0 (o "no") se il rifiuto è stato eseguito e l'elemento non c'era; "n/a" se il rifiuto non è
+    // stato eseguito (nessun banner, comando non trovato, sessioni non valide)
+    const rejected = ss.some((s) => s.scenario === 'rifiuta' && s.interaction.outcome === 'eseguito');
+    const naNote = `<p class="muted">Colonna "Dopo rifiuto": un numero (o "sì", "rinnovato", "ancora presente") se l'elemento è stato osservato dopo il rifiuto; 0 (o "no") se il rifiuto è stato eseguito e l'elemento non è comparso; <strong>n/a</strong> se il rifiuto non è stato eseguito${!rejected ? (nb ? ' (qui: nessun banner)' : ' (qui: comando di rifiuto non trovato o sessioni non valide)') : ''}.</p>`;
     // Dopo il rifiuto: scritto dopo la scelta ("sì"), già presente e riscritto ("rinnovato"), solo rimasto ("ancora presente")
     const AFTER = ['', 'ancora presente', 'rinnovato', 'sì'] as const;
     const cookies = new Map<string, { c: SessionResult['cookies'][number]; scen: Set<string>; pre: '' | 'al caricamento' | 'dopo scroll'; afterReject: (typeof AFTER)[number] }>();
@@ -314,14 +340,14 @@ ${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.
         cookies.set(k, cur);
       }
     }
-    parts.push(`<h3>${esc(site)} — cookie (${cookies.size})</h3><table><tr><th>Nome</th><th>Dominio</th><th>Parte</th><th>Scadenza</th><th>Categoria (fonte)</th><th>Dichiarato</th><th>Prima della scelta</th><th>Dopo rifiuto</th><th>Scenari</th></tr>
+    parts.push(`<h3>${esc(site)} — cookie (${cookies.size})</h3><table><tr><th>Nome</th><th>Dominio</th><th>Parte</th><th>Scadenza</th><th>Categoria (fonte)</th><th>Dichiarato</th><th>${beforeCol}</th><th>Dopo rifiuto</th><th>Scenari</th></tr>
 ${[...cookies.values()]
   .sort((a, b) => a.c.name.localeCompare(b.c.name))
   .map(({ c, scen, pre, afterReject }) => {
     const d = declaredStatus.get(`${site}|${c.name}|${c.domain.replace(/^\./, '')}`);
-    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${esc(pre)}</td><td>${esc(afterReject)}</td><td>${esc([...scen].join(', '))}</td></tr>`;
+    return `<tr><td>${esc(c.name)}</td><td>${esc(c.domain)}</td><td>${esc(c.party)}</td><td>${esc(c.expires ? c.expires.slice(0, 10) : 'sessione')}</td><td>${esc(CATEGORY_LABEL[c.classification.category])}${c.classification.platform ? ` (${esc(c.classification.platform)})` : ''}<br><span class="muted">${esc(c.classification.source)}</span></td><td>${d ? `${esc(d.status)}${d.declaredCategories.length ? `<br><span class="muted">${esc(d.declaredCategories.join(', '))}</span>` : ''}` : '—'}</td><td>${esc(pre)}</td><td>${esc(rejected ? afterReject || 'no' : 'n/a')}</td><td>${esc([...scen].join(', '))}</td></tr>`;
   })
-  .join('')}</table>`);
+  .join('')}</table>${naNote}`);
 
     // Strumenti di tracciamento ospitati sul dominio del sito (es. Matomo): non sono terze parti ma raccolgono dati
     const own = groupBy(
@@ -329,41 +355,62 @@ ${[...cookies.values()]
       (x) => `${x.q.host}${(() => { try { return new URL(x.q.url).pathname; } catch { return ''; } })()}`,
     );
     if (own.size) {
-      parts.push(`<h3>${esc(site)} — strumenti di tracciamento sul dominio del sito (${own.size})</h3><p class="muted">Gli invii di dati (raccolta) e gli script dello strumento sono righe distinte: solo i primi sono raccolte.</p><table><tr><th>Indirizzo</th><th>Tipo</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
+      parts.push(`<h3>${esc(site)} — strumenti di tracciamento sul dominio del sito (${own.size})</h3><p class="muted">Gli invii di dati (raccolta) e gli script dello strumento sono righe distinte: solo i primi sono raccolte.</p><table><tr><th>Indirizzo</th><th>Tipo</th><th>Fornitore</th><th>Categoria</th><th>Cookie</th><th>Richieste</th><th>${beforeCol} (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
 ${[...own]
   .sort((a, b) => a[0].localeCompare(b[0]))
   .map(([h, list]) => {
     const t = list[0].q.tracker!;
     const kind = list.some((x) => requestEvidenceLevel([x.q]) === 'raccolta') ? 'raccolta di dati' : 'script o risorsa';
-    return `<tr><td>${esc(h)}</td><td>${kind}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
+    // stato dei cookie dello strumento (solo Matomo/Piwik è determinabile dai fatti osservati)
+    const ck = isMatomo(t.company) ? COOKIE_STATE_LABEL[matomoCookieMode(ss).state] : COOKIE_STATE_LABEL['non-determinabile'];
+    return `<tr><td>${esc(h)}</td><td>${kind}</td><td>${esc(t.company)}</td><td>${esc(CATEGORY_LABEL[t.category])}</td><td>${esc(ck)}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${rejected ? list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length : 'n/a'}</td></tr>`;
   })
-  .join('')}</table>`);
+  .join('')}</table>${naNote}`);
     }
     const third = groupBy(
       ss.flatMap((s) => s.requests.filter((q) => q.party === 'terza').map((q) => ({ s, q }))),
       (x) => x.q.host,
     );
-    parts.push(`<h3>${esc(site)} — terze parti contattate (${third.size})</h3><table><tr><th>Host</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>Prima della scelta (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
+    parts.push(`<h3>${esc(site)} — terze parti contattate (${third.size})</h3><table><tr><th>Host</th><th>Fornitore</th><th>Categoria</th><th>Richieste</th><th>${beforeCol} (caricamento / dopo scroll)</th><th>Dopo rifiuto</th></tr>
 ${[...third]
   .sort((a, b) => Number(NON_TECHNICAL.has(b[1][0].q.tracker?.category ?? 'sconosciuta')) - Number(NON_TECHNICAL.has(a[1][0].q.tracker?.category ?? 'sconosciuta')) || a[0].localeCompare(b[0]))
   .map(([h, list]) => {
     const t = list[0].q.tracker;
-    return `<tr><td>${esc(h)}</td><td>${esc(t?.company ?? '—')}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length}</td></tr>`;
+    // fornitore caricato da un contenuto incorporato che lo riunisce (es. "Sentry, caricato da Spotify (contenuto incorporato)")
+    const by = list.find((x) => x.q.embedGroup && x.q.embed && x.q.embed !== t?.company)?.q.embed;
+    return `<tr><td>${esc(h)}</td><td>${esc(t?.company ?? '—')}${by ? `<br><span class="muted">caricato da ${esc(by)}</span>` : ''}</td><td>${esc(t ? CATEGORY_LABEL[t.category] : 'non classificata')}</td><td>${list.length}</td><td>${list.filter((x) => x.q.stage === 'caricamento').length} / ${list.filter((x) => x.q.phase === 'prima' && x.q.stage === 'scroll').length}</td><td>${rejected ? list.filter((x) => x.s.scenario === 'rifiuta' && x.q.phase === 'dopo').length : 'n/a'}</td></tr>`;
   })
-  .join('')}</table>`);
+  .join('')}</table>${naNote}`);
   }
 
   // 5. Limiti: generali e di questa rilevazione (cosa non è stato visto e perché)
   const notSeen: string[] = [];
   if (allUnreachable.length) notSeen.push(`Nessun dato per ${allUnreachable.join(', ')}: le pagine non si sono caricate.`);
   if (blockedSites.length) notSeen.push(`Su ${blockedSites.join(', ')} alcune sessioni sono state intercettate da un sistema anti-bot e non sono state usate.`);
-  for (const d of r.declared.filter((x) => !x.source)) notSeen.push(`${host(d.site)}: elenco dichiarato non disponibile, confronto con i dichiarati non eseguito.`);
+  for (const d of r.declared.filter((x) => !x.source)) {
+    notSeen.push(
+      d.textual
+        ? `${host(d.site)}: elenco dichiarato solo testuale (${d.textual.url}): confronto per fornitore citato, non per nome di cookie.`
+        : `${host(d.site)}: elenco dichiarato non disponibile, confronto con i dichiarati non eseguito.`,
+    );
+  }
+  const validAll = sessions.filter((s) => !s.blocked && !s.unreachable);
+  const noBannerLim = noBannerSites(validAll);
   for (const site of sites) {
     const ss = sessions.filter((s) => s.site === site);
+    // Senza banner: gli scenari con scelta non sono stati eseguiti (saltati, o eseguiti senza poter scegliere nelle
+    // rilevazioni precedenti): lo si dice una volta sola, non scenario per scenario
+    const skipped = r.discovery.find((d) => d.site === site)?.skippedChoice;
+    const degenerate = ss.filter((s) => s.scenario !== 'nessuna-azione' && !s.manual && !s.replay && !s.unreachable && !s.blocked && s.interaction.outcome !== 'eseguito');
+    if (skipped || (noBannerLim.has(site) && degenerate.length)) {
+      const n = skipped?.sessions ?? validAll.filter((s) => s.site === site).length;
+      const which = skipped?.scenarios ?? [...new Set(degenerate.map((s) => s.scenario))];
+      notSeen.push(`${host(site)}: scenari con scelta non eseguiti: nessun banner rilevato in ${nWords(n, 'sessione', 'sessioni')} (${which.join(', ')}).`);
+    }
     const notDone = (sc: string) => ss.filter((s) => s.scenario === sc && !s.manual && !s.replay && s.interaction.outcome !== 'eseguito' && !s.unreachable && !s.blocked);
     for (const sc of ['rifiuta', 'accetta', 'personalizza', 'chiudi'] as const) {
       const list = notDone(sc);
-      if (!list.length) continue;
+      if (!list.length || noBannerLim.has(site)) continue;
       if (sc === 'personalizza' && list.every((x) => NO_STATS_CATEGORY.test(x.interaction.detail))) {
         notSeen.push(`${host(site)}: scenario "personalizza" non applicabile: il gestore non ha una categoria statistica separata e rifiutabile (è un fatto della struttura del banner, descritto nella scheda dedicata).`);
       } else if (sc === 'chiudi' && list.every((x) => x.interaction.outcome === 'non-trovato')) {
@@ -377,12 +424,14 @@ ${[...third]
       notSeen.push(`${host(site)}: ${msg} (${list.length === 1 ? 'sessione' : 'sessioni'} ${list.map((x) => x.id).join(', ')}).`);
     }
     const rev = ss.filter((s) => s.scenario === 'revoca' && s.revocation && s.revocation.outcome !== 'eseguita');
-    if (rev.length) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
+    if (rev.length && !noBannerLim.has(site)) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
     for (const s of ss.filter((x) => x.manual && !x.attributedFrom && (x.manual.pages.length <= 1 || x.manual.seconds < 60))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);
     for (const s of ss.filter((x) => x.replay?.stoppedAt)) notSeen.push(`${host(site)}: percorso registrato interrotto in ${s.id} (${s.replay!.stoppedAt}).`);
   }
   const errBy = new Map<string, string[]>();
   for (const n of r.attributionNotes ?? []) errBy.set(n, []);
+  // coerenza del momento: più raccolte "al caricamento" che pagine visitate per uno strumento di pageview
+  for (const n of pageviewCoherence(sessions)) errBy.set(n, []);
   for (const s of sessions) for (const e of new Set(s.errors)) errBy.set(e, [...(errBy.get(e) ?? []), s.id]);
   const errors = [...errBy].map(([e, ids]) => (!ids.length ? e : ids.length === 1 ? `${ids[0]}: ${e}` : `${e} — in ${ids.length} sessioni (${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''})`));
   parts.push(`<h2>5. Limiti</h2>

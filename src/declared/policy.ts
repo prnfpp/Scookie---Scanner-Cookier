@@ -17,7 +17,12 @@ interface RawRow {
 /** Un "nome" che è in realtà una durata: segno di colonne slittate (celle unite) o di una riga descrittiva. */
 const DURATION = /^(sessione|session|persistent[ei]?|\d+\s*(anni|anno|mesi|mese|settimane|settimana|giorni|giorno|ore|ora|minuti|minuto|secondi|years?|months?|days?|hours?|minutes?))$/i;
 
-export async function readPolicyDeclared(browser: Browser, url: string, userAgent: string, locale: string): Promise<{ items: DeclaredItem[]; skipped: string[] }> {
+export async function readPolicyDeclared(
+  browser: Browser,
+  url: string,
+  userAgent: string,
+  locale: string,
+): Promise<{ items: DeclaredItem[]; skipped: string[]; text?: { full: string; section: { title: string; text: string } | null } }> {
   const ctx = await browser.newContext({ userAgent, locale });
   try {
     const page = await ctx.newPage();
@@ -79,6 +84,28 @@ export async function readPolicyDeclared(browser: Browser, url: string, userAgen
       }
       return { out, skipped };
     }, DURATION.source);
+    // Testo della pagina e sezione sui cookie (titolo con "cookie" e ciò che segue fino al titolo successivo dello
+    // stesso livello): serve alla dichiarazione testuale quando non ci sono tabelle leggibili
+    const text = await page
+      .evaluate(() => {
+        const norm = (t: string | null | undefined) => (t ?? '').replace(/\s+/g, ' ').trim();
+        const full = (document.body?.innerText ?? '').slice(0, 300000);
+        const level = (el: Element) => (/^H[1-6]$/.test(el.tagName) ? Number(el.tagName[1]) : 7);
+        const heads = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6')).filter((h) => /cookie/i.test(h.textContent ?? '') && norm(h.textContent).length < 150);
+        for (const h of heads) {
+          const parts: string[] = [];
+          for (let n = h.nextElementSibling; n; n = n.nextElementSibling) {
+            if (/^H[1-6]$/.test(n.tagName) && level(n) <= level(h)) break;
+            parts.push(norm((n as HTMLElement).innerText ?? n.textContent));
+          }
+          const t = parts.filter(Boolean).join('\n');
+          if (t.length > 20) return { full, section: { title: norm(h.textContent), text: t.slice(0, 50000) } };
+        }
+        // senza un titolo sui cookie: i paragrafi che ne parlano
+        const ps = Array.from(document.querySelectorAll('p, li')).map((p) => norm(p.textContent)).filter((t) => /cookie/i.test(t));
+        return { full, section: ps.length ? { title: '', text: ps.join('\n').slice(0, 50000) } : null };
+      })
+      .catch(() => undefined);
     // con le celle unite lo stesso cookie può comparire su più righe (una per finalità o durata)
     const unique = [...new Map((rows as RawRow[]).map((r) => [`${r.name}|${r.category}`, r])).values()];
     const items = unique.map(
@@ -92,7 +119,7 @@ export async function readPolicyDeclared(browser: Browser, url: string, userAgen
         source: `cookie policy (${url})`,
       }),
     );
-    return { items, skipped };
+    return { items, skipped, ...(text ? { text } : {}) };
   } finally {
     await closeSafely(ctx, 15000);
   }

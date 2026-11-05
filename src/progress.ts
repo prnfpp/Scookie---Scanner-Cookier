@@ -57,6 +57,15 @@ export class ProgressTracker {
     this.send();
   }
 
+  /** Sessioni previste che non si eseguono più (es. scenari con scelta saltati perché il sito non ha un banner). */
+  skip(site: string, n: number) {
+    const s = this.p.sites.find((x) => x.site === site);
+    if (s) s.total = Math.max(s.done, s.total - n);
+    this.p.total = Math.max(this.p.done, this.p.total - n);
+    this.autoLeft = Math.max(0, this.autoLeft - n);
+    this.send();
+  }
+
   start(current: string) {
     this.p.current = current;
     this.send();

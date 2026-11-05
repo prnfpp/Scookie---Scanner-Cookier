@@ -1,6 +1,96 @@
 # Changelog
 
-## Non rilasciato
+## 0.1.2 — 2026-11-04
+
+Correzioni dopo la verifica manuale di due rilevazioni su siti WordPress senza banner, con Matomo ospitato sul sito.
+Ogni voce vale per qualsiasi sito; i fatti restano rilievi, cambia come sono descritti, classificati e ordinati.
+
+- **Fix 1 — testi coerenti quando il banner non c'è.** Se in nessuna sessione valida del sito compare un banner o un
+  gestore del consenso, rilievi e sintesi dicono "senza alcun meccanismo di consenso (nessun banner rilevato)" invece
+  di "prima di qualsiasi scelta sul banner" (il momento "al caricamento / dopo lo scroll" resta). La riga "Scenari"
+  elenca solo gli scenari eseguiti; quelli con scelta in cui il banner non c'era sono indicati come "non eseguiti
+  (nessun banner)" e non contano nella ripetibilità ("k su N"). Il titolo del rilievo sulle richieste dipende dalla
+  parte: "Richieste di tracciamento di prima parte…", "…di prima e terza parte…", "Richieste a terze parti…", con
+  "in assenza di banner" al posto di "prima della scelta"; la tabella "Rilievi per tipo" usa lo stesso titolo. Le
+  colonne dell'inventario "Prima della scelta" diventano "Senza banner".
+- **Fix 2 — "non applicabile" al posto di 0.** Nell'inventario la colonna "Dopo rifiuto" distingue tre casi: un
+  numero (o "sì", "rinnovato", "ancora presente") se l'elemento è stato osservato; 0 (o "no") se il rifiuto è stato
+  eseguito e l'elemento non è comparso; "n/a" se il rifiuto non è stato eseguito (nessun banner, comando non trovato,
+  sessioni non valide). Una nota sotto ogni tabella lo spiega. Nei CSV nessuna cella vuota per questi casi:
+  `cookie.csv` e `richieste.csv` hanno la colonna `esito_scelta` (`eseguita`, `non-applicabile (nessun banner)`,
+  `non-applicabile (nessuna-azione)`, `non-applicabile (scelta non eseguita: …)`), `ms_dalla_scelta` vale
+  `non-applicabile` senza scelta, e `confronto-dichiarati.csv` ha `osservato_dopo_rifiuto` (`sì`, `no`,
+  `non-applicabile`) e valori espliciti per categoria osservata, differenza di categoria e scenari.
+- **Fix 3 — momento calcolato per pagina, raccolte separate dagli script.** Lo stadio "dopo lo scroll" restava attivo
+  anche sulle pagine successive della sessione: negli scenari con scelta senza banner (e in ogni percorso di più
+  pagine prima della scelta) tutte le richieste dopo la prima pagina finivano "dopo lo scroll", compreso il pageview
+  che parte al caricamento. Ora "al caricamento" vuol dire prima della prima interazione simulata (mouse o rotella)
+  *su quella pagina* e lo stadio torna "al caricamento" a ogni nuova pagina; gli invii all'uscita tengono il momento
+  della pagina che si lascia; il primo movimento del mouse, che porta il cursore sopra la pagina, non conta come
+  interazione. Le sessioni registrano le visite (`visits`: pagina, inizio, prima interazione) e ogni richiesta la sua
+  visita (`visit`). I testi non sommano più raccolte e script: "N richieste di raccolta dati (al caricamento: X,
+  dopo lo scroll: Y); M download di script o risorse (…)". Nuovo controllo di coerenza nelle anomalie: per uno
+  strumento di pageview (statistica di prima parte, Matomo/Piwik) le raccolte "al caricamento" non possono superare
+  le pagine visitate. Nuovo `scripts/conta-richieste.mjs` per contare, pagina per pagina, le richieste di una
+  rilevazione e il momento assegnato, dai dati e dal HAR. Il momento si ricalcola solo con una nuova raccolta: in
+  `rigenera` restano i momenti registrati.
+- **Fix 4 — niente scenari con scelta se non c'è nessun CMP.** Le sessioni "nessuna azione" di un sito si eseguono
+  per prime; se in nessuna di quelle valide (né nelle navigazioni manuali) compare un banner o un gestore del consenso,
+  anche solo riconosciuto dall'euristica, gli scenari rifiuta, accetta, personalizza, revoca e chiudi non si eseguono
+  per quel sito. Con una sola sessione "nessuna azione" se ne fa prima una di conferma (se il banner compare, la prima
+  è sostituita come nelle altre ripetizioni). Se il banner si vede anche una sola volta, si eseguono tutti gli scenari
+  come prima (regola `banner-intermittente`). Nei Limiti una sola riga: "scenari con scelta non eseguiti: nessun
+  banner rilevato in N sessioni"; il perimetro lo indica accanto agli scenari. Anche nelle rilevazioni precedenti
+  rigenerate, per i siti senza banner, i Limiti hanno una riga sola invece di una per scenario. Opzione
+  `scenari.saltaSenzaBanner` (predefinita `true`) nello schema, in `config/esempio.yaml` e nell'interfaccia (Opzioni
+  → avanzate); l'avanzamento toglie dal totale le sessioni saltate e la stima della durata indica quanto dura un
+  audit di siti senza banner. Su un sito senza banner l'audit passa da circa 6 × 3 sessioni a quelle "nessuna azione".
+- **Fix 5 — Spotify, Sentry, Gravatar e risorse dei temi classificati.** In `data/trackers.yaml`: lettore Spotify
+  incorporato (`open.spotify.com/embed…`, `embed-cdn.spotifycdn.com`, `image-cdn-*.spotifycdn.com`, `encore.scdn.co`,
+  `apresolve.spotify.com`, servizi `*-spclient.spotify.com`) come "Spotify (contenuto incorporato)"; la telemetria del
+  lettore (`*-spclient.spotify.com` con percorsi `/gabo-receiver-service/`, `/melody/`, `/event-service/`) come
+  statistica; Sentry (`ingest.sentry.io`, `ingest.us.sentry.io`, `ingest.de.sentry.io`) come monitoraggio di errori e
+  prestazioni; Gravatar (Automattic) con la nota sull'hash dell'email dell'autore; `themes.muffingroup.com` come risorsa
+  del tema servita dal server dello sviluppatore. I domini delle voci accettano un modello con `*`. In
+  `data/cookies.yaml`: `sp_t` (identificativo del dispositivo e del visitatore, circa 1 anno) come marketing,
+  `sp_landing` come statistica da valutare, `sentryReplaySession` come registrazione delle sessioni; l'elenco curato
+  prevale su Open Cookie Database e la fonte si legge "elenco curato Scookie". Nuova opzione `raggruppa` delle voci:
+  tutto ciò che parte dal documento di un contenuto incorporato (richieste, anche verso altri fornitori, e storage) è
+  riunito sotto di lui, con "Sentry, caricato da Spotify (contenuto incorporato)" nella natura delle richieste e
+  nell'inventario, come per il widget di Google Calendar. Così un lettore che, senza banner o prima della scelta,
+  scrive un identificativo o invia telemetria e Session Replay produce i rilievi `cookie-prima-del-consenso` e
+  `richiesta-tracker-prima-del-consenso` con la stessa priorità di un video YouTube non bloccato, non
+  `elementi-non-classificati`. Le classificazioni si riapplicano con `rigenera`.
+- **Fix 6 — Matomo senza cookie.** Per Matomo/Piwik ospitato sul sito lo stato dei cookie si determina dai fatti:
+  "senza cookie" se nessun cookie `_pk_*` o `MATOMO_SESSID` è scritto, il parametro `_id` degli hit è vuoto o assente
+  e, come prova accessoria, la pagina ha `disableCookies` nella configurazione `_paq` oppure il tracker risponde
+  `hasCookies() === false` a fine pagina (lettura nuova, `statsProbe`; nelle rilevazioni precedenti i comandi `_paq` si
+  leggono, se possibile, dalle pagine salvate nel HAR); "con cookie" se sono scritti `_pk_id`/`_pk_ses`; altrimenti
+  "non determinabile". Nessuna qualificazione ("tecnico", "esente"): il rilievo dice "Matomo di prima parte, in
+  modalità senza cookie", la forza della prova resta "dati di navigazione inviati", i dettagli elencano i fatti e gli
+  eventuali parametri con dati dell'utente (`uid`, `_cvar`, `dimensionN` con valore), e il nuovo campo "Condizioni
+  rilevanti non verificabili dal browser" elenca mascheramento dell'IP, conservazione, incroci con altre fonti e
+  titolarità del server. La priorità non cambia da sola: nuova chiave
+  `regole.richiesta-tracker-prima-del-consenso.primaParteSenzaCookie.gravita` in `config/norme.yaml`, con lo stesso
+  valore della regola, da decidere a cura del legale. Inventario: colonna "Cookie" nella tabella degli strumenti sul
+  dominio del sito; sintesi: "Matomo di prima parte, senza cookie"; `dati.json`: `statoCookie` per sito.
+- **Fix 7 — informative scritte come testo e informativa assente.** Se l'elenco non viene dal gestore o da un file,
+  la cookie policy si cerca nell'ordine: indirizzo in configurazione, link nel banner, pagina "cookie" scoperta, link
+  nella pagina iniziale (piè di pagina, menu) con "cookie", "privacy", "informativa" o "note legali" nel testo o
+  nell'indirizzo e link `rel="privacy-policy"`, percorsi comuni (`/privacy-policy/`, `/cookie-policy/`, `/privacy/`,
+  `/informativa-privacy/`, `/informativa-cookie/`, `/cookie/`), URL della sitemap con quelle parole. Vale solo una
+  risposta 200 sullo stesso sito, con lo stato reale letto dal browser (una pagina d'errore con il piè di pagina non
+  conta). Il rapporto dice quale pagina è stata usata e come è stata trovata, e conserva tutti i tentativi con lo
+  stato e lo screenshot del piè di pagina. Senza tabelle leggibili si estrae una dichiarazione testuale: sezione sui
+  cookie, fornitori noti nominati (dall'elenco dei domini e alias come Google Analytics, YouTube, Facebook), affermazioni
+  tipiche ("solo cookie tecnici", "nessun cookie di profilazione", "nessun cookie per il tracciamento", "cookie di
+  terze parti"), ciascuno con una citazione di al massimo ~200 caratteri. Il riquadro "Elenco dichiarato" mostra
+  "testuale (N fornitori citati)"; la sezione 4 ha il confronto testuale per fornitore ("osservato e citato",
+  "osservato, non citato", "citato, non osservato") e, per le affermazioni, i cookie e gli storage non tecnici
+  osservati; nuovo `confronto-testuale.csv`. Nuova regola `informativa-assente` (priorità media, art. 13 GDPR e Linee
+  guida cookie del Garante 2021, da validare): nessuna pagina di informativa raggiungibile e nessun banner, con i
+  percorsi provati, il loro stato e il piè di pagina come prove. `link-informativa-assente` resta per il banner senza
+  link. Ricerca e lettura richiedono una nuova raccolta: con `rigenera` non si fanno.
 
 - **Sessioni bloccate da iframe non caricati.** Un iframe con `loading="lazy"` sotto la piega (es. un player Spotify
   o YouTube incorporato) resta senza documento finché non entra in vista: le letture su di lui (storage, scansione del

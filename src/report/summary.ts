@@ -86,12 +86,22 @@ function vendors(fs: Finding[]): string {
   return listIt(
     [...by].map(([v, list]) => {
       const notes = [...new Set(list.map(consentNote))];
-      return notes.length === 1 && notes[0] ? `${v} (${notes[0]})` : v;
+      // precisazione sul fornitore uguale in tutte le sue schede (es. Matomo "di prima parte, senza cookie")
+      const sub = [...new Set(list.map((f) => f.subjectNote))];
+      const v2 = sub.length === 1 && sub[0] ? `${v} ${sub[0]}` : v;
+      return notes.length === 1 && notes[0] ? `${v2} (${notes[0]})` : v2;
     }),
   );
 }
 
 const MARKETING = /marketing|pubblicit|social/i;
+
+/** Momento dei fatti "prima della scelta": senza banner nel sito non c'è una scelta da fare. */
+function beforeText(fs: Finding[]): string {
+  if (fs.length && fs.every((f) => f.noBanner)) return 'senza alcun meccanismo di consenso (nessun banner rilevato)';
+  if (fs.some((f) => f.noBanner)) return 'prima della scelta sul banner o in assenza di banner';
+  return 'prima di qualsiasi scelta sul banner';
+}
 
 /**
  * Sintesi per causa: le schede che derivano dallo stesso fatto diventano un punto solo, con i fornitori coinvolti.
@@ -154,7 +164,7 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
   const mkt = before.filter(isMkt);
   if (mkt.length) {
     const ids = mkt.some((f) => f.evidenceLevel === 'identificativo');
-    items.push(item(labelled(`${ids ? 'Identificativi e raccolte pubblicitarie' : 'Raccolte pubblicitarie'} prima di qualsiasi scelta sul banner`, vendors(mkt)), mkt));
+    items.push(item(labelled(`${ids ? 'Identificativi e raccolte pubblicitarie' : 'Raccolte pubblicitarie'} ${beforeText(mkt)}`, vendors(mkt)), mkt));
     take(mkt);
   }
   const stats = before.filter((f) => !isMkt(f));
@@ -163,7 +173,7 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
     const rec = stats.some((f) => /registrazione sessioni/.test(f.description));
     const st = stats.some((f) => !/registrazione sessioni/.test(f.description));
     const what = rec && st ? 'Statistica e registrazione delle sessioni' : rec ? 'Registrazione delle sessioni' : 'Statistica';
-    items.push(item(labelled(`${what} prima di qualsiasi scelta sul banner`, vendors(stats)), stats));
+    items.push(item(labelled(`${what} ${beforeText(stats)}`, vendors(stats)), stats));
     take(stats);
   }
 
@@ -190,7 +200,7 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
   const weakOnes = findings.filter((f) => free(f) && TRACKING.includes(f.ruleId) && weak(f));
   if (weakOnes.length) {
     const who = vendors(weakOnes);
-    items.push(boost(item(`Script e contenuti scaricati ${who ? `da ${who} ` : ''}prima della scelta o dopo il rifiuto, senza raccolta di dati osservata`, weakOnes), -15));
+    items.push(boost(item(`Script e contenuti scaricati ${who ? `da ${who} ` : ''}${weakOnes.every((f) => f.noBanner) ? 'in assenza di banner' : 'prima della scelta o dopo il rifiuto'}, senza raccolta di dati osservata`, weakOnes), -15));
     take(weakOnes);
   }
   const rareOnes = findings.filter((f) => free(f) && TRACKING.includes(f.ruleId) && rare(f));
