@@ -2,6 +2,7 @@ import { NON_TECHNICAL } from '../../types.js';
 import { groupBy, sessionEvidence } from '../helpers.js';
 import type { RawFinding, Rule } from '../types.js';
 import { nWords, plural } from '../../util/text.js';
+import { isMatomo, matomoCookieMode } from '../../classify/firstparty.js';
 
 /** Nessun banner rilevato sulla home di un sito. */
 export const bannerAssente: Rule = {
@@ -16,16 +17,29 @@ export const bannerAssente: Rule = {
     for (const [site, list] of groupBy(sessions, (s) => s.site)) {
       if (list.some((s) => s.interaction.bannerVisibleBefore || s.interaction.detectedCmps.length)) continue;
       const home = list.find((s) => s.scenario === 'nessuna-azione') ?? list[0];
+      // Matomo di prima parte senza cookie e senza dati dell'utente negli hit non conta come tracciamento che richiede
+      // un banner: ha un rilievo proprio, con le condizioni da verificare (IP mascherato, nessun incrocio)
+      const mode = matomoCookieMode(list);
+      const ownCookieless = (r: (typeof list)[number]['requests'][number]) =>
+        mode.state === 'senza-cookie' && !mode.userData.length && r.party === 'prima' && !!r.tracker && isMatomo(r.tracker.company);
+      const nonTechReqs = list.flatMap((s) => s.requests.filter((r) => r.tracker && NON_TECHNICAL.has(r.tracker.category)));
       const nonTech =
-        list.some((s) => s.cookies.some((c) => NON_TECHNICAL.has(c.classification.category))) ||
-        list.some((s) => s.requests.some((r) => r.tracker && NON_TECHNICAL.has(r.tracker.category)));
+        list.some((s) => [...s.cookies, ...s.storage].some((c) => NON_TECHNICAL.has(c.classification.category))) ||
+        nonTechReqs.some((r) => !ownCookieless(r));
+      const onlyCookieless = !nonTech && nonTechReqs.length > 0;
       out.push({
         site,
         scenario: null,
         pageUrl: home.pages[0],
         severity: nonTech && !geoCaveat ? 'media' : 'informativa',
         headline: nonTech ? 'Nessun banner di consenso, pur in presenza di tracciamenti' : undefined,
-        description: `In nessuna delle pagine visitate è stato rilevato un banner o un gestore del consenso.${nonTech ? ' Sono però presenti cookie o richieste di categoria non tecnica (vedi inventario).' : ''}`,
+        description:
+          `In nessuna delle pagine visitate è stato rilevato un banner o un gestore del consenso.` +
+          (nonTech
+            ? ' Sono però presenti cookie o richieste di categoria non tecnica (vedi inventario).'
+            : onlyCookieless
+              ? ' Le sole raccolte non tecniche osservate sono di Matomo di prima parte in modalità senza cookie, senza dati dell\'utente negli hit: sono descritte nel rilievo dedicato, con le condizioni non verificabili dal browser.'
+              : ' Non sono stati osservati cookie, archivi o richieste di categoria non tecnica.'),
         details: [
           `Pagine visitate: ${[...new Set(list.flatMap((s) => s.pages))].length}`,
           ...(geoCaveat ? [`Attenzione: ${exit.note} Molti CMP mostrano il banner solo a visitatori da UE/SEE.`] : []),
