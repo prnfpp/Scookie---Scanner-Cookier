@@ -384,3 +384,14 @@ test('0.1.3: Google Fonts e Gravatar caricati dalle pagine: rilievo informativo 
   // le risorse dei contenuti incorporati non contano
   assert.ok(!of(SPOTIFY).some((x) => x.ruleId === 'ip-a-terze-parti' && x.details.some((d) => /spotify/i.test(d))));
 });
+
+test('0.1.3: senza banner e con il solo Matomo di prima parte senza cookie, "nessun banner" è informativo', () => {
+  const ba = of(MATOMO).find((f) => f.ruleId === 'banner-assente')!;
+  assert.ok(ba);
+  assert.equal(ba.severity, 'informativa');
+  assert.equal(ba.headline, undefined);
+  assert.match(ba.description, /Matomo di prima parte in modalità senza cookie/);
+  // con un lettore che scrive identificativi resta "media"
+  const sp = of(SPOTIFY).find((f) => f.ruleId === 'banner-assente')!;
+  assert.equal(sp.severity, 'media');
+});

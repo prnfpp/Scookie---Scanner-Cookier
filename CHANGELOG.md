@@ -21,6 +21,10 @@ incorporato e Matomo senza cookie. Ogni voce vale per qualsiasi sito.
 - **Matomo di prima parte senza cookie: priorità predefinita bassa.** `regole.richiesta-tracker-prima-del-consenso.primaParteSenzaCookie.gravita`
   in `config/norme.yaml` passa da `alta` a `bassa`: con IP mascherato e senza incroci le Linee guida del Garante
   assimilano questi analytics ai cookie tecnici. Il rilievo resta, con le condizioni non verificabili dal browser.
+- **"Nessun banner" con il solo Matomo senza cookie.** `banner-assente` non sale più a priorità media "pur in presenza
+  di tracciamenti" quando le sole raccolte non tecniche sono di Matomo di prima parte senza cookie e senza dati
+  dell'utente negli hit: resta informativo e rimanda al rilievo dedicato. Contano anche gli archivi locali (storage)
+  non tecnici, non solo i cookie.
 - **Totali con la media per sessione.** Accanto ai conteggi delle richieste (es. "560 richieste di raccolta") il testo
   indica in quante sessioni e la media per sessione.
 - **Nuova regola `ip-a-terze-parti`** (informativa, art. 6 e 13 GDPR, da validare): Google Fonts e Gravatar caricati
