@@ -377,8 +377,8 @@ Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Coo
 
 | Regola | Cosa rileva |
 | --- | --- |
-| `cookie-prima-del-consenso` | cookie o storage non tecnici prima della scelta |
-| `richiesta-tracker-prima-del-consenso` | richieste a pubblicità, statistica, registrazione sessioni, social prima della scelta |
+| `cookie-prima-del-consenso` | cookie o storage non tecnici prima della scelta; le richieste di raccolta dello stesso fornitore sono riportate qui come dati inviati, non in un rilievo a parte |
+| `richiesta-tracker-prima-del-consenso` | richieste a pubblicità, statistica, registrazione sessioni, social prima della scelta, per i fornitori che non hanno già scritto cookie o storage non tecnici; Matomo di prima parte senza cookie ha priorità propria (`primaParteSenzaCookie`, predefinita bassa) |
 | `consent-mode-senza-consenso` | ping Google Consent Mode con `gcs=G100` prima della scelta o dopo il rifiuto |
 | `attivazione-dopo-rifiuto` | cookie o richieste di tracciamento dopo "Rifiuta", anche nelle pagine successive |
 | `rifiuto-non-al-primo-livello` | rifiuto solo nelle preferenze, solo via API, o non trovato |
@@ -406,6 +406,7 @@ Dopo la scelta legge lo stato del consenso dal CMP (gruppi attivi OneTrust, `Coo
 | `categoria-incoerente` | es. analytics o heatmap tra i "necessari / sempre attivi"; stesso cookie in più categorie |
 | `elementi-non-classificati` | cookie, storage e domini di terze parti che nessuna fonte sa classificare: vengono elencati invece di restare invisibili |
 | `endpoint-server-side` | endpoint di raccolta su dominio proprio (`/g/collect`…), con il limite che comporta |
+| `ip-a-terze-parti` | Google Fonts e Gravatar caricati direttamente dalle pagine: il fornitore riceve IP e pagina a ogni caricamento (contesto, priorità informativa) |
 
 Norme collegate e priorità di verifica (chiave `gravita`) si cambiano in [`config/norme.yaml`](config/norme.yaml). I riferimenti precaricati vanno **validati dal consulente legale**.
 

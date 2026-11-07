@@ -228,11 +228,9 @@ test('fix 5: embed Spotify: identificativo, telemetria e Session Replay di Sentr
   assert.ok(ck.details.some((d) => /sentryReplaySession.*Sentry, caricato da Spotify \(contenuto incorporato\)/.test(d)), ck.details.join(' | '));
   assert.match(ck.description, /solo dopo lo scroll/);
   assert.match(ck.evidenceExtra ?? '', /dati di navigazione inviati/);
-  const rq = fs.find((f) => f.ruleId === 'richiesta-tracker-prima-del-consenso' && (f.subjects ?? []).includes(emb))!;
-  assert.ok(rq, 'telemetria del lettore');
-  assert.equal(rq.severity, 'alta');
-  assert.ok(rq.details.some((d) => /Natura delle richieste: Sentry .*caricato da Spotify \(contenuto incorporato\)/.test(d)), rq.details.join(' | '));
-  assert.match(rq.description, /solo dopo lo scroll/);
+  // telemetria e Sentry sono lo stesso fatto (0.1.3): accorpati nel rilievo sui cookie, non un rilievo a parte
+  assert.ok(!fs.some((f) => f.ruleId === 'richiesta-tracker-prima-del-consenso' && (f.subjects ?? []).includes(emb)), 'nessun rilievo separato per le richieste');
+  assert.ok(ck.details.some((d) => /Natura delle richieste: Sentry .*caricato da Spotify \(contenuto incorporato\)/.test(d)), ck.details.join(' | '));
   // nessun dominio di Spotify o Sentry tra i non classificati
   const unk = fs.find((f) => f.ruleId === 'elementi-non-classificati');
   if (unk) assert.ok(!unk.details.some((d) => /spotify|scdn|sentry/i.test(d)), unk.details.join(' | '));
@@ -255,11 +253,11 @@ test('fix 6: Matomo di prima parte senza cookie (con disableCookies): titolo, te
   assert.equal(m.evidenceLevel, 'raccolta');
   assert.ok(m.details.some((d) => /^Stato dei cookie di Matomo: senza cookie — .*_id vuoto o assente.*disableCookies.*hasCookies\(\) del tracker falso/.test(d)), m.details.join(' | '));
   assert.ok(m.unverifiable?.some((u) => /IP/.test(u)) && m.unverifiable.some((u) => /conservazione/.test(u)) && m.unverifiable.some((u) => /incroci/.test(u)) && m.unverifiable.some((u) => /titolarità/.test(u)));
-  // priorità invariata: la chiave dedicata in norme.yaml ha lo stesso valore della regola
+  // priorità dalla chiave dedicata in norme.yaml: "bassa" dalla 0.1.3 (analytics di prima parte senza cookie)
   const { loadNorms } = await import('../src/rules/engine.js');
   const n = loadNorms().file.regole!['richiesta-tracker-prima-del-consenso'] as { gravita: string; primaParteSenzaCookie?: { gravita: string } };
-  assert.equal(n.primaParteSenzaCookie?.gravita, n.gravita);
-  assert.equal(m.severity, n.gravita);
+  assert.equal(n.primaParteSenzaCookie?.gravita, 'bassa');
+  assert.equal(m.severity, 'bassa');
   assert.doesNotMatch(texts(m), /\b(tecnico|esente)\b/);
   const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
   assert.match(html, /Condizioni rilevanti non verificabili dal browser/);
@@ -267,7 +265,8 @@ test('fix 6: Matomo di prima parte senza cookie (con disableCookies): titolo, te
   assert.match(own, /<th>Cookie<\/th>/);
   assert.match(own, /<td>senza cookie<\/td>/);
   const sint = html.slice(html.indexOf('<h2>1. Sintesi'), html.indexOf('<h2>2. Perimetro'));
-  assert.match(sint, /Matomo di prima parte, senza cookie/);
+  // priorità bassa: resta un rilievo ma non è tra i fatti principali della sintesi (solo alta e media)
+  assert.doesNotMatch(sint, /Matomo di prima parte, senza cookie/);
 });
 
 test('fix 6: Matomo senza cookie riconosciuto anche senza disableCookies (hasCookies falso)', () => {
@@ -335,4 +334,53 @@ test('fix 7: estrazione testuale: sezione cookie, fornitori noti, affermazioni t
   assert.equal(vendorBase('Spotify (contenuto incorporato)'), 'Spotify');
   assert.equal(vendorBase('Piwik'), 'Matomo');
   assert.equal(extractTextual('u', 'h', { full: 'Pagina senza informazioni.', section: null }, []), null);
+});
+
+// --- 0.1.3: correzioni dopo la verifica di una rilevazione su un sito senza banner con un lettore Spotify incorporato ---
+
+test('0.1.3: categorie diverse tra gli elementi dello stesso fornitore dette una per una', () => {
+  const ck = of(SPOTIFY).find((f) => f.ruleId === 'cookie-prima-del-consenso' && (f.subjects ?? []).includes('Spotify (contenuto incorporato)'))!;
+  assert.match(ck.description, /Categorie: [^.]*marketing\/pubblicità \(sp_t\)[^.]*statistica \(sp_landing\)[^.]*registrazione sessioni\/heatmap \(sentryReplaySession\)/);
+  assert.doesNotMatch(ck.description, /Categoria: marketing/);
+});
+
+test('0.1.3: Sentry con elementi replay_* nell\'envelope classificato come registrazione della sessione', async () => {
+  const reqs = result.sessions.filter((s) => s.site.includes(SPOTIFY)).flatMap((s) => s.requests).filter((r) => r.host.endsWith('sentry.io'));
+  assert.ok(reqs.length);
+  for (const r of reqs) {
+    assert.deepEqual(r.envelopeItems, ['replay_event']);
+    assert.equal(r.tracker?.category, 'registrazione-sessioni');
+    assert.match(r.purpose ?? '', /Session Replay.*caricato da Spotify/);
+  }
+  const { isSentryReplay } = await import('../src/classify/enrich.js');
+  assert.equal(isSentryReplay({ host: 'o1.ingest.us.sentry.io', envelopeItems: ['event'] }), false);
+  assert.equal(isSentryReplay({ host: 'o1.ingest.sentry.io', envelopeItems: ['replay_recording'] }), true);
+  assert.equal(isSentryReplay({ host: 'esempio.it', envelopeItems: ['replay_event'] }), false);
+});
+
+test('0.1.3: nessun banner accorpato in sintesi al punto sui tracciamenti dello stesso sito', () => {
+  const ba = of(SPOTIFY).find((f) => f.ruleId === 'banner-assente')!;
+  assert.ok(ba);
+  const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
+  const sint = html.slice(html.indexOf('<h2>1. Sintesi'), html.indexOf('<h2>2. Perimetro'));
+  assert.doesNotMatch(sint, /Nessun banner di consenso, pur in presenza di tracciamenti/);
+  assert.ok(sint.split('<li>').some((li) => /senza alcun meccanismo di consenso/.test(li) && li.includes(`#${ba.id}"`)), sint);
+});
+
+test('0.1.3: media per sessione accanto ai totali', async () => {
+  const { perSession } = await import('../src/rules/helpers.js');
+  const r = (n: number) => ({ n }) as never;
+  const a = [r(1), r(2), r(3), r(4)];
+  const ss = [{ requests: [a[0], a[1]] }, { requests: [a[2], a[3]] }, { requests: [] }] as never;
+  assert.equal(perSession(a, ss), ' (in 2 sessioni, in media 2 per sessione)');
+  assert.equal(perSession(a.slice(0, 2), ss), '');
+});
+
+test('0.1.3: Google Fonts e Gravatar caricati dalle pagine: rilievo informativo sull\'IP inviato a terzi', () => {
+  const f = of(MATOMO).find((x) => x.ruleId === 'ip-a-terze-parti');
+  assert.ok(f, of(MATOMO).map((x) => x.ruleId).join(' | '));
+  assert.equal(f.severity, 'informativa');
+  assert.ok(f.details.some((d) => /^Gravatar \(Automattic\): .*secure\.gravatar\.com/.test(d)), f.details.join(' | '));
+  // le risorse dei contenuti incorporati non contano
+  assert.ok(!of(SPOTIFY).some((x) => x.ruleId === 'ip-a-terze-parti' && x.details.some((d) => /spotify/i.test(d))));
 });

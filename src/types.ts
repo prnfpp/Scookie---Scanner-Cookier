@@ -131,6 +131,8 @@ export interface RequestRecord {
   tracker?: { company: string; category: Category };
   /** Parametri di consenso Google (gcs, gcd, npa) se presenti. */
   consentParams?: Record<string, string>;
+  /** Tipi degli elementi di un envelope di Sentry (es. "event", "transaction", "replay_event"), letti dal corpo. */
+  envelopeItems?: string[];
   /** Natura della richiesta riconosciuta dallo strumento (es. Session Replay di Dynatrace, segnale di consenso UET). */
   purpose?: string;
   /** Endpoint di raccolta riconosciuto su un dominio proprio (probabile server-side tagging). */

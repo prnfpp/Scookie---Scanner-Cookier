@@ -209,6 +209,16 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
     take([f]);
   }
 
+  // Nessun banner: se i tracciamenti dello stesso sito sono già in sintesi "senza alcun meccanismo di consenso", l'assenza
+  // del banner è la stessa causa e si aggiunge a quel punto invece di farne uno a sé
+  for (const f of findings.filter((x) => free(x) && x.ruleId === 'banner-assente')) {
+    const host = hostOf(f.site);
+    const target = items.find((it) => it.findings.some((x) => x.noBanner && TRACKING.includes(x.ruleId)) && it.hosts.includes(host));
+    if (!target) continue;
+    target.findings = [...target.findings, f].sort((a, b) => a.id.localeCompare(b.id));
+    take([f]);
+  }
+
   for (const f of findings) if (free(f) && f.headline && (f.severity === 'alta' || f.severity === 'media')) items.push(item(f.headline, [f]));
 
   return items.filter((i) => i.severity === 'alta' || i.severity === 'media').sort((a, b) => b.score - a.score);

@@ -113,6 +113,17 @@ export const executedScenario = (s: SessionResult) => s.scenario === 'nessuna-az
 
 export const stageLabel = (s: Stage, noBanner = false) => (noBanner && s === 'scroll' ? 'dopo lo scroll della pagina e il movimento del mouse, in assenza di banner' : STAGE_LABEL[s]);
 
+/**
+ * Media per sessione di un gruppo di richieste: un totale su molte sessioni (es. 560 in 45 sessioni) va letto insieme
+ * al numero di sessioni. Vuoto con una sola sessione.
+ */
+export function perSession(reqs: RequestRecord[], sessions: SessionResult[]): string {
+  const n = sessions.filter((s) => s.requests.some((r) => reqs.includes(r))).length;
+  if (n < 2) return '';
+  const avg = Math.round(reqs.length / n);
+  return ` (in ${n} sessioni, in media ${avg === 0 ? 'meno di 1' : avg} per sessione)`;
+}
+
 /** "1 richiesta", "3 richieste". */
 export const nReq = (n: number) => `${n} ${n === 1 ? 'richiesta' : 'richieste'}`;
 

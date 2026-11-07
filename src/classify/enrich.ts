@@ -41,6 +41,8 @@ export function reclassify(sessions: SessionResult[], classifier: Classifier): v
  *   contenuto dei campi dei moduli), non semplice monitoraggio delle prestazioni.
  * - New Relic con ref=apps.mypurecloud…: l'agente gira dentro il widget di chat Genesys, non nel sito.
  * - Microsoft UET con evt=consent: solo segnale di Consent Mode (asc=D negato, asc=G concesso).
+ * - Sentry con elementi replay_event / replay_recording nell'envelope: registrazione della sessione (Session Replay),
+ *   non solo monitoraggio degli errori; senza, resta monitoraggio di errori e prestazioni.
  */
 export function enrichRequests(sessions: SessionResult[]): void {
   for (const s of sessions) {
@@ -54,6 +56,9 @@ export function enrichRequests(sessions: SessionResult[]): void {
       } else if (nrFromGenesys && (/(^|\.)nr-data\.net$/.test(r.host) || /(^|\.)js-agent\.newrelic\.com$/.test(r.host))) {
         r.tracker = { company: 'New Relic (nel widget di chat Genesys)', category: r.tracker?.category ?? 'statistica' };
         r.purpose = "Monitoraggio delle prestazioni del widget di chat Genesys (parametro ref=apps.mypurecloud…): l'agente è caricato dal widget del fornitore della chat, non dalle pagine del sito";
+      } else if (isSentryReplay(r)) {
+        r.tracker = { company: r.tracker?.company ?? 'Sentry', category: 'registrazione-sessioni' };
+        r.purpose = SENTRY_REPLAY;
       } else if (/(^|\.)bat\.bing\.(com|net)$/.test(r.host)) {
         const q = params(url);
         const asc = q.get('asc');
@@ -63,6 +68,12 @@ export function enrichRequests(sessions: SessionResult[]): void {
     }
   }
 }
+
+/** Endpoint di raccolta di Sentry (ingest.sentry.io e regioni). */
+export const SENTRY_INGEST = /(^|\.)ingest\.([a-z]{2}\.)?sentry\.io$/;
+const SENTRY_REPLAY = 'Sentry Session Replay (elementi replay_event / replay_recording nella richiesta): invio della registrazione della sessione';
+/** Richiesta a Sentry che trasporta una registrazione della sessione, secondo gli elementi dell'envelope. */
+export const isSentryReplay = (r: { host: string; envelopeItems?: string[] }) => SENTRY_INGEST.test(r.host) && !!r.envelopeItems?.some((t) => /^replay_/.test(t));
 
 const GENESYS_REF = /[?&]ref=https?:\/\/apps\.mypurecloud\.|[?&]ref=https?:\/\/[^&]*\.pure\.cloud/;
 
@@ -112,7 +123,7 @@ export function attributeToEmbeds(sessions: SessionResult[], classifier: Classif
         r.tracker = { company: t.azienda, category: 'funzionalita' };
         r.purpose = `Risorsa caricata da ${t.azienda}`;
       } else if (r.tracker.company !== t.azienda) {
-        const note = classifier.classifyHost(r.host, safePath(r.url))?.nota;
+        const note = isSentryReplay(r) ? 'Session Replay: invio della registrazione della sessione' : classifier.classifyHost(r.host, safePath(r.url))?.nota;
         r.purpose = `${r.tracker.company}${note ? ` (${note})` : ''}, caricato da ${t.azienda}`;
       }
     }

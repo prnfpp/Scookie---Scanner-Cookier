@@ -52,10 +52,12 @@ regole:
     # Caso particolare: statistica di prima parte (Matomo/Piwik sul dominio del sito) riconosciuta "senza cookie"
     # (nessun cookie _pk_*, identificativo _id vuoto negli hit, disableCookies o hasCookies() falso). Lo strumento non
     # la qualifica come tecnica o esente: mascheramento dell'IP, conservazione, incroci con altre fonti e titolarità del
-    # server non sono verificabili dal browser. Il valore predefinito è uguale a quello della regola: lo decide il
-    # consulente legale (alta | media | bassa | informativa).
+    # server non sono verificabili dal browser. Con queste condizioni rispettate le Linee guida del Garante (2021)
+    # assimilano gli analytics di prima parte ai cookie tecnici: per questo la priorità predefinita è "bassa" (resta
+    # un rilievo, con le condizioni da verificare elencate). Modificabile dal consulente legale
+    # (alta | media | bassa | informativa).
     primaParteSenzaCookie:
-      gravita: alta
+      gravita: bassa
   consent-mode-senza-consenso:
     norme: [art122, eprivacy53, edpb2_2023]
     gravita: media
@@ -141,4 +143,9 @@ regole:
     gravita: bassa
   endpoint-server-side:
     norme: [gdpr13]
+    gravita: informativa
+  # Google Fonts e Gravatar caricati direttamente dalle pagine: il fornitore riceve IP e pagina a ogni caricamento.
+  # Contesto per l'informativa (art. 13) e la base giuridica (art. 6), da valutare a cura del legale.
+  ip-a-terze-parti:
+    norme: [gdpr6, gdpr13]
     gravita: informativa
