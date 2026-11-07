@@ -8,6 +8,7 @@ import { preview, withTimeout } from '../util/misc.js';
 /** Attesa massima per leggere lo storage di un frame. */
 const FRAME_TIMEOUT_MS = 5000;
 import { detectPii, maskPii } from '../util/pii.js';
+import { SENTRY_INGEST } from '../classify/enrich.js';
 
 /** Parametri di consenso nelle richieste Google e IAB, utili come evidenza. */
 const CONSENT_PARAMS = ['gcs', 'gcd', 'npa', 'dma', 'dma_cps', 'gdpr', 'gdpr_consent', 'us_privacy', 'pscd'];
@@ -226,6 +227,11 @@ export class Collector {
       if (v !== null && v !== '') params[p] = preview(v, 60);
     }
     if (Object.keys(params).length) rec.consentParams = params;
+    // Envelope di Sentry: i tipi degli elementi (righe di intestazione JSON) dicono se c'è una registrazione della sessione
+    if (body && SENTRY_INGEST.test(host)) {
+      const items = [...new Set([...body.matchAll(/^\{[^\n]*?"type":"([a-z_]+)"/gm)].map((m) => m[1]))];
+      if (items.length) rec.envelopeItems = items;
+    }
     const pii = detectPii(url, body);
     if (pii.length) rec.pii = pii;
     if (party === 'prima') {

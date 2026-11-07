@@ -1,5 +1,6 @@
 import { NON_TECHNICAL } from '../../types.js';
-import { CATEGORY_LABEL, fmtDate, groupBy, hostsSummary, nReq, requestEvidenceLevel, requestExcerpt, sessionEvidence, stageLabel, stageWhen, strongestRequest, requestVendor, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
+import { CATEGORY_LABEL, embedLine, fmtDate, groupBy, hostsSummary, nReq, perSession, requestEvidenceLevel, requestExcerpt, sessionEvidence, stageLabel, stageWhen, strongestRequest, requestVendor, noBannerSites, beforeChoice, scenariosLine } from '../helpers.js';
+import { stageBreakdown } from './richiesta-tracker-prima-del-consenso.js';
 import type { RawFinding, Rule } from '../types.js';
 
 /** Cookie o storage non tecnici scritti prima di qualsiasi scelta sul banner. */
@@ -59,13 +60,22 @@ export const cookiePrimaDelConsenso: Rule = {
           : rows.every((r) => !r)
             ? ` (non dichiarat${names.length === 1 ? 'o' : 'i'} dal sito)`
             : '';
-      // Dati inviati allo stesso fornitore prima della scelta (es. hit di Matomo ospitato sul sito): la prova comprende
-      // anche la raccolta, non solo l'identificativo memorizzato
+      // Dati inviati allo stesso fornitore prima della scelta (es. hit di Matomo ospitato sul sito, telemetria di un
+      // contenuto incorporato): la prova comprende anche la raccolta, non solo l'identificativo memorizzato. Le stesse
+      // richieste non producono un rilievo a parte (regola richiesta-tracker-prima-del-consenso): è lo stesso fatto.
       const vendor = first.cls.platform;
       const sent = vendor
         ? sessions.filter((x) => x.site === first.s.site).flatMap((x) => x.requests.filter((r) => r.phase === 'prima' && !!r.tracker && requestVendor(r) === vendor && NON_TECHNICAL.has(r.tracker.category) && requestEvidenceLevel([r]) === 'raccolta'))
         : [];
       const sentSample = sent.length ? strongestRequest(sent) : null;
+      const siteSessions = sessions.filter((x) => x.site === first.s.site);
+      // Categorie diverse tra gli elementi (es. un identificativo pubblicitario e una pagina d'arrivo statistica): si
+      // dicono una per una, non con la categoria del primo
+      const cats = [...new Set(group.map((g) => g.cls.category))];
+      const catText =
+        cats.length === 1
+          ? `Categoria: ${CATEGORY_LABEL[cats[0]]}`
+          : `Categorie: ${cats.map((k) => `${CATEGORY_LABEL[k]} (${[...new Set(group.filter((g) => g.cls.category === k).map((g) => g.name))].join(', ')})`).join('; ')}`;
       out.push({
         site: first.s.site,
         scenario: first.s.scenario,
@@ -73,16 +83,18 @@ export const cookiePrimaDelConsenso: Rule = {
         ...(nb ? { title: 'Cookie o storage non tecnici in assenza di banner', noBanner: true } : {}),
         description:
           `${names.length === 1 ? (names[0].startsWith('chiave') ? `La ${names[0]} viene scritta` : `Il ${names[0]} viene scritto`) : `${names.length} elementi (${names.join(', ')}) vengono scritti`} ` +
-          `${when}. Categoria: ${CATEGORY_LABEL[first.cls.category]}` +
-          `${first.cls.platform ? ` (${first.cls.platform})` : ''}, secondo ${first.cls.source}.` +
-          (sent.length ? ` ${nb ? 'Nelle stesse pagine' : 'Prima della scelta'} il browser invia anche dati di navigazione a ${vendor}: ${nReq(sent.length)} di raccolta a ${hostsSummary(sent)}${sent.every((r) => r.party === 'prima') ? ' (endpoint sul dominio del sito)' : ''}.` : ''),
+          `${when}. ${first.cls.platform ? `Fornitore: ${first.cls.platform}. ` : ''}${catText}, secondo ${[...new Set(group.map((g) => g.cls.source))].join(', ')}.` +
+          (sent.length ? ` ${nb ? 'Nelle stesse pagine' : 'Prima della scelta'} il browser invia anche dati di navigazione a ${vendor}: ${nReq(sent.length)} di raccolta a ${hostsSummary(sent)}${perSession(sent, siteSessions)}${sent.every((r) => r.party === 'prima') ? ' (endpoint sul dominio del sito)' : ''}.` : ''),
         details: [
           ...[...new Map(group.map((g) => [g.what, g])).values()].map((g) => {
             const decl = declaredAs(g.s.site, g.name);
             return `${g.what} — dominio/origine ${g.where}; ${g.extra}; ${stageLabel(g.stage, nb)}${decl ? `; ${decl}` : ''}${g.cls.note ? ` — nota: ${g.cls.note}` : ''}`;
           }),
           `Pagine: ${pages.join(', ')}`,
-          ...(sentSample ? [`Dati inviati ${nb ? 'in assenza di banner' : 'prima della scelta'}: ${nReq(sent.length)} di raccolta; richiesta di esempio: ${sentSample.method} ${sentSample.url.slice(0, 200)}`] : []),
+          ...(sentSample ? [`Dati inviati ${nb ? 'in assenza di banner' : 'prima della scelta'}: ${nReq(sent.length)} di raccolta${perSession(sent, siteSessions)}; richiesta di esempio: ${sentSample.method} ${sentSample.url.slice(0, 200)}`] : []),
+          ...(sent.length ? [stageBreakdown(sent)] : []),
+          ...[...new Set(sent.map((x) => x.purpose).filter(Boolean))].map((x) => `Natura delle richieste: ${x}`),
+          ...(embedLine(sent) ? [embedLine(sent)!] : []),
           `${scenariosLine([...new Set(group.map((g) => g.s))], nb)}${nb ? '' : ' (fase precedente alla scelta)'}`,
         ],
         evidenceLevel: 'identificativo',

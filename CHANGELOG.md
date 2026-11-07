@@ -1,5 +1,32 @@
 # Changelog
 
+## Non rilasciato
+
+Correzioni dopo la verifica manuale di una rilevazione su un sito WordPress senza banner con un lettore Spotify
+incorporato e Matomo senza cookie. Ogni voce vale per qualsiasi sito.
+
+- **Un fatto, un rilievo.** Le richieste di raccolta di un fornitore che ha già scritto cookie o storage non tecnici
+  prima della scelta non producono più un rilievo `richiesta-tracker-prima-del-consenso` separato anche quando sono di
+  terza parte (prima valeva solo per l'endpoint sul dominio del sito): sono riportate nel rilievo
+  `cookie-prima-del-consenso` come dati inviati, con il momento (al caricamento / dopo lo scroll), la natura delle
+  richieste e il contenuto incorporato da cui partono. Nella sintesi, `banner-assente` si aggiunge al punto sui
+  tracciamenti "senza alcun meccanismo di consenso" dello stesso sito invece di formare un punto a sé.
+- **Categorie per elemento.** Se gli elementi di un rilievo hanno categorie diverse (es. `sp_t` marketing,
+  `sp_landing` statistica, `sentryReplaySession` registrazione sessioni) il testo le elenca una per una invece di
+  usare la categoria del primo.
+- **Sentry.** Il collettore legge i tipi degli elementi dell'envelope (`envelopeItems`): con `replay_event` o
+  `replay_recording` la richiesta è classificata come registrazione della sessione (Session Replay), non come
+  statistica. La nota delle voci Sentry in `data/trackers.yaml` precisa che il monitoraggio degli errori non è una
+  statistica di navigazione. Vale per le nuove raccolte (il corpo non è conservato nelle rilevazioni precedenti).
+- **Matomo di prima parte senza cookie: priorità predefinita bassa.** `regole.richiesta-tracker-prima-del-consenso.primaParteSenzaCookie.gravita`
+  in `config/norme.yaml` passa da `alta` a `bassa`: con IP mascherato e senza incroci le Linee guida del Garante
+  assimilano questi analytics ai cookie tecnici. Il rilievo resta, con le condizioni non verificabili dal browser.
+- **Totali con la media per sessione.** Accanto ai conteggi delle richieste (es. "560 richieste di raccolta") il testo
+  indica in quante sessioni e la media per sessione.
+- **Nuova regola `ip-a-terze-parti`** (informativa, art. 6 e 13 GDPR, da validare): Google Fonts e Gravatar caricati
+  direttamente dalle pagine del sito, che ricevono IP e pagina del visitatore a ogni caricamento. Le risorse dei
+  contenuti incorporati non contano.
+
 ## 0.1.2 — 2026-11-04
 
 Correzioni dopo la verifica manuale di due rilevazioni su siti WordPress senza banner, con Matomo ospitato sul sito.
