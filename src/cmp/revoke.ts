@@ -116,3 +116,77 @@ export async function findRevokeInPage(page: Page): Promise<{ text: string; how:
   }
   return null;
 }
+
+/** Pulsante che salva un modulo di preferenze (non quello che accetta tutto). */
+const SAVE_RE = /^(salva|conferma|applica|aggiorna|save|confirm|apply|update)\b.{0,40}$/i;
+const ACCEPT_RE = /accett|consenti|allow|accept|agree/i;
+/** Opzione "spento" di un gruppo di pulsanti di scelta (es. On / Off). */
+const OFF_RE = /^(off|no|disattiv[ao]|disabilita(to)?|rifiut[ao]|nego|non acconsento|deny|reject|disabled?)$/i;
+
+/**
+ * Pagina di preferenze propria del sito (es. /preferenze-cookies con interruttori "On/Off" e "Salva preferenze"),
+ * fuori dal banner del gestore: disattiva le categorie modificabili e salva, come farebbe un utente. Non tocca le
+ * categorie bloccate (necessarie) né i pulsanti che accettano tutto.
+ */
+export async function rejectOnPreferencesPage(page: Page): Promise<{ ok: boolean; steps: string[]; detail: string }> {
+  for (const f of frames(page)) {
+    const found = await f
+      .evaluate(
+        ({ saveSrc, acceptSrc, offSrc }) => {
+          const saveRe = new RegExp(saveSrc, 'i');
+          const acceptRe = new RegExp(acceptSrc, 'i');
+          const offRe = new RegExp(offSrc, 'i');
+          const shown = (el: Element | null | undefined) => {
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            const st = getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+          };
+          const txt = (el: Element | null | undefined) => ((el as HTMLElement | null)?.innerText ?? el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+          const ownLabel = (el: Element) => {
+            const i = el as HTMLInputElement;
+            return (i.labels?.[0] ? txt(i.labels[0]) : '') || el.getAttribute('aria-label') || '';
+          };
+          const rowLabel = (el: Element) => txt(el.closest('li, tr, fieldset, section, [class*="categor"], [class*="cookie"], div'))?.slice(0, 60) || ownLabel(el);
+          const marked: { label: string; how: string }[] = [];
+          const mark = (el: Element, how: string) => {
+            el.setAttribute('data-scookie-off', String(marked.length));
+            marked.push({ label: rowLabel(el), how });
+          };
+          for (const el of Array.from(document.querySelectorAll('input[type=checkbox], [role=switch], [role=checkbox]'))) {
+            const input = el as HTMLInputElement;
+            const visible = shown(el) || shown(input.labels?.[0]) || shown(el.parentElement);
+            const checked = el.matches('input') ? input.checked : el.getAttribute('aria-checked') === 'true';
+            const disabled = (el.matches('input') && input.disabled) || el.getAttribute('aria-disabled') === 'true';
+            if (visible && checked && !disabled) mark(el, 'disattivazione');
+          }
+          for (const el of Array.from(document.querySelectorAll('input[type=radio]'))) {
+            const input = el as HTMLInputElement;
+            const visible = shown(el) || shown(input.labels?.[0]) || shown(el.parentElement);
+            if (visible && !input.checked && !input.disabled && offRe.test(ownLabel(el))) mark(el, `scelta di "${ownLabel(el)}"`);
+          }
+          const save = Array.from(document.querySelectorAll('button, [role=button], input[type=submit], input[type=button], a')).find((b) => {
+            const t = txt(b) || (b as HTMLInputElement).value || '';
+            return shown(b) && saveRe.test(t) && !acceptRe.test(t);
+          });
+          if (save) save.setAttribute('data-scookie-save', '1');
+          return { marked, save: save ? (txt(save) || (save as HTMLInputElement).value || '').slice(0, 60) : null };
+        },
+        { saveSrc: SAVE_RE.source, acceptSrc: ACCEPT_RE.source, offSrc: OFF_RE.source },
+      )
+      .catch(() => null);
+    if (!found?.save) continue;
+    const steps: string[] = [];
+    for (let k = 0; k < found.marked.length; k++) {
+      const el = f.locator(`[data-scookie-off="${k}"]`).first();
+      await el.click({ timeout: 3000 }).catch(() => el.click({ timeout: 3000, force: true }).catch(() => el.evaluate((n) => (n as HTMLElement).click()).catch(() => {})));
+      steps.push(`${found.marked[k].how} di "${found.marked[k].label}"`);
+    }
+    if (!steps.length) steps.push('nessuna categoria da disattivare (già tutte spente o bloccate)');
+    const save = f.locator('[data-scookie-save]').first();
+    await save.click({ timeout: 5000 }).catch(() => save.click({ timeout: 5000, force: true }).catch(() => {}));
+    steps.push(`click su "${found.save}"`);
+    return { ok: true, steps, detail: steps.join(', ') };
+  }
+  return { ok: false, steps: [], detail: 'nessun pulsante per salvare le preferenze nella pagina' };
+}

@@ -4,6 +4,7 @@ import { parse } from 'yaml';
 import type { Finding, Severity } from '../types.js';
 import { CSS, esc, fmt, sevBadge } from './html.js';
 import { nWords } from '../util/text.js';
+import { expandFindings } from './parts.js';
 
 const SEV: Severity[] = ['alta', 'media', 'bassa', 'informativa'];
 
@@ -71,8 +72,10 @@ const sitesOf = (fs: Finding[]) => new Set(fs.flatMap((f) => (f.sites?.length ? 
  * Il confronto è per regola, oggetto e dominio, non per numero di scheda (i numeri cambiano tra rilevazioni).
  */
 export function compareRuns(prima: RunSummary, dopo: RunSummary): RunComparison {
-  const a = new Map(prima.findings.map((f) => [keyOf(f), f]));
-  const b = new Map(dopo.findings.map((f) => [keyOf(f), f]));
+  // Si confronta momento per momento: una scheda per fornitore contiene più rilievi (prima della scelta, dopo il
+  // rifiuto…), ciascuno con la sua chiave; così si confrontano anche rilevazioni con e senza le schede per fornitore.
+  const a = new Map(expandFindings(prima.findings).map((f) => [keyOf(f), f]));
+  const b = new Map(expandFindings(dopo.findings).map((f) => [keyOf(f), f]));
   const sa = sitesOf(prima.findings);
   const sb = sitesOf(dopo.findings);
   const rimaste: RunComparison['rimaste'] = [];

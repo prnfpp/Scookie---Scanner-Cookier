@@ -9,6 +9,11 @@ import { hasSecretStep, recordedFills, type RecordedStep } from '../src/browser/
 import { sessionBudgetMs } from '../src/browser/session.js';
 import { configSchema } from '../src/config/schema.js';
 import { detectPii, registerTypedValue, setTestData } from '../src/util/pii.js';
+import { chromium } from 'playwright';
+import { rejectOnPreferencesPage } from '../src/cmp/revoke.js';
+import { consolidateByVendor, VENDOR_RULE } from '../src/report/consolidate.js';
+import { expandFindings } from '../src/report/parts.js';
+import type { Finding } from '../src/types.js';
 
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 const md5 = (v: string) => createHash('md5').update(v).digest('hex');
@@ -120,4 +125,71 @@ test('file HAR composto dai corpi separati: richieste sempre, risposte secondo h
   assert.equal(har.log.entries[2].request.postData.text, 'email=test@example.org');
   assert.ok(!existsSync(tmp), 'la cartella temporanea viene eliminata');
   assert.ok(readFileSync(dest).length < 10_000);
+});
+
+const card = (ruleId: string, severity: Finding['severity'], site: string, vendor: string, key: string): Finding => ({
+  id: `R-${key}`,
+  ruleId,
+  ruleTitle: ruleId,
+  severity,
+  site,
+  sites: [site],
+  scenario: null,
+  pageUrl: site,
+  description: `${vendor} ${ruleId}`,
+  details: [],
+  evidence: [{ label: '1-banner', file: `evidenze/${key}.png` }],
+  subjects: [vendor],
+  key: `${ruleId}|${vendor}|${key}`,
+  headline: `${vendor} ${ruleId}`,
+  norms: [{ key: 'gdpr7', title: 'Art. 7', reference: 'art. 7' }],
+});
+
+test('una scheda per fornitore e dominio, con una sezione per momento', () => {
+  const fs = [
+    card('attivazione-dopo-rifiuto', 'alta', 'https://www.esempio.it', 'Google', 'a'),
+    card('cookie-prima-del-consenso', 'alta', 'https://shop.esempio.it', 'Google', 'b'),
+    card('attivazione-dopo-revoca', 'bassa', 'https://www.esempio.it', 'Google', 'c'),
+    card('attivazione-dopo-rifiuto', 'media', 'https://www.esempio.it', 'Meta', 'd'),
+    card('struttura-banner', 'informativa', 'https://www.esempio.it', 'Google', 'e'),
+    card('cookie-prima-del-consenso', 'alta', 'https://www.altro.it', 'Google', 'f'),
+  ];
+  const out = consolidateByVendor(fs);
+  assert.equal(out.length, 4, 'Google su esempio.it in una scheda; Meta, struttura del banner e altro.it a parte');
+  const g = out.find((f) => f.parts)!;
+  assert.equal(g.ruleId, VENDOR_RULE);
+  assert.equal(g.severity, 'alta');
+  assert.deepEqual(g.parts!.map((p) => p.ruleId), ['cookie-prima-del-consenso', 'attivazione-dopo-rifiuto', 'attivazione-dopo-revoca']);
+  assert.deepEqual(g.sites.sort(), ['https://shop.esempio.it', 'https://www.esempio.it']);
+  assert.match(g.headline!, /Google attivo prima della scelta, dopo il rifiuto e dopo la revoca del consenso/);
+  // la lettura per momento restituisce i rilievi originali, con il numero della scheda
+  const flat = expandFindings(out);
+  assert.equal(flat.length, 6);
+  assert.ok(flat.filter((f) => f.ruleId === 'attivazione-dopo-rifiuto').some((f) => f.id === g.id));
+});
+
+test('pagina di preferenze propria del sito: interruttori spenti e "Salva", senza accettare', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<h1>Preferenze cookie</h1>
+      <button id="acc">Accetta i cookie</button>
+      <div class="categoria">Cookie funzionali <input type="checkbox" checked disabled></div>
+      <div class="categoria">Cookie pubblicitari
+        <label><input type="radio" name="ads" value="on" checked> On</label>
+        <label><input type="radio" name="ads" value="off"> Off</label></div>
+      <div class="categoria">Statistiche <label><input type="checkbox" id="st" checked> attivi</label></div>
+      <button id="save" onclick="window.saved = { ads: document.querySelector('[name=ads]:checked').value, st: document.getElementById('st').checked }">Salva preferenze personalizzate</button>
+      <script>document.getElementById('acc').onclick = () => (window.accepted = true)</script>`);
+    const r = await rejectOnPreferencesPage(page);
+    assert.ok(r.ok, r.detail);
+    assert.deepEqual(await page.evaluate(() => (window as unknown as { saved: unknown }).saved), { ads: 'off', st: false });
+    assert.equal(await page.evaluate(() => (window as unknown as { accepted?: boolean }).accepted ?? false), false);
+    assert.match(r.detail, /Salva preferenze personalizzate/);
+    // nessun modulo: niente da fare
+    await page.setContent('<p>Informativa</p><button>Accetta</button>');
+    assert.equal((await rejectOnPreferencesPage(page)).ok, false);
+  } finally {
+    await browser.close();
+  }
 });

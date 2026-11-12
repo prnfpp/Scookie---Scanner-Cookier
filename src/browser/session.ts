@@ -265,7 +265,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     manual = m;
     shotPage = lastPage;
     env.log?.(`    navigazione manuale conclusa (${manual.endedBy === 'operatore' ? 'premuto "Ho finito"' : manual.endedBy === 'tempo' ? 'tempo scaduto' : 'finestra chiusa'})`);
-    if (manual.errorPages?.length) errors.push(`navigazione manuale: ${manual.errorPages.length === 1 ? 'una pagina ha' : `${manual.errorPages.length} pagine hanno`} risposto con un errore (${manual.errorPages.slice(0, 3).map((e) => `${e.status} su ${e.url}`).join('; ')}); le pagine restano nel percorso, i fatti osservati lì valgono come quelli delle altre pagine`);
+    if (manual.errorPages?.length) errors.push(`navigazione manuale: ${manual.errorPages.length === 1 ? 'una pagina ha' : `${manual.errorPages.length} pagine hanno`} risposto con un errore (${manual.errorPages.slice(0, 3).map((e) => `${e.status} su ${e.url}`).join('; ')}); le pagine restano nel percorso, i fatti osservati lì valgono come quelli delle altre pagine. Se le stesse pagine si aprono in un browser comune, la differenza può dipendere dallo user agent dello strumento (alcuni siti rispondono diversamente ai browser automatizzati o che si dichiarano tali): per verificarlo serve un'esecuzione di controllo con browser.uaNormale`);
     if (manualIncomplete(manual)) {
       const note = `navigazione manuale probabilmente incompleta: conclusa dopo ${manual.seconds} s con ${manual.pages.length === 1 ? 'una sola pagina' : `${manual.pages.length} pagine`} visitate; va rifatta`;
       errors.push(note);

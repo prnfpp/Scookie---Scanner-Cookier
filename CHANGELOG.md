@@ -2,6 +2,30 @@
 
 ## Non rilasciato
 
+Seconda verifica della rilevazione con navigazioni manuali e gestori diversi tra sottodomini.
+
+- **Navigazione manuale con lo user agent del browser con finestra.** La finestra delle navigazioni manuali usava lo
+  user agent letto dal browser senza finestra ("HeadlessChrome"). Alcuni siti rispondono diversamente: su un sito
+  HubSpot CMS l'indirizzo con la barra finale, che per un browser comune rimanda alla pagina giusta (301), per
+  "HeadlessChrome" risponde 404 ("404 predicted at edge"), e il percorso del modulo finiva su una pagina di errore.
+  Ora lo user agent si legge dal browser con finestra (resta la dichiarazione dell'audit, salvo `uaNormale`) ed è
+  riportato nel metodo e nel manifest (`userAgentManuale`). Le pagine di errore della navigazione manuale ricordano
+  che la differenza può dipendere dallo user agent dello strumento.
+- **Revoca: nessuna API nascosta.** Durante la revoca il rifiuto non ripiega più in silenzio sull'API del gestore
+  (prima una revoca "dalla pagina di gestione dei cookie" poteva essere in realtà una chiamata API): la revoca
+  simulata via API resta l'ultimo tentativo, dichiarato come tale.
+- **Revoca da una pagina di preferenze propria del sito.** Se la pagina di gestione dei cookie non riapre il banner
+  ma ha un modulo proprio (interruttori, "On/Off", "Salva preferenze"), il tool spegne le categorie modificabili e
+  salva, senza mai accettare; poi legge cosa registra il gestore del consenso e lo scrive nel rilievo (es. "HubSpot
+  registra ancora il consenso: la pagina non risulta collegata al gestore del consenso").
+- **Una scheda per fornitore.** I rilievi dello stesso fornitore sullo stesso dominio prima della scelta, dopo il
+  rifiuto, dopo la X, dopo la revoca e con il consenso alle sole statistiche formano una scheda sola
+  (`tracciamenti-fornitore`), con la tabella dei momenti e una sezione per momento (testo, prove, ripetibilità e
+  priorità propri); la priorità della scheda è la più alta. Sintesi, rimandi "vedi R-xxx" e confronto tra
+  rilevazioni lavorano momento per momento (il confronto abbina anche rilevazioni fatte prima di questa modifica);
+  la revisione già data alle schede per momento si riporta sulla scheda del fornitore se l'esito è lo stesso.
+  Opzione `report.raggruppaPerFornitore` (predefinita `true`).
+
 Correzioni dopo la verifica di tre rilevazioni reali (due siti WordPress senza banner e un sito assicurativo con due
 gestori del consenso, sottodomini e navigazioni manuali). Ogni voce vale per qualsiasi sito.
 

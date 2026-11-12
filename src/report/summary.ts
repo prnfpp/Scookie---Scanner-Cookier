@@ -1,6 +1,7 @@
 import type { Finding, Severity } from '../types.js';
 import { repeatsShort } from './repeats.js';
 import { labelled } from '../util/text.js';
+import { expandFindings } from './parts.js';
 
 const SEV: Record<Severity, number> = { alta: 3, media: 2, bassa: 1, informativa: 0 };
 const STRENGTH: Record<string, number> = { identificativo: 2, raccolta: 1.5, risorsa: 0.5 };
@@ -123,7 +124,11 @@ function beforeText(fs: Finding[]): string {
  * Non si mescolano forze di prova diverse: le schede con sole risorse scaricate e quelle osservate in meno della metà
  * delle ripetizioni restano fuori dai punti principali e vanno in coda.
  */
-export function summaryItems(findings: Finding[]): SummaryItem[] {
+export function summaryItems(input: Finding[]): SummaryItem[] {
+  // le schede per fornitore si leggono momento per momento; i punti rimandano alla scheda che li contiene
+  const findings = expandFindings(input);
+  const card = new Map(input.map((f) => [f.id, f]));
+  const toCards = (fs: Finding[]) => [...new Map(fs.map((f) => [f.id, card.get(f.id) ?? f])).values()];
   const items: SummaryItem[] = [];
   const used = new Set<Finding>();
   const take = (fs: Finding[]) => fs.forEach((f) => used.add(f));
@@ -229,5 +234,8 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
 
   for (const f of findings) if (free(f) && f.headline && (f.severity === 'alta' || f.severity === 'media')) items.push(item(stripHosts(f), [f]));
 
-  return items.filter((i) => i.severity === 'alta' || i.severity === 'media').sort((a, b) => b.score - a.score);
+  return items
+    .filter((i) => i.severity === 'alta' || i.severity === 'media')
+    .sort((a, b) => b.score - a.score)
+    .map((i) => ({ ...i, findings: toCards(i.findings) }));
 }

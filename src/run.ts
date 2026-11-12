@@ -27,6 +27,7 @@ import { registerTypedValue, setTestData, typedTestData } from './util/pii.js';
 import { keepAwake } from './util/awake.js';
 import { hasSecretStep, recordedFills, type RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
+import { consolidateByVendor } from './report/consolidate.js';
 import { attributeByHost, checkDeclared } from './report/attribution.js';
 import { attributeToEmbeds, enrichRequests, reclassify } from './classify/enrich.js';
 import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode, probesFromHar } from './classify/firstparty.js';
@@ -281,10 +282,10 @@ function linkEvidenceToFindings(runDir: string, findings: Finding[]) {
   // una rigenerazione rinumera i rilievi: le copie precedenti non devono restare
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  for (const f of findings) {
+  const link = (f: Finding, id: string, n: number | null) => {
     f.evidence = f.evidence.map((e) => {
       if (!e.file.endsWith('.png')) return e;
-      const rel = `evidenze/rilievi/${f.id}_${basename(e.file)}`;
+      const rel = `evidenze/rilievi/${id}_${basename(e.file)}`;
       try {
         copyFileSync(join(runDir, e.file), join(runDir, rel));
         return { ...e, file: rel };
@@ -293,10 +294,19 @@ function linkEvidenceToFindings(runDir: string, findings: Finding[]) {
       }
     });
     if (f.requestExcerpt) {
-      const rel = `evidenze/rilievi/${f.id}_estratto-richiesta.json`;
+      const rel = `evidenze/rilievi/${id}${n === null ? '' : `-${n}`}_estratto-richiesta.json`;
       writeFileSync(join(runDir, rel), JSON.stringify(f.requestExcerpt, null, 2));
       f.evidence.push({ label: 'estratto richiesta', file: rel });
     }
+  };
+  for (const f of findings) {
+    if (!f.parts?.length) {
+      link(f, f.id, null);
+      continue;
+    }
+    // scheda per fornitore: ogni sezione ha le sue prove; quelle della scheda sono l'unione
+    f.parts.forEach((p, i) => link(p, f.id, i + 1));
+    f.evidence = [...new Map(f.parts.flatMap((p) => p.evidence).map((e) => [e.file, e])).values()];
   }
 }
 
@@ -377,6 +387,11 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
   if (opts.signal?.aborted) throw new AuditStopped(runDir);
   const browser = await chromium.launch(launchOptions(config, headless));
   let manualBrowser: Browser | null = null;
+  /**
+   * User agent della finestra delle navigazioni manuali, letto da quel browser: è un browser con finestra, guidato da
+   * una persona, e non deve presentarsi come "HeadlessChrome" (alcuni siti rispondono diversamente, es. con un 404).
+   */
+  let manualUserAgent: string | null = null;
   // Arresto forzato: chiudendo i browser ogni comando in attesa (pagina, frame, navigazione manuale) termina con un
   // errore, e i controlli tra un passo e l'altro fermano l'audit
   const stopped = () => !!opts.signal?.aborted;
@@ -488,13 +503,17 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       const t0 = Date.now();
       progress.start(`${new URL(plan.site).hostname} · ${plan.scenario}${plan.manual ? ' (navigazione manuale)' : ''}${plan.repeat ? ` · ripetizione ${plan.repeat}` : ''}`);
       if (plan.manual) progress.wait('manuale');
-      if (plan.manual && !opts.manualDriver && headless && !manualBrowser) manualBrowser = await chromium.launch(launchOptions(config, false));
+      if (plan.manual && !opts.manualDriver && headless && !manualBrowser) {
+        manualBrowser = await chromium.launch(launchOptions(config, false));
+        manualUserAgent = await resolveUserAgent(manualBrowser, config);
+        if (manualUserAgent !== userAgent) log(`  user agent della finestra manuale: ${manualUserAgent}`);
+      }
       checkStop();
       const res = await runSession(plan.manual && manualBrowser ? manualBrowser : browser, plan, {
         config,
         runDir,
         classifier,
-        userAgent,
+        userAgent: plan.manual && manualBrowser && manualUserAgent ? manualUserAgent : userAgent,
         manualDriver: opts.manualDriver,
         onManualFinisher: opts.onManualFinisher,
         log,
@@ -766,6 +785,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
     configurazione: { file: loaded.path, contenuto: loaded.raw },
     startedAt,
     userAgent,
+    ...(manualUserAgent && manualUserAgent !== userAgent ? { userAgentManual: manualUserAgent } : {}),
     browserVersion,
     exit,
     discovery,
@@ -798,6 +818,8 @@ export interface Collected {
   configurazione: { file: string; contenuto: string };
   startedAt: string;
   userAgent: string;
+  /** User agent della finestra delle navigazioni manuali, se diverso (browser con finestra). */
+  userAgentManual?: string;
   browserVersion: string;
   exit: ExitInfo;
   discovery: DiscoveryResult[];
@@ -928,9 +950,14 @@ async function finishRun(
   }
   if (config.report.harCompressi) compressHars(runDir, [...sessions, ...discarded], findings, config.report.harContenuti);
 
+  // Una scheda per fornitore, con una sezione per momento (prima della scelta, dopo il rifiuto, dopo la X, dopo la revoca)
+  if (config.report.raggruppaPerFornitore) findings.splice(0, findings.length, ...consolidateByVendor(findings));
   // Ordine delle schede: gravità, poi forza della prova e ripetibilità
   findings.sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || findingScore(b) - findingScore(a));
-  findings.forEach((f, i) => (f.id = `R-${String(i + 1).padStart(3, '0')}`));
+  findings.forEach((f, i) => {
+    f.id = `R-${String(i + 1).padStart(3, '0')}`;
+    for (const p of f.parts ?? []) p.id = f.id;
+  });
   // rimandi tra rilievi ("vedi R-004"): con i numeri definitivi
   findings.splice(0, findings.length, ...resolveRefs(findings));
   linkEvidenceToFindings(runDir, findings);
@@ -986,6 +1013,7 @@ async function finishRun(
     toolVersion: TOOL_VERSION,
     browserVersion,
     userAgent,
+    userAgentManual: collected.userAgentManual,
     startedAt,
     endedAt,
     discovery,
@@ -1024,7 +1052,7 @@ async function finishRun(
     cliente: config.cliente,
     inizio: startedAt,
     fine: endedAt,
-    ambiente: { node: process.version, piattaforma: `${process.platform} ${process.arch}`, browser: browserVersion, userAgent, uscita: exit },
+    ambiente: { node: process.version, piattaforma: `${process.platform} ${process.arch}`, browser: browserVersion, userAgent, ...(collected.userAgentManual ? { userAgentManuale: collected.userAgentManual } : {}), uscita: exit },
     configurazione: { file: basename(loaded.path), sha256: sha256(loaded.raw), contenuto: loaded.raw },
     norme: { file: basename(normsPath), sha256: await sha256File(normsPath) },
     datiClassificazione: {
@@ -1060,12 +1088,13 @@ export async function regenerateRun(runDir: string, o: { copy?: boolean; pdf?: b
     const m = JSON.parse(readFileSync(join(runDir, 'manifest.json'), 'utf8')) as {
       inizio: string;
       configurazione: { file: string; contenuto: string };
-      ambiente: { browser: string; userAgent: string; uscita: ExitInfo };
+      ambiente: { browser: string; userAgent: string; userAgentManuale?: string; uscita: ExitInfo };
     };
     collected = {
       configurazione: { file: m.configurazione.file, contenuto: m.configurazione.contenuto },
       startedAt: m.inizio,
       userAgent: m.ambiente.userAgent,
+      ...(m.ambiente.userAgentManuale ? { userAgentManual: m.ambiente.userAgentManuale } : {}),
       browserVersion: m.ambiente.browser,
       exit: m.ambiente.uscita,
       discovery: d.discovery,

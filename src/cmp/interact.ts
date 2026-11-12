@@ -3,7 +3,7 @@ import type { BannerConfig } from '../config/schema.js';
 import type { InteractionReport } from '../types.js';
 import { describeElement, frames, waitFor } from './dom.js';
 import { PERSONALIZERS, genericPersonalizer } from './personalize.js';
-import { findRevokeControl, findRevokeInPage } from './revoke.js';
+import { findRevokeControl, findRevokeInPage, rejectOnPreferencesPage } from './revoke.js';
 import { TEXTS, clickCandidate, heuristicBannerVisible, heuristicChoose, scan } from './heuristic.js';
 import { hasManual, manualBannerVisible, manualChoose } from './manual.js';
 import { ADAPTERS } from './registry.js';
@@ -74,6 +74,11 @@ export async function performChoice(
   bannerWaitMs: number,
   /** Chiamata subito prima del primo tentativo: da qui in poi la raccolta è "dopo la scelta". */
   onStart?: () => void,
+  /**
+   * Ripiego sull'API del gestore se nessun pulsante funziona. Nella revoca è disattivato: la revoca simulata via API
+   * è un caso a parte, dichiarato come tale (un utente non può farla), e non deve passare per una revoca dalla pagina.
+   */
+  allowApi = true,
 ): Promise<InteractionReport> {
   const { adapters, visible, states: before } = await observeBanner(page, banner, bannerWaitMs);
   onStart?.();
@@ -109,7 +114,7 @@ export async function performChoice(
   await viaAdapters('click');
   await tryStep('euristica', () => heuristicChoose(page, choice));
   // Ultimo ripiego: l'API del CMP. Il report lo indica, perché non equivale a un click dell'utente.
-  await viaAdapters('api');
+  if (allowApi) await viaAdapters('api');
 
   const detected = adapters.map((a) => a.name);
   const res = result as ChoiceResult | null;
@@ -282,7 +287,7 @@ export async function performRevocation(
       await link.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
       await link.click({ timeout: 5000 }).catch(() => link.click({ timeout: 5000, force: true }).catch(() => {}));
       await page.waitForTimeout(1000);
-      const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
+      const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs, undefined, false);
       if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'link', how: `click su ${label}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
       notes.push(`click su ${label}, ma rifiuto non eseguito (${r.detail})`);
     }
@@ -291,23 +296,47 @@ export async function performRevocation(
     await page.goto(revokePage, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(1500);
     // nella pagina di gestione dei cookie di solito c'è il pulsante che riapre il banner
+    let reopened = false;
     for (const f of frames(page)) {
       if (!(await findRevokeControl(f))) continue;
       const link = f.locator('[data-scookie-revoke]').first();
       await link.click({ timeout: 5000 }).catch(() => link.click({ timeout: 5000, force: true }).catch(() => {}));
       await page.waitForTimeout(1000);
+      reopened = true;
       break;
     }
-    const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
     const where = `${notes.length ? `${notes.join('; ')}; ` : 'nessun comando nella pagina; '}aperta la pagina di gestione dei cookie trovata nella sitemap (${revokePage})`;
+    const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, reopened ? bannerWaitMs : 1500, undefined, false);
     if (r.outcome === 'eseguito') return { outcome: 'eseguita', via: 'pagina', how: `${where}, poi rifiuto ${r.clicked?.length ? `con ${r.clicked.join(', poi ')}` : `(${r.detail})`}` };
-    notes.push(`pagina ${revokePage} aperta, ma rifiuto non eseguito (${r.detail})`);
+    // Pagina di preferenze propria del sito (interruttori e "Salva"), non il banner del gestore: si disattivano le
+    // categorie modificabili e si salva, come farebbe un utente; poi si legge cosa registra il gestore del consenso.
+    const form = await rejectOnPreferencesPage(page).catch(() => null);
+    if (form?.ok) {
+      await page.waitForTimeout(waitAfterMs);
+      const checks: string[] = [];
+      for (const a of await detectCmps(page)) {
+        const c = a.checkConsent(await a.consentState(page).catch(() => null), 'rifiuta');
+        checks.push(
+          c.consistent === true
+            ? `${a.name} registra il rifiuto`
+            : c.consistent === false
+              ? `${a.name} registra ancora il consenso (${c.detail}): la pagina non risulta collegata al gestore del consenso`
+              : `stato di ${a.name} non leggibile (${c.detail})`,
+        );
+      }
+      return {
+        outcome: 'eseguita',
+        via: 'pagina',
+        how: `${where}: la pagina ha un proprio modulo di preferenze, non il banner del gestore; ${form.steps.join(', poi ')}${checks.length ? `. Dopo il salvataggio: ${checks.join('; ')}` : ''}`,
+      };
+    }
+    notes.push(`pagina ${revokePage} aperta, ma rifiuto non eseguito (${r.detail}${form ? `; modulo di preferenze: ${form.detail}` : ''})`);
   }
   // Banner riaperto con l'API del CMP (come fa il suo link "Impostazioni cookie"), poi rifiuto con un click vero
   for (const a of await detectCmps(page)) {
     if (!a.reopen || !(await a.reopen(page).catch(() => false))) continue;
     await page.waitForTimeout(1500);
-    const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs);
+    const r = await performChoice(page, 'rifiuta', banner, waitAfterMs, bannerWaitMs, undefined, false);
     if (r.outcome === 'eseguito') {
       return {
         outcome: 'eseguita',

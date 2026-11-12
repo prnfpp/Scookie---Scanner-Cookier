@@ -398,6 +398,11 @@ export interface Finding {
   unverifiable?: string[];
   /** Precisazione sul fornitore per la sintesi (es. "di prima parte, senza cookie"). */
   subjectNote?: string;
+  /**
+   * Scheda per fornitore: i rilievi dello stesso fornitore in momenti diversi (prima della scelta, dopo il rifiuto,
+   * dopo la X, dopo la revoca), ciascuno completo. Vedi report/consolidate.ts.
+   */
+  parts?: Finding[];
 }
 
 /**
