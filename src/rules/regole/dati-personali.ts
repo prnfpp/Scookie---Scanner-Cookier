@@ -63,7 +63,14 @@ export const datiPersonaliATerzi: Rule = {
       const company = r.tracker?.company ?? r.host;
       const who = r.tracker ? `${r.tracker.company} (${CATEGORY_LABEL[r.tracker.category]})` : r.host;
       const kinds = [...new Set(group.flatMap((g) => g.r.pii.map((p) => p.kind)))];
-      const hits = [...new Map(group.flatMap((g) => g.r.pii.map((p) => [`${p.kind}|${p.param}|${p.masked}`, p]))).values()];
+      const allHits = [...new Map(group.flatMap((g) => g.r.pii.map((p) => [`${p.kind}|${p.param}|${p.masked}`, p]))).values()];
+      // lo stesso valore trovato con e senza nome del parametro conta una volta, col parametro
+      const hits = allHits.filter((h) => h.param || !allHits.some((o) => o.param && o.kind === h.kind && o.masked === h.masked));
+      // nel gruppo "prova" possono esserci anche valori che non coincidono con i dati di prova: vanno detti a parte
+      const testKinds = [...new Set(hits.filter((h) => h.test).map((h) => h.kind))];
+      const otherKinds = [...new Set(hits.filter((h) => !h.test).map((h) => h.kind))].filter((k) => !testKinds.includes(k));
+      const shown = certainty === 'prova' && testKinds.length ? testKinds : kinds;
+      const others = certainty === 'prova' && otherKinds.length ? ` Le stesse richieste contengono anche valori che possono essere dati personali ma non coincidono con i dati di prova registrati (${otherKinds.join(', ')}): sono riportati mascherati e vanno verificati nel file HAR.` : '';
       const pages = [...new Set(group.map((g) => g.r.pageUrl))];
       const scen = [...new Set(group.map((g) => g.s.scenario))];
       const afterReject = scen.includes('rifiuta');
@@ -80,15 +87,15 @@ export const datiPersonaliATerzi: Rule = {
         headline: form
           ? `Il modulo invia i dati inseriti (${kinds.join(', ')}) a ${company}, che lo gestisce`
           : certainty === 'prova'
-            ? `I dati inseriti nel modulo (${kinds.join(', ')}) arrivano a ${company}${afterReject ? ', anche dopo il rifiuto' : ''}`
+            ? `I dati inseriti nel modulo (${shown.join(', ')}) arrivano a ${company}${afterReject ? ', anche dopo il rifiuto' : ''}`
             : group.some((g) => /Session Replay/.test(g.r.purpose ?? ''))
               ? `La registrazione della sessione di ${company} (Session Replay) contiene valori che ${certainty === 'forma' ? 'somigliano a' : 'potrebbero essere'} dati personali (${kinds.join(', ')})`
               : `${company} riceve valori che ${certainty === 'forma' ? 'somigliano a' : 'potrebbero essere'} dati personali (${kinds.join(', ')})`,
         description: form
           ? `${nReq(group.length)} a ${who} ${group.length === 1 ? 'invia' : 'inviano'} i dati inseriti nel modulo (${kinds.join(', ')}). È l'invio del modulo al fornitore che lo gestisce per conto del sito: il funzionamento previsto del modulo, riportato come contesto.`
-          : `${nReq(group.length)} a ${who} ${group.length === 1 ? 'contiene' : 'contengono'} ${certainty === 'prova' ? 'i dati di prova inseriti durante la navigazione' : 'valori che possono essere dati personali'} (${kinds.join(', ')}), nell'indirizzo o nel corpo della richiesta, ` +
+          : `${nReq(group.length)} a ${who} ${group.length === 1 ? 'contiene' : 'contengono'} ${certainty === 'prova' ? 'i dati di prova inseriti durante la navigazione' : 'valori che possono essere dati personali'} (${shown.join(', ')}), nell'indirizzo o nel corpo della richiesta, ` +
             `per esempio come parametri dell'indirizzo della pagina visitata.${afterReject ? ' Avviene anche dopo il rifiuto dei cookie.' : ''}` +
-            (certainty === 'prova' ? '' : ' I valori sono riportati mascherati; quelli completi sono nei file HAR.'),
+            (certainty === 'prova' ? others : ' I valori sono riportati mascherati; quelli completi sono nei file HAR.'),
         details: [
           ...(form ? [] : [CERTAINTY_TEXT[certainty]]),
           ...hits

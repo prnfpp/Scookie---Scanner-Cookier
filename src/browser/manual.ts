@@ -3,6 +3,9 @@ import { maskPii, registerTypedValue } from '../util/pii.js';
 import type { Collector } from './collector.js';
 import { RECORDER, type RecordedStep } from './replay.js';
 
+/** Numero della navigazione manuale: i campi di due navigazioni diverse non si sostituiscono tra loro. */
+let manualSeq = 0;
+
 export interface ManualPlan {
   /** Istruzioni mostrate all'operatore (es. "compila il preventivo con la targa di prova AB123CD"). */
   instructions: string;
@@ -161,13 +164,15 @@ export async function manualJourney(
   onFinisher?.(() => finish('operatore'));
   // registrazione delle azioni dell'operatore, per poter rigiocare il percorso nelle esecuzioni successive
   const steps: RecordedStep[] = [];
+  const fieldScope = `m${++manualSeq}`;
   await context
     .exposeBinding('__scookieRec', (_src, step: RecordedStep) => {
       const last = steps[steps.length - 1];
       // lo stesso campo modificato più volte conta col valore finale
       if (last && step.type === 'fill' && last.type === 'fill' && last.css === step.css) steps[steps.length - 1] = step;
       else steps.push(step);
-      if (step.type === 'fill' && step.value) registerTypedValue(step.value, `${step.css} ${step.text}`);
+      // per campo: una correzione (o una data digitata cifra per cifra) sostituisce il valore registrato prima
+      if (step.type === 'fill' && !step.secret) registerTypedValue(step.value ?? '', `${step.css} ${step.text}`, `${fieldScope}|${step.css}`);
     })
     .catch(() => {});
   const overlay = OVERLAY(plan.instructions, plan.siteHost ?? '', plan.hint ?? '');

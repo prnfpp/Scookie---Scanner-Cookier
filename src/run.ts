@@ -820,7 +820,8 @@ async function finishRun(
   // I valori digitati dall'operatore nelle navigazioni manuali valgono come dati di prova, anche se in configurazione
   // ne erano stati dichiarati altri: vengono riconosciuti e riportati in chiaro.
   for (const s of [...collected.sessions, ...collected.discarded]) {
-    for (const st of s.manual?.steps ?? []) if (st.type === 'fill' && !st.secret && st.value) registerTypedValue(st.value, `${st.css} ${st.text}`);
+    // per ogni campo vale l'ultimo valore digitato (non le correzioni né le date parziali)
+    for (const f of recordedFills(s.manual?.steps ?? [])) registerTypedValue(f.value, f.hint);
     // percorsi rigiocati: i valori inseriti sono quelli del percorso registrato
     for (const f of s.replay?.fills ?? []) registerTypedValue(f.value, f.hint);
   }

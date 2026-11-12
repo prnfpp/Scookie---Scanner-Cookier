@@ -36,7 +36,7 @@ const isText = (k: string) => k === 'nome' || k === 'indirizzo' || k === 'altro'
 
 /** Forma canonica per il confronto: date come aaaammgg, testi in minuscolo, il resto senza spazi e separatori. */
 function canon(kind: string, v: string): string {
-  const t = v.trim();
+  const t = isDate(kind) ? v.trim().replace(/\s*([/.-])\s*/g, '$1') : v.trim();
   if (isDate(kind)) {
     let m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
     if (m) return `${m[3]}${m[2].padStart(2, '0')}${m[1].padStart(2, '0')}`;
@@ -145,6 +145,8 @@ interface TestDatum {
   forms: string[];
   encoded: EncodedForm[];
   typed?: boolean;
+  /** Campo da cui viene il valore digitato: un nuovo valore nello stesso campo sostituisce il precedente. */
+  field?: string;
 }
 
 const datum = (tipo: TestType, value: string, kind: string, typed?: boolean): TestDatum => ({
@@ -167,11 +169,21 @@ export function setTestData(entries: TestEntry[] | undefined) {
 }
 
 /** Tipo di un valore digitato dall'operatore, dalla sua forma e dal nome o etichetta del campo. */
-function guessType(v: string, rawHint: string): { tipo: TestType; label?: string } | null {
+/** Data scritta con spazi attorno ai separatori (campi con maschera: "09 / 05 / 1997"). */
+const tidyDate = (v: string) => v.trim().replace(/\s*([/.-])\s*/g, '$1');
+
+/** Anno plausibile: scarta le date parziali che un campo data emette mentre si digita (0002-05-01, 0020-05-01…). */
+function plausibleDate(v: string): boolean {
+  const y = Number(/(\d{4})/.exec(v)?.[1]);
+  return y >= 1900 && y <= 2100;
+}
+
+function guessType(raw: string, rawHint: string): { tipo: TestType; label?: string } | null {
+  const v = /^\d{1,4}\s*[/.-]/.test(raw) ? tidyDate(raw) : raw;
   // il selettore del campo contiene i nomi degli attributi (es. [name="citta"]): contano solo i valori
   const hint = rawHint.replace(/\[[\w-]+=/g, '[');
   if (/^[A-Z0-9._%+-]+@[A-Z0-9-]+(\.[A-Z0-9-]+)*\.[A-Z]{2,}$/i.test(v)) return { tipo: 'email' };
-  if (/^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$|^\d{4}-\d{2}-\d{2}$/.test(v)) return { tipo: 'data', label: /nasc|birth|dob/i.test(hint) ? 'data di nascita' : undefined };
+  if (/^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$|^\d{4}-\d{2}-\d{2}$/.test(v)) return !plausibleDate(v) ? null : { tipo: 'data', label: /nasc|birth|dob/i.test(hint) ? 'data di nascita' : undefined };
   if (/^[A-Z]{2}\s?\d{3}\s?[A-Z]{2}$/i.test(v)) return { tipo: 'targa' };
   if (/^[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]$/i.test(v)) return { tipo: 'codice fiscale' };
   if (/^\+?[\d\s.-]{8,}$/.test(v) && v.replace(/\D/g, '').length >= 8) return { tipo: 'telefono' };
@@ -184,14 +196,17 @@ function guessType(v: string, rawHint: string): { tipo: TestType; label?: string
  * ogni forma e riportato in chiaro), anche se non è stato dichiarato nella configurazione o è stato digitato diverso.
  * Restituisce il dato aggiunto, o null se il valore non ha la forma di un dato personale o è già noto.
  */
-export function registerTypedValue(value: string, hint = ''): TestEntry | null {
-  const v = value.trim();
+export function registerTypedValue(value: string, hint = '', field?: string): TestEntry | null {
+  let v = value.trim();
+  // Lo stesso campo modificato di nuovo (correzione, o data digitata una cifra alla volta): vale l'ultimo valore
+  if (field) testData = testData.filter((t) => !(t.typed && t.field === field));
   if (v.length < 4 || v.length > 80) return null;
   const g = guessType(v, hint);
   if (!g) return null;
+  if (g.tipo === 'data') v = tidyDate(v);
   if (testData.some((t) => t.tipo === g.tipo && t.canon === canon(g.tipo, v))) return null;
   const entry: TestEntry = { tipo: g.tipo, valore: v, ...(g.label ? { etichetta: g.label } : {}) };
-  testData.push(datum(entry.tipo, v, entry.etichetta ?? entry.tipo, true));
+  testData.push({ ...datum(entry.tipo, v, entry.etichetta ?? entry.tipo, true), ...(field ? { field } : {}) });
   return entry;
 }
 

@@ -88,7 +88,8 @@ export const sottodominiDisomogenei: Rule = {
       }
     }
     for (const [domain, list] of groupBy(sessions, (s) => s.registrableDomain)) {
-      const bySite = groupBy(list, (s) => s.site);
+      // solo le sessioni in cui banner e gestore sono stati osservati sul sito stesso (non una scelta fatta altrove)
+      const bySite = groupBy(list.filter((s) => !s.interaction.choiceOn), (s) => s.site);
       if (bySite.size < 2) continue;
       const profile = [...bySite].map(([site, ss]) => ({
         site,

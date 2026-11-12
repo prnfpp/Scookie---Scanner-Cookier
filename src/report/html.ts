@@ -3,7 +3,7 @@ import type { AuditConfig } from '../config/schema.js';
 import type { DiscoveryResult } from '../discovery/discover.js';
 import { CATEGORY_LABEL, EVIDENCE_LABEL, groupBy, noBannerSites, requestEvidenceLevel } from '../rules/helpers.js';
 import type { ComparisonRow, DeclaredSet, Finding, SessionResult, Severity } from '../types.js';
-import { NON_TECHNICAL } from '../types.js';
+import { manualIncomplete, NON_TECHNICAL } from '../types.js';
 import { repeatsText } from './repeats.js';
 import { pageviewCoherence } from './coherence.js';
 import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode } from '../classify/firstparty.js';
@@ -228,7 +228,7 @@ ${d.notes.length ? `<ul class="muted">${d.notes.map((n) => `<li>${esc(n)}</li>`)
     for (const s of sessions.filter((x) => x.site === d.site && x.manual)) {
       const m = s.manual!;
       const end = m.endedBy === 'operatore' ? "conclusa dall'operatore" : m.endedBy === 'tempo' ? 'interrotta allo scadere del tempo massimo' : 'interrotta: finestra chiusa';
-      parts.push(`<p><strong>Navigazione manuale</strong> — sessione ${esc(s.id)}, scenario "${esc(s.scenario)}", ${end} dopo ${m.seconds} s. Istruzioni date all'operatore: "${esc(m.instructions)}".${s.attributedFrom ? ` Pagine della navigazione per ${esc(host(s.attributedFrom.site))} che si trovano su questo sito.` : ''}${!s.attributedFrom && (m.pages.length <= 1 || m.seconds < 60) ? ' <strong>Probabilmente incompleta</strong> (breve o con una sola pagina): i fatti che ne derivano vanno confermati ripetendola.' : ''}</p>
+      parts.push(`<p><strong>Navigazione manuale</strong> — sessione ${esc(s.id)}, scenario "${esc(s.scenario)}", ${end} dopo ${m.seconds} s. Istruzioni date all'operatore: "${esc(m.instructions)}".${s.attributedFrom ? ` Pagine della navigazione per ${esc(host(s.attributedFrom.site))} che si trovano su questo sito.` : ''}${!s.attributedFrom && manualIncomplete(m) ? ' <strong>Probabilmente incompleta</strong> (breve o con una sola pagina): i fatti che ne derivano vanno confermati ripetendola.' : ''}</p>
 <ol class="muted">${m.pages.map((u) => `<li>${esc(u)}</li>`).join('')}</ol>`);
     }
     // Percorso registrato in una navigazione manuale precedente e rigiocato in automatico
@@ -414,7 +414,14 @@ ${[...third]
       if (sc === 'personalizza' && list.every((x) => NO_STATS_CATEGORY.test(x.interaction.detail))) {
         notSeen.push(`${host(site)}: scenario "personalizza" non applicabile: il gestore non ha una categoria statistica separata e rifiutabile (è un fatto della struttura del banner, descritto nella scheda dedicata).`);
       } else if (sc === 'chiudi' && list.every((x) => x.interaction.outcome === 'non-trovato')) {
-        notSeen.push(`${host(site)}: scenario "chiudi" non applicabile: il banner non ha una X di chiusura.`);
+        // la X che coincide con il comando di rifiuto (es. "Continua senza accettare") non è uno scenario a parte
+        const fl = ss.find((x) => x.bannerAnalysis)?.bannerAnalysis?.firstLayer;
+        const sameAsReject = fl?.close.find((c) => fl.reject.includes(c));
+        notSeen.push(
+          sameAsReject
+            ? `${host(site)}: scenario "chiudi" non eseguito a parte: la chiusura del banner coincide con il comando di rifiuto ("${sameAsReject}"), già osservato nello scenario "rifiuta".`
+            : `${host(site)}: scenario "chiudi" non applicabile: il banner non ha una X di chiusura.`,
+        );
       } else {
         notSeen.push(`${host(site)}: scenario "${sc}" non eseguito in ${list.length} ${list.length === 1 ? 'sessione' : 'sessioni'} (${list[0].interaction.detail.replace(/\s+/g, ' ').slice(0, 160)}).`);
       }
@@ -425,7 +432,7 @@ ${[...third]
     }
     const rev = ss.filter((s) => s.scenario === 'revoca' && s.revocation && s.revocation.outcome !== 'eseguita');
     if (rev.length && !noBannerLim.has(site)) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
-    for (const s of ss.filter((x) => x.manual && !x.attributedFrom && (x.manual.pages.length <= 1 || x.manual.seconds < 60))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);
+    for (const s of ss.filter((x) => x.manual && !x.attributedFrom && manualIncomplete(x.manual))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);
     for (const s of ss.filter((x) => x.truncated)) notSeen.push(`${host(site)}: sessione ${s.id} (${s.scenario}) fermata dal tetto di durata durante: ${s.truncated}. Ciò che viene dopo quel passo non è stato osservato: l'assenza di un fatto in questa sessione non prova che non avvenga.`);
     for (const s of ss.filter((x) => x.replay?.stoppedAt)) notSeen.push(`${host(site)}: percorso registrato interrotto in ${s.id} (${s.replay!.stoppedAt}).`);
   }

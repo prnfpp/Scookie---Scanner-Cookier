@@ -112,18 +112,39 @@ export const RECORDER = `(() => {
     if (t.matches('input[type=checkbox], input[type=radio]')) return;
     send('click', t);
   }, true);
-  document.addEventListener('change', (e) => {
-    const t = e.target;
-    if (!(t instanceof Element) || !e.isTrusted) return;
-    if (t.matches('select')) send('select', t, { value: t.value });
-    else if (t.matches('input[type=checkbox], input[type=radio]')) send('check', t, { checked: t.checked });
-    else if (t.matches('input, textarea')) {
+  // Campi in cui l'operatore ha digitato: alcuni moduli (campi con maschera, componenti propri) non emettono un
+  // evento "change" dell'utente; il valore si registra allora all'uscita dal campo, all'invio del modulo o all'uscita
+  // dalla pagina.
+  const dirty = new Set();
+  const TEXT_FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=file]), textarea';
+  const sendFill = (t) => {
+    dirty.delete(t);
+    {
       // campi riservati: si registra che il campo è stato compilato, mai il valore
       const ac = (t.getAttribute('autocomplete') || '').toLowerCase();
       const hint = ((t.getAttribute('name') || '') + ' ' + (t.id || '')).toLowerCase();
       const secret = t.type === 'password' || /password|one-time-code|cc-(number|csc|exp)/.test(ac) || /passw|pwd|\\botp\\b|cvv|cvc|card.?number|numero.?carta/.test(hint);
       send('fill', t, secret ? { value: '', secret: true } : { value: t.value });
     }
+  };
+  const flush = () => { for (const t of Array.from(dirty)) { if (t.isConnected) sendFill(t); else dirty.delete(t); } };
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (e.isTrusted && t instanceof Element && t.matches(TEXT_FIELD) && !t.closest(CONSENT)) dirty.add(t);
+  }, true);
+  document.addEventListener('focusout', (e) => {
+    const t = e.target;
+    // dopo l'eventuale "change" del browser, che ha già registrato il valore
+    if (t instanceof Element && dirty.has(t)) setTimeout(() => { if (dirty.has(t)) sendFill(t); }, 0);
+  }, true);
+  document.addEventListener('submit', flush, true);
+  window.addEventListener('pagehide', flush, true);
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (!(t instanceof Element) || !e.isTrusted) return;
+    if (t.matches('select')) send('select', t, { value: t.value });
+    else if (t.matches('input[type=checkbox], input[type=radio]')) send('check', t, { checked: t.checked });
+    else if (t.matches('input, textarea')) sendFill(t);
   }, true);
 })()`;
 

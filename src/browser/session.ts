@@ -4,7 +4,7 @@ import type { Classifier } from '../classify/classifier.js';
 import type { AuditConfig, SiteConfig } from '../config/schema.js';
 import { analyzeBanner } from '../cmp/analysis.js';
 import { bannerVisible, detectCmps, observeBanner, performChoice, performClose, performPersonalize, performRevocation } from '../cmp/interact.js';
-import { NON_TECHNICAL, type StatsProbe, type BannerAnalysis, type DeclaredItem, type Evidence, type InteractionReport, type ScenarioName, type SessionResult } from '../types.js';
+import { manualIncomplete, NON_TECHNICAL, type StatsProbe, type BannerAnalysis, type DeclaredItem, type Evidence, type InteractionReport, type ScenarioName, type SessionResult } from '../types.js';
 import { PartyResolver, registrableDomain } from '../util/domains.js';
 import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { detectBotChallenge, type BotBlock } from './antibot.js';
@@ -266,7 +266,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     shotPage = lastPage;
     env.log?.(`    navigazione manuale conclusa (${manual.endedBy === 'operatore' ? 'premuto "Ho finito"' : manual.endedBy === 'tempo' ? 'tempo scaduto' : 'finestra chiusa'})`);
     if (manual.errorPages?.length) errors.push(`navigazione manuale: ${manual.errorPages.length === 1 ? 'una pagina ha' : `${manual.errorPages.length} pagine hanno`} risposto con un errore (${manual.errorPages.slice(0, 3).map((e) => `${e.status} su ${e.url}`).join('; ')}); le pagine restano nel percorso, i fatti osservati lì valgono come quelli delle altre pagine`);
-    if (manual.pages.length <= 1 || manual.seconds < 60) {
+    if (manualIncomplete(manual)) {
       const note = `navigazione manuale probabilmente incompleta: conclusa dopo ${manual.seconds} s con ${manual.pages.length === 1 ? 'una sola pagina' : `${manual.pages.length} pagine`} visitate; va rifatta`;
       errors.push(note);
       env.log?.(`    ATTENZIONE: ${note}`);
