@@ -386,8 +386,9 @@ export async function discoverSite(
   }
   const s = sample(candidates, home, extras, cfg.campionamento);
   const byType: Record<string, number> = {};
+  const sections = sectionsOf(candidates.map((x) => x.url));
   for (const c of candidates) {
-    const t = pageType(c.url, cfg.campionamento.tipi, sectionsOf(candidates.map((x) => x.url)));
+    const t = pageType(c.url, cfg.campionamento.tipi, sections);
     byType[t] = (byType[t] ?? 0) + 1;
   }
   const revokePages = candidates.map((c) => c.url).filter(isRevokeUrl).slice(0, 5);

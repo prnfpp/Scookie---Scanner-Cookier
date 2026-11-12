@@ -40,6 +40,9 @@ export const ipATerzeParti: Rule = {
           return `${name}: ${svc.what} — ${nReq(rs.length)}${perSession(rs, list)} a ${[...new Set(rs.map((r) => r.host))].join(', ')}; pagine: ${[...new Set(rs.map((r) => r.pageUrl))].slice(0, 5).join(', ')}`;
         }),
         evidenceLevel: 'risorsa',
+        // chiave stabile (non dipende dal testo della scheda): servizi coinvolti
+        groupKey: [...by.keys()].sort().join('+'),
+        headline: `Risorse caricate da ${[...by.keys()].join(' e ')}: il fornitore riceve l'indirizzo IP del visitatore`,
         subjects: [...by.keys()],
         evidence: sessionEvidence(home, ['1-banner']),
       });

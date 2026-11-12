@@ -24,33 +24,79 @@ if [ -f "$SESSION" ]; then
   fi
 fi
 
+# Versione che non si è riusciti a installare o compilare in un avvio precedente: non la si riprova a ogni avvio,
+# si aspetta la successiva.
+SKIP_FILE="$DIR/.scookie-salta"
+OLD="$(git rev-parse HEAD)"
+UPDATED=0
+
 notify "Controllo degli aggiornamenti…"
 if git fetch -q origin "$BRANCH"; then
+  NEW="$(git rev-parse "origin/$BRANCH" 2>/dev/null)"
+  # package-lock.json riscritto da un'installazione precedente non è una modifica voluta: si ripristina
+  git checkout -q -- package-lock.json 2>/dev/null || true
   if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     notify "Ci sono modifiche locali al codice: aggiornamento saltato"
-  else
-    OLD="$(git rev-parse HEAD)"
-    if git checkout -q "$BRANCH" && git merge -q --ff-only "origin/$BRANCH"; then
-      [ "$OLD" != "$(git rev-parse HEAD)" ] && notify "Scookie aggiornato all'ultima versione"
-    else
-      notify "Aggiornamento non riuscito: si usa la versione attuale"
+  elif [ -n "$NEW" ] && [ "$NEW" = "$(cat "$SKIP_FILE" 2>/dev/null)" ]; then
+    notify "L'ultima versione su GitHub non si è installata correttamente: si usa la versione attuale"
+  elif git checkout -q "$BRANCH" && git merge -q --ff-only "origin/$BRANCH"; then
+    if [ "$OLD" != "$(git rev-parse HEAD)" ]; then
+      UPDATED=1
+      notify "Scookie aggiornato all'ultima versione"
     fi
+  else
+    notify "Aggiornamento non riuscito: si usa la versione attuale"
   fi
 else
   notify "GitHub non raggiungibile: si usa la versione attuale"
 fi
 
-LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null)"
-if [ ! -d node_modules ] || [ "$LOCK" != "$(cat node_modules/.scookie-lock 2>/dev/null)" ]; then
-  notify "Installazione dei componenti (qualche minuto la prima volta)…"
-  npm ci --no-audit --no-fund || npm install --no-audit --no-fund || { notify "Installazione non riuscita: vedi ~/Library/Logs/Scookie.log"; exit 1; }
-  npx playwright install chromium || true
-  echo "$LOCK" > node_modules/.scookie-lock
-fi
-HEAD_NOW="$(git rev-parse HEAD)"
-if [ ! -f dist/src/cli.js ] || [ "$HEAD_NOW" != "$(cat dist/.scookie-build 2>/dev/null)" ]; then
-  npm run build || { notify "Compilazione non riuscita: vedi ~/Library/Logs/Scookie.log"; exit 1; }
-  echo "$HEAD_NOW" > dist/.scookie-build
+# Componenti (npm), browser (Chromium di Playwright) e compilazione della versione in uso. Ogni passo si segna come
+# fatto solo se è riuscito, così un passo fallito si riprova all'avvio successivo.
+prepare() {
+  local LOCK HEAD_NOW PW
+  LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null)"
+  if [ ! -d node_modules ] || [ "$LOCK" != "$(cat node_modules/.scookie-lock 2>/dev/null)" ]; then
+    notify "Installazione dei componenti (qualche minuto la prima volta)…"
+    if ! npm ci --no-audit --no-fund; then
+      # ripiego: npm install può riscrivere package-lock.json, che va riportato com'era (altrimenti gli
+      # aggiornamenti successivi verrebbero saltati per "modifiche locali")
+      npm install --no-audit --no-fund || { git checkout -q -- package-lock.json 2>/dev/null; return 1; }
+      git checkout -q -- package-lock.json 2>/dev/null || true
+    fi
+    echo "$LOCK" > node_modules/.scookie-lock
+  fi
+  PW="$(node -p 'require("./node_modules/playwright/package.json").version' 2>/dev/null)"
+  if [ -z "$PW" ] || [ "$PW" != "$(cat node_modules/.scookie-browser 2>/dev/null)" ]; then
+    notify "Installazione del browser di Scookie…"
+    if npx playwright install chromium; then
+      echo "$PW" > node_modules/.scookie-browser
+    else
+      # con un browser già installato da prima si può comunque lavorare; si riprova al prossimo avvio
+      notify "Browser non installato (rete assente?): si riprova al prossimo avvio"
+    fi
+  fi
+  HEAD_NOW="$(git rev-parse HEAD)"
+  if [ ! -f dist/src/cli.js ] || [ "$HEAD_NOW" != "$(cat dist/.scookie-build 2>/dev/null)" ]; then
+    npm run build || return 1
+    echo "$HEAD_NOW" > dist/.scookie-build
+  fi
+  return 0
+}
+
+if ! prepare; then
+  if [ "$UPDATED" = "1" ]; then
+    # La versione appena scaricata non si installa o non compila: si torna a quella di prima, che funzionava
+    notify "La nuova versione non si avvia: ripristino della versione precedente…"
+    git rev-parse HEAD > "$SKIP_FILE"
+    git checkout -q -- package-lock.json 2>/dev/null || true
+    git reset -q --hard "$OLD"
+    rm -f dist/.scookie-build
+    prepare || { notify "Avvio non riuscito: vedi ~/Library/Logs/Scookie.log"; exit 1; }
+  else
+    notify "Installazione o compilazione non riuscita: vedi ~/Library/Logs/Scookie.log"
+    exit 1
+  fi
 fi
 
 notify "Apertura dell'interfaccia…"

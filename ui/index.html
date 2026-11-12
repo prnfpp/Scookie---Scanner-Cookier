@@ -997,12 +997,15 @@ async function loadRuns() {
     const reviewed = r.revisionate ?? 0;
     const total = r.criticita ?? 0;
     const revDone = total > 0 && reviewed >= total;
-    const country = !r.paese ? '<span class="chip bad">uscita non verificata</span>' : r.paese === 'IT' ? '<span class="muted">uscita IT</span>' : `<span class="chip bad">uscita ${esc(r.paese)}</span>`;
+    // il paese atteso è quello dichiarato nella configurazione dell'audit, non sempre l'Italia
+    const okExit = r.uscitaOk ?? r.paese === 'IT';
+    const country = !r.paese ? '<span class="chip bad">uscita non verificata</span>' : okExit ? `<span class="muted">uscita ${esc(r.paese)}</span>` : `<span class="chip bad">uscita ${esc(r.paese)}${r.paeseAtteso ? `, atteso ${esc(r.paeseAtteso)}` : ''}</span>`;
     const configOk = r.configurazione && state.clients.some((c) => c.file === r.configurazione);
     return `<article class="card run">
       <div class="run-h"><h2>${esc(r.cliente)}</h2><span class="muted">${esc(fmt(r.inizio))}${r.durataSec ? ` · ${Math.round(r.durataSec / 60)} minuti` : ''}</span>${country}
         ${r.rivisto ? '<span class="chip ok">Revisionato</span>' : r.revisione ? '<span class="chip warn">Da revisionare</span>' : ''}</div>
       <div class="sev">${g ? ['alta', 'media', 'bassa', 'informativa'].map((k) => `<div class="s ${k}"><b>${g[k] ?? 0}</b><span>${k}</span></div>`).join('') : `<div class="s"><b>${esc(total)}</b><span>rilievi</span></div>`}</div>
+      ${r.sessioniIncomplete ? `<div class="hint-box"><div><b>${r.sessioniIncomplete === 1 ? '1 sessione fermata' : r.sessioniIncomplete + ' sessioni fermate'} dal tetto di durata</b><span class="small">Il sito era lento: quelle sessioni sono parziali (dettaglio nella sezione Limiti del rapporto). Per completarle, ripetere l'audit o alzare "timeoutSessione" nella configurazione.</span></div></div>` : ''}
       ${r.sitiSenzaDati && r.sitiSenzaDati.length ? `<div class="hint-box"><div><b>Nessun dato per ${esc(r.sitiSenzaDati.map(host).join(', '))}</b><span class="small">Le pagine non si sono caricate (connessione assente o computer in stop): per questi siti l'audit va ripetuto.</span>
         ${configOk ? `<div style="margin-top:8px"><button class="btn sm" data-rerun="${esc(r.configurazione)}" data-siti="${esc(JSON.stringify(r.sitiSenzaDati))}">Ripeti solo questi siti</button></div>` : ''}</div></div>` : ''}
       <div class="flow">

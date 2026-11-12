@@ -1,6 +1,19 @@
 import { z } from 'zod';
 import { TEST_TYPES } from '../util/pii.js';
 
+/** Espressione regolare scritta dall'utente: deve essere valida già al salvataggio, non fallire durante l'audit. */
+const regexString = z.string().refine(
+  (v) => {
+    try {
+      new RegExp(v, 'i');
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: 'espressione regolare non valida' },
+);
+
 const bannerSchema = z
   .object({
     /** Selettore CSS (o Playwright) del pulsante di rifiuto al primo livello. */
@@ -41,7 +54,7 @@ const siteSchema = z
     /** Esclude dal campione automatico le pagine vietate da robots.txt (le pagine extra restano). */
     rispettaRobots: z.boolean().default(true),
     /** Pattern (regex sul path) da escludere dal campione. */
-    escludi: z.array(z.string()).default([]),
+    escludi: z.array(regexString).default([]),
     /** URL della cookie policy (documentata nel report). */
     cookiePolicy: z.string().optional(),
     /** File CSV o YAML con l'elenco dichiarato, se non leggibile dal CMP. */
@@ -134,7 +147,11 @@ export const configSchema = z
     protocollo: z
       .object({
         timeoutNavigazione: z.number().int().positive().default(45000),
-        /** Durata massima di una sessione: oltre, viene interrotta e i dati raccolti fin lì restano nel report. */
+        /**
+         * Durata massima di una sessione: oltre, viene interrotta e i dati raccolti fin lì restano nel report, con la
+         * sessione segnata come incompleta. È il minimo: per i percorsi lunghi (es. "revoca", che visita le pagine due
+         * volte) il tetto cresce con il numero di visite previste, e una sessione fermata si ripete una volta con il doppio.
+         */
         timeoutSessione: z.number().int().positive().default(300000),
         attesaDopoCaricamento: z.number().int().nonnegative().default(4000),
         scroll: z.boolean().default(true),
@@ -194,7 +211,7 @@ export const configSchema = z
         /** Numero massimo di URL lette dalle sitemap. */
         maxUrlSitemap: z.number().int().positive().default(5000),
         /** Tipi di pagina: nome -> regex sul path. Il primo che corrisponde vince. */
-        tipi: z.record(z.string(), z.string()).default({}),
+        tipi: z.record(z.string(), regexString).default({}),
         /** Limiti dell'esplorazione con clic. In modalità auto parte se si trovano meno di "sePaginaMeno" pagine. */
         esplorazione: z
           .object({
@@ -279,7 +296,27 @@ export const configSchema = z
       .default({ pdf: true, harContenuti: 'testo', harCompressi: true, noteLimiti: [] }),
     siti: z.array(siteSchema).min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((cfg, ctx) => {
+    // Ogni sito è identificato dal suo host: due voci sullo stesso host si sommerebbero (sessioni, dichiarati, confronto)
+    const seen = new Map<string, number>();
+    cfg.siti.forEach((s, i) => {
+      let host: string;
+      try {
+        host = new URL(s.url).host.toLowerCase();
+      } catch {
+        return;
+      }
+      const first = seen.get(host);
+      if (first !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['siti', i, 'url'],
+          message: `${host} è già presente (sito ${first + 1}): ogni host va indicato una volta sola; le altre sezioni dello stesso host (es. /en/) si aggiungono tra le pagine da includere sempre (pagineExtra)`,
+        });
+      } else seen.set(host, i);
+    });
+  });
 
 export type AuditConfig = z.infer<typeof configSchema>;
 export type SiteConfig = z.infer<typeof siteSchema>;

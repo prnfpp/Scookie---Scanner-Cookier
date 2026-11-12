@@ -25,7 +25,7 @@ import { TOOL_COMMIT, TOOL_VERSION } from './version.js';
 import { ProgressTracker, type Progress } from './progress.js';
 import { registerTypedValue, setTestData, typedTestData } from './util/pii.js';
 import { keepAwake } from './util/awake.js';
-import type { RecordedPath } from './browser/replay.js';
+import { hasSecretStep, recordedFills, type RecordedPath } from './browser/replay.js';
 import { findingScore } from './report/summary.js';
 import { attributeByHost, checkDeclared } from './report/attribution.js';
 import { attributeToEmbeds, enrichRequests, reclassify } from './classify/enrich.js';
@@ -227,7 +227,7 @@ const recordingPath = (loaded: LoadedConfig, siteUrl: string) => recordingFile(l
 /** Valori inseriti dall'operatore nei campi (ultimo valore per campo), da mostrare come promemoria. */
 function typedValues(steps: RecordedPath['steps']): string[] {
   const byField = new Map<string, string>();
-  for (const st of steps) if (st.type === 'fill' && st.value?.trim()) byField.set(st.css, `${st.text && st.text !== st.value ? `${st.text}: ` : ''}${st.value.trim()}`);
+  for (const st of steps) if (st.type === 'fill' && !st.secret && st.value?.trim()) byField.set(st.css, `${st.text && st.text !== st.value ? `${st.text}: ` : ''}${st.value.trim()}`);
   return [...byField.values()].slice(0, 8);
 }
 
@@ -458,6 +458,15 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
         d.notes.push(`Percorso registrato in precedenza ignorato: non entrava mai in ${new URL(site.url).hostname}.`);
         recording = null;
       }
+      // Percorso con un campo riservato (password e simili): il valore non è registrato, quindi non si può rigiocare
+      if (recording && hasSecretStep(recording.steps)) {
+        log('  percorso registrato ignorato: contiene un campo riservato (password o simile); la navigazione manuale va rifatta');
+        d.notes.push('Percorso registrato in precedenza ignorato: contiene un campo riservato (password o simile), che non si registra.');
+        recording = null;
+      }
+      // I valori del percorso registrato sono i dati di prova di questa esecuzione: vanno riconosciuti nelle richieste
+      // già durante la raccolta, come quelli digitati in una navigazione manuale
+      if (recording) for (const f of recordedFills(recording.steps)) registerTypedValue(f.value, f.hint);
       if (site.navigazioneManuale && !recording) {
         const start = manualStart(site.navigazioneManuale.partenza, site.url, site.url);
         if (!entersSite([start], site.url)) {
@@ -501,7 +510,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       const i2 = res.interaction;
       log(`    banner: ${i2.bannerVisibleBefore ? 'sì' : 'no'}; metodo: ${i2.method}; esito: ${i2.outcome}; verifica: ${i2.verification}; cookie: ${res.cookies.length}; richieste: ${res.requests.length}`);
       // Sessione fermata dal tetto di durata: va detto subito, perché i dati raccolti sono parziali
-      const capped = res.errors.find((e) => e.includes('sessione interrotta'));
+      const capped = res.truncated ? res.errors.find((e) => e.includes('sessione interrotta')) : undefined;
       if (capped) log(`    ATTENZIONE: ${capped}`);
       if (plan.manual) progress.wait(null);
       await sleep(config.protocollo.pausaTraSessioni);
@@ -535,6 +544,11 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
         const best = j.manual.filter((r) => r.manual?.endedBy === 'operatore' && r.manual.steps?.length && entersSite(r.manual.pages, j.site.url)).sort((a, b) => b.manual!.steps!.length - a.manual!.steps!.length)[0];
         if (!best) {
           if (j.manual.some((r) => r.manual?.steps?.length)) log(`Percorso di ${new URL(j.site.url).hostname} non salvato: la navigazione manuale non è entrata nel sito.`);
+          continue;
+        }
+        if (hasSecretStep(best.manual!.steps!)) {
+          log(`Percorso di ${new URL(j.site.url).hostname} non salvato: contiene un campo riservato (password o simile), il cui valore non si registra. La navigazione manuale andrà ripetuta a ogni audit.`);
+          j.d.notes.push('Percorso della navigazione manuale non registrato per le esecuzioni successive: contiene un campo riservato (password o simile).');
           continue;
         }
         const rec: RecordedPath = { site: j.site.url, start: j.plans.find((p) => p.manual)!.pages[0], savedAt: new Date().toISOString(), fromSession: best.id, steps: best.manual!.steps! };
@@ -610,6 +624,30 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
         const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta` });
         retry.retryOf = first.id;
         retry.errors.unshift(`Ripetizione di ${first.id}: sessione fallita per mancanza di connessione (${first.unreachable}).`);
+        discarded.push(first);
+        siteResults[k] = retry;
+      }
+
+      // Sessioni fermate dal tetto di durata (sito lento): si ripetono una volta con un tetto doppio, al massimo due per
+      // sito. La sessione più completa resta tra i dati; l'altra tra quelle scartate.
+      let slowRetries = 0;
+      for (let k = 0; k < siteResults.length && slowRetries < 2; k++) {
+        const first = siteResults[k];
+        if (!first.truncated || first.blocked || first.unreachable || first.retryOf) continue;
+        const plan = plans.find((p) => p.id === first.id.replace(/_(ripetuta|conferma)$/, ''));
+        if (!plan) continue;
+        slowRetries++;
+        log(`    ${first.id}: fermata dal tetto di durata (${first.truncated}); ripetizione con un tetto doppio`);
+        progress.extra(d.site);
+        const retry = await exec(job, { ...plan, id: `${plan.id}_ripetuta`, timeoutFactor: 2 });
+        const note = `sessione fermata dal tetto di durata (passo in corso: ${first.truncated})`;
+        if (retry.blocked || retry.unreachable) {
+          retry.errors.unshift(`Ripetizione di ${first.id} (${note}) non riuscita: resta la prima sessione, incompleta.`);
+          discarded.push(retry);
+          continue;
+        }
+        retry.retryOf = first.id;
+        retry.errors.unshift(`Ripetizione di ${first.id}: ${note}; ripetuta con un tetto doppio${retry.truncated ? ', fermata di nuovo: i dati sono parziali' : ''}.`);
         discarded.push(first);
         siteResults[k] = retry;
       }
@@ -781,10 +819,17 @@ async function finishRun(
   const { startedAt, userAgent, browserVersion, exit, discovery, discarded } = collected;
   // I valori digitati dall'operatore nelle navigazioni manuali valgono come dati di prova, anche se in configurazione
   // ne erano stati dichiarati altri: vengono riconosciuti e riportati in chiaro.
-  for (const s of collected.sessions) for (const st of s.manual?.steps ?? []) if (st.type === 'fill' && st.value) registerTypedValue(st.value, `${st.css} ${st.text}`);
+  for (const s of [...collected.sessions, ...collected.discarded]) {
+    for (const st of s.manual?.steps ?? []) if (st.type === 'fill' && !st.secret && st.value) registerTypedValue(st.value, `${st.css} ${st.text}`);
+    // percorsi rigiocati: i valori inseriti sono quelli del percorso registrato
+    for (const f of s.replay?.fills ?? []) registerTypedValue(f.value, f.hint);
+  }
+  // un solo classificatore per tutta la fase finale (elenchi letti e compilati una volta)
+  let finalClassifier: Classifier | null = null;
   try {
     const extraTrackers: TrackerEntry[] = config.trackerExtra ? Classifier.loadExtraTrackers(loaded.resolvePath(config.trackerExtra)) : [];
-    reclassify(collected.sessions, new Classifier(extraTrackers));
+    finalClassifier = new Classifier(extraTrackers);
+    reclassify(collected.sessions, finalClassifier);
   } catch (e) {
     o.log(`Classificazioni non aggiornate (${(e as Error).message.split('\n')[0]}): restano quelle della rilevazione.`);
   }
@@ -810,8 +855,8 @@ async function finishRun(
   }
   // richieste partite da un contenuto incorporato: a quale contenuto appartengono (dopo il frame ricostruito dal HAR)
   try {
-    const extraTrackers: TrackerEntry[] = config.trackerExtra ? Classifier.loadExtraTrackers(loaded.resolvePath(config.trackerExtra)) : [];
-    attributeToEmbeds(collected.sessions, new Classifier(extraTrackers));
+    if (!finalClassifier) throw new Error('classificatore non disponibile');
+    attributeToEmbeds(collected.sessions, finalClassifier);
   } catch {
     // senza attribuzione ai contenuti incorporati le richieste restano del fornitore del dominio
   }
@@ -914,6 +959,12 @@ async function finishRun(
         siti: config.siti.map((s) => s.url),
         sitiSenzaDati: unreachableSites,
         sessioniNonValide: sessions.filter((s) => s.unreachable || s.blocked).length,
+        sessioniIncomplete: sessions.filter((s) => s.truncated).map((s) => s.id),
+        // dati per l'elenco delle esecuzioni dell'interfaccia, che così non legge manifest.json
+        inizio: startedAt,
+        fine: endedAt,
+        sessioni: sessions.length,
+        uscita: { paese: exit.verified ? exit.country : null, dichiarato: exit.declared, coincide: exit.verified && exit.matches },
         gravita: Object.fromEntries((['alta', 'media', 'bassa', 'informativa'] as const).map((g) => [g, findings.filter((f) => f.severity === g).length])),
         criticita: findings.length,
         durataSec: Math.round((Date.now() - Date.parse(startedAt)) / 1000),

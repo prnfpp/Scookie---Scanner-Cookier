@@ -10,7 +10,8 @@ import { closeSafely, slug, withTimeout } from '../util/misc.js';
 import { detectBotChallenge, type BotBlock } from './antibot.js';
 import { Collector } from './collector.js';
 import { findRevokeInPage } from '../cmp/revoke.js';
-import { trimHar } from './har.js';
+import { assembleHar } from './har.js';
+import { mkdirSync, rmSync } from 'node:fs';
 import { maskPii } from '../util/pii.js';
 import { manualJourney, type ManualPlan } from './manual.js';
 import { replayJourney, type RecordedPath } from './replay.js';
@@ -32,6 +33,25 @@ export interface SessionPlan {
   replay?: RecordedPath;
   /** Numero della ripetizione (1 se lo scenario si esegue una sola volta). */
   repeat?: number;
+  /** Moltiplica il tetto di durata (ripetizione di una sessione fermata dal tetto). */
+  timeoutFactor?: number;
+}
+
+/**
+ * Tetto di durata di una sessione: mai meno di `timeoutSessione`, e abbastanza per tutte le visite previste dal
+ * percorso (una pagina lenta non deve tagliare le pagine dopo la scelta o dopo la revoca).
+ */
+export function sessionBudgetMs(plan: Pick<SessionPlan, 'scenario' | 'pages' | 'manual' | 'replay' | 'timeoutFactor'>, p: AuditConfig['protocollo'], bannerWait: number): number {
+  if (plan.manual) return Math.max(p.timeoutSessione, plan.manual.maxMs + 120000);
+  const journey = plan.pages.length;
+  // prima pagina, poi lo stesso percorso dopo la scelta e, per la revoca, una terza volta
+  const visits = plan.scenario === 'nessuna-azione' ? 1 : plan.scenario === 'revoca' ? 2 + 2 * journey : 1 + journey;
+  // per visita: caricamento tipico (un terzo del tempo massimo), attese del protocollo, scroll e lettura dello stato
+  const perVisit = Math.round(p.timeoutNavigazione / 3) + 5000 + p.attesaDopoCaricamento + (p.scroll ? 6000 + p.attesaDopoScroll : 0) + 3000;
+  const choice = plan.scenario === 'nessuna-azione' ? bannerWait + 30000 : (plan.scenario === 'revoca' ? 2 : 1) * (bannerWait + p.attesaDopoScelta + 30000);
+  // percorso registrato: fino a 20 s per passo (ricerca dell'elemento e attese)
+  const replay = plan.replay ? plan.replay.steps.length * 20000 : 0;
+  return Math.round(Math.max(p.timeoutSessione, visits * perVisit + choice + replay) * (plan.timeoutFactor ?? 1));
 }
 
 export interface SessionEnv {
@@ -91,6 +111,10 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   const { config } = env;
   const p = config.protocollo;
   const harRel = `evidenze/${plan.id}.har`;
+  // Il traffico si registra con i corpi in file separati, in una cartella temporanea: a fine sessione si compone il
+  // file HAR con i soli corpi che servono (vedi assembleHar). Un video scaricato dalla pagina non passa dalla memoria.
+  const harTmp = join(env.runDir, 'evidenze', `.har-${plan.id}`);
+  mkdirSync(harTmp, { recursive: true });
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
   const screenshots: Evidence[] = [];
@@ -102,7 +126,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     timezoneId: config.browser.timezone,
     viewport: config.browser.viewport,
     extraHTTPHeaders: { 'Accept-Language': `${config.browser.locale},${config.browser.locale.split('-')[0]};q=0.9` },
-    recordHar: { path: join(env.runDir, harRel), mode: 'full', content: 'embed' },
+    recordHar: { path: join(harTmp, `${plan.id}.har`), mode: 'full', content: 'attach' },
   });
   context.setDefaultTimeout(15000);
   const collector = new Collector(context, new PartyResolver(domain, config.dominiPropri), env.classifier);
@@ -224,6 +248,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   let revokeAfterChoice: SessionResult['revokeAfterChoice'];
   let manual: SessionResult['manual'];
   let unreachable: string | undefined;
+  let truncated: string | undefined;
   let replay: SessionResult['replay'];
   const runReplay = async () => {
     stage = `percorso registrato su ${maskPii(collector.currentUrl)}`;
@@ -378,20 +403,21 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
   try {
     // Tetto di durata: una pagina che non risponde non deve bloccare l'intera esecuzione.
     // Le sessioni manuali durano quanto serve all'operatore, entro il loro tempo massimo
-    await withTimeout(flow(), plan.manual ? Math.max(p.timeoutSessione, plan.manual.maxMs + 120000) : p.timeoutSessione, 'sessione interrotta');
+    await withTimeout(flow(), sessionBudgetMs(plan, p, bannerWait), 'sessione interrotta');
   } catch (e) {
     const msg = (e as Error).message.split('\n')[0];
+    if (msg.startsWith('sessione interrotta')) truncated = stage;
     errors.push(`errore durante la sessione: ${msg}${msg.startsWith('sessione interrotta') ? ` (passo in corso: ${stage})` : ''}`);
   } finally {
     // La chiusura salva il file HAR: se non avviene, la sessione resta senza HAR e lo si annota.
     const err = await closeSafely(context, 90000, 'chiusura contesto (salvataggio HAR)');
     if (err) errors.push(err);
-    else {
-      try {
-        trimHar(join(env.runDir, harRel), config.report.harContenuti);
-      } catch (e) {
-        errors.push(`riduzione del file HAR non riuscita: ${(e as Error).message.split('\n')[0]}`);
-      }
+    try {
+      assembleHar(harTmp, `${plan.id}.har`, join(env.runDir, harRel), config.report.harContenuti);
+    } catch (e) {
+      // dopo una chiusura non riuscita il file può mancare: l'anomalia della chiusura è già annotata
+      if (!err) errors.push(`file HAR non composto: ${(e as Error).message.split('\n')[0]}`);
+      rmSync(harTmp, { recursive: true, force: true });
     }
   }
 
@@ -422,6 +448,7 @@ export async function runSession(browser: Browser, plan: SessionPlan, env: Sessi
     ...(manual ? { manual } : {}),
     ...(replay ? { replay, pages: replay.pages } : {}),
     ...(unreachable ? { unreachable } : {}),
+    ...(truncated ? { truncated } : {}),
     ...(plan.repeat ? { repeat: plan.repeat } : {}),
   };
 }

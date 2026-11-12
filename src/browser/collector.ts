@@ -1,4 +1,4 @@
-import type { BrowserContext, Frame, Page, Request } from 'playwright';
+import type { BrowserContext, Frame, Page, Request, Response } from 'playwright';
 import type { Classifier } from '../classify/classifier.js';
 import type { CookieRecord, Phase, RequestRecord, Stage, StorageRecord } from '../types.js';
 import { hostOf, type PartyResolver } from '../util/domains.js';
@@ -69,7 +69,51 @@ export class Collector {
     context.on('response', (res) => {
       const rec = this.byRequest.get(res.request());
       if (rec) rec.status = res.status();
+      this.noteSetCookie(res);
     });
+  }
+
+  /**
+   * Scritture di cookie viste nelle intestazioni Set-Cookie delle risposte, per nome: dicono il momento esatto della
+   * scrittura. I cookie si leggono a intervalli (dopo ogni pagina): senza questo, un cookie scritto poco prima della
+   * scelta e letto dopo risulterebbe "dopo la scelta". Non aggiungono cookie: un Set-Cookie può essere rifiutato dal
+   * browser, quindi conta solo ciò che il browser ha davvero memorizzato.
+   */
+  private readonly setCookieSeen = new Map<string, { epoch: number; domain: string; phase: Phase; stage: Stage; url: string }[]>();
+  /** Inizio della lettura precedente: una scrittura più vecchia riguarda un cookie che allora non c'era già più. */
+  private prevSnapshotEpoch = 0;
+
+  private noteSetCookie(res: Response) {
+    if (this.paused) return;
+    const epoch = Date.now();
+    const { phase, stage } = this;
+    const url = this.currentUrl;
+    let host: string;
+    try {
+      host = new URL(res.url()).hostname.toLowerCase();
+    } catch {
+      return;
+    }
+    void res
+      .headerValues('set-cookie')
+      .then((values) => {
+        for (const v of values) {
+          const name = v.slice(0, Math.max(0, v.indexOf('='))).trim();
+          if (!name) continue;
+          const lower = v.toLowerCase();
+          // cancellazioni (scadenza nel passato): non sono scritture
+          if (/;\s*max-age=\s*(0|-\d+)\s*(;|$)/.test(lower)) continue;
+          const exp = /;\s*expires=([^;]+)/.exec(lower)?.[1];
+          if (exp && Date.parse(exp) < epoch) continue;
+          const domain = (/;\s*domain=\.?([^;\s]+)/.exec(lower)?.[1] ?? host).replace(/\.$/, '');
+          const list = this.setCookieSeen.get(name) ?? [];
+          list.push({ epoch, domain, phase, stage, url });
+          this.setCookieSeen.set(name, list);
+        }
+      })
+      .catch(() => {
+        // risposta non più disponibile (pagina chiusa): resta il momento della lettura
+      });
   }
 
   private watch(p: Page) {
@@ -166,6 +210,13 @@ export class Collector {
         r.stage = back;
       }
     }
+    for (const list of this.setCookieSeen.values()) {
+      for (const w of list) {
+        if (w.epoch < since) continue;
+        w.phase = 'prima';
+        w.stage = back;
+      }
+    }
     for (const x of [...this.cookies.values(), ...this.storage.values()]) {
       x.phase = 'prima';
       if (Date.parse(x.firstSeenAt) >= since) x.stage = back;
@@ -247,6 +298,8 @@ export class Collector {
   async snapshot(page: Page) {
     if (this.paused) return;
     const now = new Date().toISOString();
+    const since = this.prevSnapshotEpoch;
+    this.prevSnapshotEpoch = Date.now();
     for (const c of await this.context.cookies()) {
       const key = `${c.name}|${c.domain}|${c.path}`;
       const state = `${c.value}|${c.expires}`;
@@ -264,6 +317,9 @@ export class Collector {
         }
         continue;
       }
+      // momento della scrittura dall'intestazione Set-Cookie, se la risposta che lo ha scritto è stata vista
+      const bare = c.domain.replace(/^\./, '').toLowerCase();
+      const written = this.setCookieSeen.get(c.name)?.find((w) => w.epoch >= since && w.domain === bare);
       this.cookies.set(key, {
         name: c.name,
         domain: c.domain,
@@ -273,10 +329,10 @@ export class Collector {
         secure: c.secure,
         sameSite: c.sameSite,
         party: this.party.party(c.domain),
-        phase: this.phase,
-        stage: this.stage,
-        firstSeenUrl: maskPii(this.currentUrl),
-        firstSeenAt: now,
+        phase: written?.phase ?? this.phase,
+        stage: written?.stage ?? this.stage,
+        firstSeenUrl: maskPii(written?.url ?? this.currentUrl),
+        firstSeenAt: written ? new Date(written.epoch).toISOString() : now,
         valuePreview: preview(maskPii(c.value)),
         classification: this.classifier.classifyName(c.name, c.domain),
       });

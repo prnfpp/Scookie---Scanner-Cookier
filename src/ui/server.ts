@@ -92,7 +92,7 @@ function readClient(dir: string, file: string) {
 
 /** Riepilogo dell'esecuzione (riepilogo.json) e avanzamento della revisione (revisione.csv). */
 function summaryOf(dir: string) {
-  let r: { configurazione?: string; gravita?: Record<string, number>; sitiSenzaDati?: string[]; durataSec?: number } = {};
+  let r: RunSummaryFile = {};
   try {
     r = JSON.parse(readFileSync(join(dir, 'riepilogo.json'), 'utf8'));
   } catch {
@@ -105,7 +105,22 @@ function summaryOf(dir: string) {
   } catch {
     revisionate = null;
   }
-  return { configurazione: r.configurazione ?? null, gravita: r.gravita ?? null, sitiSenzaDati: r.sitiSenzaDati ?? [], durataSec: r.durataSec ?? null, revisionate };
+  return { file: r, configurazione: r.configurazione ?? null, gravita: r.gravita ?? null, sitiSenzaDati: r.sitiSenzaDati ?? [], sessioniIncomplete: r.sessioniIncomplete?.length ?? 0, durataSec: r.durataSec ?? null, revisionate };
+}
+
+/** riepilogo.json: nelle esecuzioni successive alla 0.1.2 contiene tutto ciò che serve all'elenco delle esecuzioni. */
+interface RunSummaryFile {
+  cliente?: string;
+  configurazione?: string;
+  gravita?: Record<string, number>;
+  sitiSenzaDati?: string[];
+  sessioniIncomplete?: string[];
+  durataSec?: number;
+  criticita?: number;
+  inizio?: string;
+  fine?: string;
+  sessioni?: number;
+  uscita?: { paese: string | null; dichiarato: string; coincide: boolean };
 }
 
 function listRuns(runsDir: string) {
@@ -123,14 +138,40 @@ function listRuns(runsDir: string) {
     .filter((n) => RUN_RE.test(n) && existsSync(join(runsDir, n, 'manifest.json')))
     .map((name) => {
       try {
-        const m = JSON.parse(readFileSync(join(runsDir, name, 'manifest.json'), 'utf8')) as {
+        const dir = join(runsDir, name);
+        const { file: sum, ...summary } = summaryOf(dir);
+        const files = {
+          pdf: existsSync(join(dir, 'report.pdf')),
+          csv: existsSync(join(dir, 'rilievi.csv')) ? 'rilievi.csv' : 'criticita.csv',
+          revisione: existsSync(join(dir, REVIEW_FILE)),
+          rivisto: existsSync(join(dir, 'report-rivisto.html')),
+        };
+        // Il riepilogo basta (file piccolo): manifest.json elenca tutti i file con le impronte e può essere grande
+        if (sum.inizio && sum.uscita) {
+          return {
+            name,
+            cliente: sum.cliente ?? name,
+            inizio: sum.inizio,
+            fine: sum.fine ?? null,
+            sessioni: sum.sessioni ?? null,
+            criticita: sum.criticita ?? null,
+            paese: sum.uscita.paese,
+            paeseAtteso: sum.uscita.dichiarato,
+            uscitaOk: sum.uscita.coincide,
+            ...files,
+            ...summary,
+          };
+        }
+        // esecuzioni fino alla 0.1.2: i dati sono solo nel manifest
+        const m = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as {
           cliente?: string;
           inizio?: string;
           fine?: string;
           sessioni?: number;
           criticita?: number;
-          ambiente?: { uscita?: { country?: string | null; verified?: boolean } };
+          ambiente?: { uscita?: { country?: string | null; verified?: boolean; declared?: string; matches?: boolean } };
         };
+        const u = m.ambiente?.uscita;
         return {
           name,
           cliente: m.cliente ?? name,
@@ -138,12 +179,11 @@ function listRuns(runsDir: string) {
           fine: m.fine ?? null,
           sessioni: m.sessioni ?? null,
           criticita: m.criticita ?? null,
-          paese: m.ambiente?.uscita?.verified ? m.ambiente.uscita.country : null,
-          pdf: existsSync(join(runsDir, name, 'report.pdf')),
-          csv: existsSync(join(runsDir, name, 'rilievi.csv')) ? 'rilievi.csv' : 'criticita.csv',
-          revisione: existsSync(join(runsDir, name, REVIEW_FILE)),
-          rivisto: existsSync(join(runsDir, name, 'report-rivisto.html')),
-          ...summaryOf(join(runsDir, name)),
+          paese: u?.verified ? (u.country ?? null) : null,
+          paeseAtteso: u?.declared ?? 'IT',
+          uscitaOk: !!u?.verified && (u.matches ?? u.country === 'IT'),
+          ...files,
+          ...summary,
         };
       } catch {
         return null;

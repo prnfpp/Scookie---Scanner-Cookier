@@ -13,6 +13,11 @@ export interface RecordedStep {
   text: string;
   tag: string;
   value?: string;
+  /**
+   * Campo riservato (password, codice monouso, carta di pagamento): il valore non si registra mai. Un percorso con un
+   * passo riservato non si può rigiocare in automatico.
+   */
+  secret?: boolean;
   checked?: boolean;
   /** Pagina in cui è avvenuta l'azione. */
   url: string;
@@ -33,7 +38,19 @@ export interface ReplayOutcome {
   /** Motivo dell'interruzione, se il percorso non è stato completato. */
   stoppedAt?: string;
   seconds: number;
+  /** Valori inseriti nei campi durante il percorso (i dati di prova registrati), per riconoscerli nelle richieste. */
+  fills?: { value: string; hint: string }[];
 }
+
+/** Valori dei campi di un percorso registrato, con il nome o l'etichetta del campo: sono i dati di prova da riconoscere. */
+export function recordedFills(steps: RecordedStep[]): { value: string; hint: string }[] {
+  const byField = new Map<string, { value: string; hint: string }>();
+  for (const st of steps) if (st.type === 'fill' && !st.secret && st.value?.trim()) byField.set(st.css, { value: st.value, hint: `${st.css} ${st.text}` });
+  return [...byField.values()];
+}
+
+/** Il percorso contiene un campo riservato (password e simili): il valore non è registrato e non si può rigiocare. */
+export const hasSecretStep = (steps: RecordedStep[]) => steps.some((st) => st.secret || (st.type === 'fill' && /type=["']?password/i.test(st.css)));
 
 /**
  * Registratore iniettato nelle pagine della navigazione manuale. Ignora il riquadro di Scookie e i banner dei
@@ -100,7 +117,13 @@ export const RECORDER = `(() => {
     if (!(t instanceof Element) || !e.isTrusted) return;
     if (t.matches('select')) send('select', t, { value: t.value });
     else if (t.matches('input[type=checkbox], input[type=radio]')) send('check', t, { checked: t.checked });
-    else if (t.matches('input, textarea')) send('fill', t, { value: t.value });
+    else if (t.matches('input, textarea')) {
+      // campi riservati: si registra che il campo è stato compilato, mai il valore
+      const ac = (t.getAttribute('autocomplete') || '').toLowerCase();
+      const hint = ((t.getAttribute('name') || '') + ' ' + (t.id || '')).toLowerCase();
+      const secret = t.type === 'password' || /password|one-time-code|cc-(number|csc|exp)/.test(ac) || /passw|pwd|\\botp\\b|cvv|cvc|card.?number|numero.?carta/.test(hint);
+      send('fill', t, secret ? { value: '', secret: true } : { value: t.value });
+    }
   }, true);
 })()`;
 
@@ -177,6 +200,10 @@ export async function replayJourney(page: Page, collector: Collector, path: Reco
         await cur.waitForTimeout(700);
         continue;
       }
+      if (step.secret) {
+        stoppedAt = `${describe(step, i)}: campo riservato (password o simile), il valore non è registrato`;
+        break;
+      }
       const el = await locate(cur, step, 15000);
       if (!el) {
         stoppedAt = `${describe(step, i)}: elemento non trovato`;
@@ -202,5 +229,6 @@ export async function replayJourney(page: Page, collector: Collector, path: Reco
   } finally {
     context.off('page', onPage);
   }
-  return { pages, stepsDone: done, stepsTotal: path.steps.length, ...(stoppedAt ? { stoppedAt } : {}), seconds: Math.round((Date.now() - started) / 1000), lastPage: cur };
+  const fills = recordedFills(path.steps);
+  return { pages, stepsDone: done, stepsTotal: path.steps.length, ...(fills.length ? { fills } : {}), ...(stoppedAt ? { stoppedAt } : {}), seconds: Math.round((Date.now() - started) / 1000), lastPage: cur };
 }
