@@ -27,11 +27,18 @@ export interface TrackerEntry {
  * Host che corrisponde al dominio di una voce: il dominio stesso o un suo sottodominio; un dominio con "*" (es.
  * "image-cdn-*.spotifycdn.com", "*-spclient.spotify.com") è un modello in cui "*" sta per una parte di un'etichetta.
  */
+const wildcardCache = new Map<string, RegExp>();
+
 export function entryHostMatches(host: string, dominio: string): boolean {
   if (dominio === '*') return true;
   if (!dominio.includes('*')) return hostMatches(host, dominio);
-  const re = new RegExp(`(^|\\.)${dominio.replace(/^\./, '').split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^.]*')}$`, 'i');
+  let re = wildcardCache.get(dominio);
+  if (!re) wildcardCache.set(dominio, (re = wildcardRe(dominio)));
   return re.test(host.replace(/^\./, ''));
+}
+
+function wildcardRe(dominio: string): RegExp {
+  return new RegExp(`(^|\\.)${dominio.replace(/^\./, '').split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^.]*')}$`, 'i');
 }
 
 interface OcdEntry {
@@ -95,6 +102,8 @@ export class Classifier {
   private readonly ocdExact = new Map<string, OcdEntry[]>();
   private readonly ocdWildcard: OcdEntry[] = [];
   private readonly trackers: TrackerEntry[];
+  /** Espressioni di percorsi e parametri di ogni voce, compilate una volta (si usano a ogni richiesta). */
+  private readonly compiled = new Map<TrackerEntry, { paths?: RegExp[]; params?: RegExp[] }>();
 
   constructor(extraTrackers: TrackerEntry[] = []) {
     this.loadOcd(`${DATA_DIR}vendor/open-cookie-database.csv`);
@@ -105,6 +114,11 @@ export class Classifier {
     this.trackers = [...extraTrackers, ...base];
     for (const t of this.trackers) {
       if (t.dominio === '*' && !t.percorsi?.length && !t.parametri?.length) throw new Error(`Voce tracker con dominio "*" senza percorsi né parametri (${t.azienda}): varrebbe per qualsiasi richiesta`);
+      try {
+        this.compiled.set(t, { paths: t.percorsi?.map((p) => new RegExp(p)), params: t.parametri?.map((p) => new RegExp(p)) });
+      } catch (e) {
+        throw new Error(`Voce tracker di ${t.azienda} (${t.dominio}): espressione regolare non valida in percorsi o parametri (${(e as Error).message})`);
+      }
     }
   }
 
@@ -196,12 +210,11 @@ export class Classifier {
       return { dominio: host, azienda: 'Cloudflare', categoria: 'tecnico', nota: 'Infrastruttura Cloudflare (/cdn-cgi/)' };
     }
     const q = query.replace(/^\?/, '');
-    const candidates = this.trackers.filter(
-      (t) =>
-        entryHostMatches(host, t.dominio) &&
-        (!t.percorsi || t.percorsi.some((p) => new RegExp(p).test(path))) &&
-        (!t.parametri || t.parametri.every((p) => new RegExp(p).test(q))),
-    );
+    const candidates = this.trackers.filter((t) => {
+      if (!entryHostMatches(host, t.dominio)) return false;
+      const c = this.compiled.get(t);
+      return (!c?.paths || c.paths.some((re) => re.test(path))) && (!c?.params || c.params.every((re) => re.test(q)));
+    });
     // il dominio più specifico vince; le voci per qualsiasi host ("*") valgono solo se nessun'altra corrisponde
     const len = (t: TrackerEntry) => (t.dominio === '*' ? 0 : t.dominio.length);
     candidates.sort((a, b) => len(b) - len(a) || Number(!!b.percorsi || !!b.parametri) - Number(!!a.percorsi || !!a.parametri));

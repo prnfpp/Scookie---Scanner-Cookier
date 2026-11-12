@@ -1,0 +1,23 @@
+# Controllo automatico: l'icona di avvio scarica il ramo main sui computer di chi usa Scookie, quindi ogni modifica
+# deve compilare e superare i test prima di arrivarci.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - run: bash -n scripts/avvia-mac.sh scripts/installa-icona-mac.sh

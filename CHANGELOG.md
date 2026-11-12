@@ -2,6 +2,44 @@
 
 ## Non rilasciato
 
+Correzioni dopo la revisione completa del codice.
+
+- **Dati di prova nei percorsi rigiocati.** I valori dei campi di un percorso registrato valgono come dati di prova
+  anche quando il percorso si rigioca in automatico (prima solo nella navigazione manuale): il secondo audit riconosce
+  gli stessi dati del primo. Vale anche per `rigenera` sulle nuove rilevazioni (`replay.fills`).
+- **Campi riservati mai registrati.** Password, codici monouso e dati di carta non si registrano più (né nel percorso,
+  né nei dati, né nel promemoria a schermo). Un percorso con un campo riservato non si salva e non si rigioca: la
+  navigazione manuale va ripetuta. I percorsi registrati in precedenza che contengono una password vanno eliminati
+  ("Registra di nuovo").
+- **Dati di prova con hash o in base64.** Email, telefono, nome e data di prova si riconoscono anche come SHA-256,
+  SHA-1, MD5 (esadecimale o base64) e in base64, con le normalizzazioni dei fornitori (minuscolo, prefisso
+  internazionale). Il rilievo indica la codifica, es. "email (hash SHA-256)". I parametri con nome di hash
+  (`sha256_email_address`, `hashed_email`, `em`…) e valore a forma di hash sono segnalati come "email con hash" da
+  verificare. I dati di prova si cercano in tutto il corpo delle richieste (prima solo nei primi 20.000 caratteri).
+- **Avvio dall'icona (Mac).** Il browser si segna come installato solo se l'installazione riesce; se la versione
+  appena scaricata non si installa o non compila si torna alla precedente e quella versione non viene più riprovata
+  (`.scookie-salta`); `package-lock.json` riscritto dal ripiego `npm install` viene ripristinato, così gli
+  aggiornamenti successivi non sono saltati. Aggiunto il controllo automatico su GitHub (build e test a ogni push).
+- **Configurazione.** Due siti sullo stesso host sono rifiutati al salvataggio (si sommavano nel rapporto); le
+  espressioni regolari di `escludi` e `campionamento.tipi` si verificano al salvataggio.
+- **Sessioni fermate dal tetto di durata.** Il tetto cresce con le visite previste dal percorso (`timeoutSessione` è
+  il minimo); una sessione fermata si ripete una volta con il tetto doppio; se resta parziale è segnata
+  (`truncated`), compare tra i limiti del rapporto, nel riepilogo e nell'elenco delle esecuzioni.
+- **File HAR.** I corpi si registrano in file separati e il file HAR si compone a fine sessione con i soli corpi
+  previsti da `harContenuti`: video e immagini grandi non passano più dalla memoria. Con `tutti` i corpi binari
+  oltre 20 MB sono omessi.
+- **Momento dei cookie.** Per i cookie scritti da una risposta (intestazione `Set-Cookie`) il momento è quello della
+  risposta, non quello della lettura successiva: un cookie scritto poco prima della scelta non risulta più "dopo la
+  scelta".
+- **`ip-a-terze-parti`**: chiave stabile (servizi coinvolti) invece del testo della scheda; le schede dei sottodomini
+  dello stesso dominio si uniscono. La revisione già data a queste schede va riportata una volta a mano.
+- **Prestazioni.** Conteggio dei tipi di pagina lineare (con 5000 URL di sitemap bloccava il programma per ~18 s per
+  sito); espressioni dell'elenco dei fornitori compilate una volta; l'elenco delle esecuzioni legge `riepilogo.json`
+  invece di `manifest.json`.
+- **Interfaccia.** Il paese di uscita è evidenziato se diverso da quello dichiarato nella configurazione, non se
+  diverso dall'Italia.
+
+
 Correzioni dopo la verifica manuale di una rilevazione su un sito WordPress senza banner con un lettore Spotify
 incorporato e Matomo senza cookie. Ogni voce vale per qualsiasi sito.
 

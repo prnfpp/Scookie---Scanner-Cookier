@@ -13,3 +13,6 @@ clienti/
 # Percorso di node registrato dall'installazione dell'icona
 .scookie-env
 .build-check/
+
+# Versione scartata dall'avvio automatico perché non si installava
+.scookie-salta

@@ -264,7 +264,12 @@ export interface SessionResult {
   /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
   manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; steps?: import('./browser/replay.js').RecordedStep[]; errorPages?: { url: string; status: number }[]; extraTabs?: number };
   /** Sessione automatica che ha rigiocato un percorso registrato in una navigazione manuale. */
-  replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string };
+  replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string; fills?: { value: string; hint: string }[] };
+  /**
+   * Sessione fermata dal tetto di durata prima di finire il percorso: i fatti osservati valgono, ma ciò che manca
+   * (es. le pagine dopo la scelta o dopo la revoca) non è stato visto. Contiene il passo in cui si è fermata.
+   */
+  truncated?: string;
   /** Comando per rivedere la scelta trovato nella pagina dopo la scelta (molti gestori lo mostrano solo allora). */
   revokeAfterChoice?: { text: string; how: string; url: string };
   /** Analisi della struttura del banner (solo nella prima sessione "nessuna azione" di ogni sito). */

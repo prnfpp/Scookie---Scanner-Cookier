@@ -5,6 +5,8 @@
  *   si riportano solo mascherati, perché il rapporto non diffonda a sua volta i dati.
  */
 
+import { createHash } from 'node:crypto';
+
 /** Tipo di dato: per i valori trovati per nome o forma (targa, data di nascita…); per i dati di prova, il tipo dichiarato. */
 export type PiiKind = string;
 
@@ -61,13 +63,107 @@ function variants(kind: string, v: string): string[] {
   return [...out].filter((x) => x.length >= 4);
 }
 
-let testData: { kind: string; tipo: TestType; value: string; canon: string; forms: string[]; typed?: boolean }[] = [];
+/** Forma codificata di un dato di prova (hash o base64), come la inviano molti fornitori pubblicitari. */
+interface EncodedForm {
+  /** Valore da cercare nel testo (hash in minuscolo; base64 così com'è). */
+  needle: string;
+  /** Nome della codifica, per il rapporto (es. "SHA-256"). */
+  how: string;
+  /** Il confronto ignora le maiuscole (hash esadecimali). */
+  ci: boolean;
+}
+
+/**
+ * Valori da cui i fornitori calcolano l'hash: email in minuscolo e senza spazi (Gmail anche senza punti, come la
+ * normalizza Google); telefono con sole cifre, con e senza prefisso internazionale e "+"; nome e cognome in minuscolo,
+ * interi e parola per parola; data come aaaammgg.
+ */
+function hashInputs(tipo: string, v: string): string[] {
+  const out = new Set<string>();
+  const t = v.trim();
+  if (tipo === 'email') {
+    const e = t.toLowerCase().replace(/\s+/g, '');
+    out.add(e);
+    const [user, dom] = e.split('@');
+    if (user && (dom === 'gmail.com' || dom === 'googlemail.com')) out.add(`${user.replace(/\./g, '').replace(/\+.*$/, '')}@${dom}`);
+  } else if (tipo === 'telefono') {
+    const digits = t.replace(/\D/g, '').replace(/^00/, '');
+    if (digits.length >= 8) {
+      const national = digits.length > 10 && digits.startsWith('39') ? digits.slice(2) : digits;
+      const full = digits.length > 10 ? digits : `39${digits}`;
+      for (const x of [digits, national, full, `+${full}`]) out.add(x);
+    }
+  } else if (tipo === 'nome') {
+    const n = t.toLowerCase().replace(/\s+/g, ' ');
+    out.add(n);
+    out.add(n.replace(/ /g, ''));
+    for (const w of n.split(' ')) if (w.length >= 3) out.add(w);
+  } else if (isDate(tipo)) {
+    const c = canon(tipo, t);
+    if (/^\d{8}$/.test(c)) for (const x of [c, `${c.slice(0, 4)}-${c.slice(4, 6)}-${c.slice(6)}`]) out.add(x);
+  } else if (tipo === 'codice fiscale' || tipo === 'targa') {
+    const c = canon(tipo, t);
+    out.add(c);
+    out.add(c.toLowerCase());
+  }
+  return [...out].filter((x) => x.length >= 3);
+}
+
+/** Hash (SHA-256, SHA-1, MD5, in esadecimale e in base64) e base64 del valore: le forme in cui un dato viaggia "pseudonimizzato". */
+function encodedForms(tipo: string, v: string): EncodedForm[] {
+  const out = new Map<string, EncodedForm>();
+  const add = (needle: string, how: string, ci: boolean) => {
+    if (needle.length >= 12 && !out.has(needle)) out.set(needle, { needle, how, ci });
+  };
+  for (const input of hashInputs(tipo, v)) {
+    for (const [algo, how] of [['sha256', 'SHA-256'], ['sha1', 'SHA-1'], ['md5', 'MD5']] as const) {
+      const h = createHash(algo).update(input, 'utf8');
+      const buf = h.digest();
+      add(buf.toString('hex'), how, true);
+      const b64 = buf.toString('base64');
+      add(b64, how, false);
+      add(b64.replace(/=+$/, ''), how, false);
+      add(b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), how, false);
+    }
+  }
+  // base64 del valore in chiaro: solo per i valori abbastanza lunghi da non coincidere per caso
+  if (tipo === 'email' || v.trim().length >= 9) {
+    for (const input of new Set([v.trim(), v.trim().toLowerCase()])) {
+      const b64 = Buffer.from(input, 'utf8').toString('base64').replace(/=+$/, '');
+      // gli ultimi caratteri dipendono da ciò che segue il valore: si cerca la parte certa
+      add(b64.slice(0, b64.length - (b64.length % 4 ? 1 : 0)), 'base64', false);
+    }
+  }
+  return [...out.values()];
+}
+
+interface TestDatum {
+  kind: string;
+  tipo: TestType;
+  value: string;
+  canon: string;
+  forms: string[];
+  encoded: EncodedForm[];
+  typed?: boolean;
+}
+
+const datum = (tipo: TestType, value: string, kind: string, typed?: boolean): TestDatum => ({
+  kind,
+  tipo,
+  value: value.trim(),
+  canon: canon(tipo, value),
+  forms: variants(tipo, value),
+  encoded: encodedForms(tipo, value),
+  ...(typed ? { typed } : {}),
+});
+
+let testData: TestDatum[] = [];
 
 /** Dati di prova dell'esecuzione in corso (dalla configurazione). */
 export function setTestData(entries: TestEntry[] | undefined) {
   testData = (entries ?? [])
     .filter((e) => typeof e.valore === 'string' && e.valore.trim().length >= 4)
-    .map((e) => ({ kind: e.etichetta?.trim() || e.tipo, tipo: e.tipo, value: e.valore.trim(), canon: canon(e.tipo, e.valore), forms: variants(e.tipo, e.valore) }));
+    .map((e) => datum(e.tipo, e.valore, e.etichetta?.trim() || e.tipo));
 }
 
 /** Tipo di un valore digitato dall'operatore, dalla sua forma e dal nome o etichetta del campo. */
@@ -95,7 +191,7 @@ export function registerTypedValue(value: string, hint = ''): TestEntry | null {
   if (!g) return null;
   if (testData.some((t) => t.tipo === g.tipo && t.canon === canon(g.tipo, v))) return null;
   const entry: TestEntry = { tipo: g.tipo, valore: v, ...(g.label ? { etichetta: g.label } : {}) };
-  testData.push({ kind: entry.etichetta ?? entry.tipo, tipo: entry.tipo, value: v, canon: canon(entry.tipo, v), forms: variants(entry.tipo, v), typed: true });
+  testData.push(datum(entry.tipo, v, entry.etichetta ?? entry.tipo, true));
   return entry;
 }
 
@@ -183,7 +279,15 @@ const PARAMS: { kind: PiiKind; re: RegExp; value: RegExp }[] = [
   { kind: 'email', re: /^(e-?mail|mail|email_?address)$/i, value: /@/ },
   { kind: 'codice fiscale', re: /^(codice_?fiscale|cod_?fisc|cf|tax_?code|fiscal_?code)$/i, value: /^[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]$/i },
   { kind: 'telefono', re: /^(telefono|tel|cellulare|cell|phone|phone_?number|mobile)$/i, value: /^\+?[\d\s.-]{8,}$/ },
+  // identificativi con hash dichiarati dal nome del parametro (es. sha256_email_address, hashed_email, em): il valore
+  // non è leggibile, ma il nome dice che deriva da un'email o da un telefono
+  { kind: 'email con hash', re: /^(em|hem|sha256_?email(_?address)?|hashed_?email|email_?hash|email_?sha256|md5_?email|sha256_?em)$/i, value: /^[a-f0-9]{32}$|^[a-f0-9]{40}$|^[a-f0-9]{64}$/i },
+  { kind: 'telefono con hash', re: /^(ph|sha256_?phone(_?number)?|hashed_?phone(_?number)?|phone_?hash)$/i, value: /^[a-f0-9]{32}$|^[a-f0-9]{40}$|^[a-f0-9]{64}$/i },
 ];
+/** Oltre questa lunghezza un testo si analizza per coppie nome=valore solo nella prima parte; i dati di prova si cercano ovunque. */
+const PAIR_SCAN_CHARS = 20000;
+/** Limite della ricerca dei dati di prova nei corpi molto grandi (registrazioni di sessione, invii a lotti). */
+const FULL_SCAN_CHARS = 4_000_000;
 const EMAIL = /[A-Z0-9._%+-]{2,}@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,}/gi;
 const CF = /\b[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]\b/gi;
 /** Targa nel percorso dell'indirizzo (es. /quotazione/auto/AB123CD/1990-01-01), con l'eventuale data che la segue. */
@@ -253,9 +357,11 @@ export function detectPii(...texts: (string | null | undefined)[]): PiiHit[] {
   const add = (h: PiiHit) => out.set(`${h.kind}|${h.param}|${h.masked}`, h);
   for (const raw of texts) {
     if (!raw) continue;
-    const text = decodeDeep(raw.slice(0, 20000));
+    const text = decodeDeep(raw.slice(0, PAIR_SCAN_CHARS));
+    // i dati di prova si cercano in tutto il testo: nei corpi grandi stanno spesso oltre la prima parte
+    const whole = raw.length > PAIR_SCAN_CHARS ? decodeDeep(raw.slice(0, FULL_SCAN_CHARS)) : text;
     // coppie nome=valore (query, form, frammenti) e "nome":"valore" (JSON)
-    for (const m of text.matchAll(/(?:^|[?&;#,{\s"'])([A-Za-z_][\w-]{1,30})"?\s*[=:]\s*"?([^&;,"'\s}?]{2,60})/g)) {
+    for (const m of text.matchAll(/(?:^|[?&;#,{\s"'])([A-Za-z_][\w-]{1,30})"?\s*[=:]\s*"?([^&;,"'\s}?]{2,80})/g)) {
       const [, name, value] = m;
       const p = PARAMS.find((x) => x.re.test(name));
       const v = value.trim();
@@ -272,10 +378,13 @@ export function detectPii(...texts: (string | null | undefined)[]): PiiHit[] {
     }
     // i dati di prova si cercano anche come valori nudi (es. dentro un JSON o un percorso); i testi liberi
     // (nomi, indirizzi) senza distinguere le maiuscole
-    const lower = text.toLowerCase();
+    const lower = whole.toLowerCase();
     for (const t of testData) {
-      const hay = isText(t.tipo) ? lower : text;
+      const hay = isText(t.tipo) ? lower : whole;
       if (t.forms.some((f) => hay.includes(isText(t.tipo) ? f.toLowerCase() : f))) add({ kind: t.kind, param: null, masked: t.value, test: true });
+      // lo stesso dato come hash o in base64 (es. l'email in SHA-256 inviata ai fornitori pubblicitari)
+      const enc = t.encoded.find((e) => (e.ci ? lower.includes(e.needle) : whole.includes(e.needle)));
+      if (enc) add({ kind: `${t.kind} (${enc.how === 'base64' ? 'in base64' : `hash ${enc.how}`})`, param: null, masked: t.value, test: true });
     }
   }
   // la stessa email trovata per nome di parametro e per forma conta una volta
@@ -296,7 +405,7 @@ export function maskPii(text: string): string {
   let out = text;
   const decoded = decodeDeep(text);
   const values = new Set<string>();
-  for (const m of decoded.matchAll(/(?:^|[?&;#,{\s"'])([A-Za-z_][\w-]{1,30})"?\s*[=:]\s*"?([^&;,"'\s}?]{2,60})/g)) {
+  for (const m of decoded.matchAll(/(?:^|[?&;#,{\s"'])([A-Za-z_][\w-]{1,30})"?\s*[=:]\s*"?([^&;,"'\s}?]{2,80})/g)) {
     const p = PARAMS.find((x) => x.re.test(m[1]));
     if (p && p.value.test(m[2].trim())) values.add(m[2].trim());
   }

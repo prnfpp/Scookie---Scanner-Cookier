@@ -426,6 +426,7 @@ ${[...third]
     const rev = ss.filter((s) => s.scenario === 'revoca' && s.revocation && s.revocation.outcome !== 'eseguita');
     if (rev.length && !noBannerLim.has(site)) notSeen.push(`${host(site)}: revoca non eseguita in ${rev.length} ${rev.length === 1 ? 'sessione' : 'sessioni'}: il comportamento dopo la revoca non è descritto.`);
     for (const s of ss.filter((x) => x.manual && !x.attributedFrom && (x.manual.pages.length <= 1 || x.manual.seconds < 60))) notSeen.push(`${host(site)}: navigazione manuale ${s.id} probabilmente incompleta.`);
+    for (const s of ss.filter((x) => x.truncated)) notSeen.push(`${host(site)}: sessione ${s.id} (${s.scenario}) fermata dal tetto di durata durante: ${s.truncated}. Ciò che viene dopo quel passo non è stato osservato: l'assenza di un fatto in questa sessione non prova che non avvenga.`);
     for (const s of ss.filter((x) => x.replay?.stoppedAt)) notSeen.push(`${host(site)}: percorso registrato interrotto in ${s.id} (${s.replay!.stoppedAt}).`);
   }
   const errBy = new Map<string, string[]>();
