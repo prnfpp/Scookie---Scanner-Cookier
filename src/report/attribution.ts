@@ -61,85 +61,90 @@ export function attributeByHost(sessions: SessionResult[]): Attribution {
     if (!ownBySite.has(site)) ownBySite.set(site, ownHosts(site, sessions));
     return ownBySite.get(site)!;
   };
+  // Host che appartengono a un sito della rilevazione (il suo, con o senza www, e quello a cui porta la home): una
+  // pagina su uno di questi host è una pagina di quel sito, non di un sito a parte (es. conte.it che rimanda a www.conte.it).
+  const aliasSite = new Map<string, string>();
+  for (const site of new Set(sessions.filter((s) => !s.attributedFrom).map((s) => s.site))) {
+    for (const h of own(site)) if (!aliasSite.has(h)) aliasSite.set(h, site);
+  }
   for (const s of sessions) {
     if (s.attributedFrom) {
       out.push(s);
       continue;
     }
     const mine = own(s.site);
-    const pageHosts = new Set<string>();
-    const hostFor = (u: string) => {
+    /** Sito a cui appartiene una pagina fuori dal sito della sessione; null se la pagina è del sito. */
+    const targets = new Set<string>();
+    const siteFor = (u: string) => {
       const h = hostname(u);
       if (!h || mine.has(h)) return null;
-      pageHosts.add(h);
-      return h;
+      const t = aliasSite.get(h) ?? originOf(u, h);
+      if (t === s.site) return null;
+      targets.add(t);
+      return t;
     };
-    const cookieHost = s.cookies.map((c) => hostFor(c.firstSeenUrl));
-    const storageHost = s.storage.map((c) => hostFor(c.firstSeenUrl));
-    const requestHost = s.requests.map((r) => hostFor(r.pageUrl));
+    const cookieSite = s.cookies.map((c) => siteFor(c.firstSeenUrl));
+    const storageSite = s.storage.map((c) => siteFor(c.firstSeenUrl));
+    const requestSite = s.requests.map((r) => siteFor(r.pageUrl));
     const visited = s.manual?.pages ?? s.replay?.pages ?? s.pages;
-    visited.forEach(hostFor);
-    if (!pageHosts.size) {
+    const visitedSite = visited.map(siteFor);
+    if (!targets.size) {
       out.push(s);
       continue;
     }
-    const firstHost = hostname(visited[0] ?? s.pages[0] ?? '');
-    const lastHost = hostname(visited[visited.length - 1] ?? '');
-    const ownVisited = visited.filter((u) => {
-      const h = hostname(u);
-      return !!h && mine.has(h);
-    });
+    const firstUrl = visited[0] ?? s.pages[0] ?? '';
+    const firstHost = hostname(firstUrl);
+    const firstSite = firstUrl ? siteFor(firstUrl) : null;
+    const lastSite = visited.length ? visitedSite[visited.length - 1] : null;
+    const ownVisited = visited.filter((_, i) => !visitedSite[i]);
     const siteHost = hostname(s.site) ?? s.site;
-    const off = [...pageHosts];
-    for (const h of off) {
-      const keepShot = (label: string) => (FIRST_PAGE_SHOTS.test(label) ? firstHost === h : lastHost === h);
-      const pages = visited.filter((u) => hostname(u) === h);
+    const off = [...targets];
+    const offHosts = off.map((t) => hostname(t) ?? t);
+    const total = visited.length;
+    for (const t of off) {
+      const keepShot = (label: string) => (FIRST_PAGE_SHOTS.test(label) ? firstSite === t : lastSite === t);
+      const pages = visited.filter((_, i) => visitedSite[i] === t);
       const part: SessionResult = {
         ...s,
-        site: originOf(visited.find((u) => hostname(u) === h) ?? s.site, h),
+        site: t,
         pages,
-        cookies: s.cookies.filter((_, i) => cookieHost[i] === h),
-        storage: s.storage.filter((_, i) => storageHost[i] === h),
-        requests: s.requests.filter((_, i) => requestHost[i] === h),
+        cookies: s.cookies.filter((_, i) => cookieSite[i] === t),
+        storage: s.storage.filter((_, i) => storageSite[i] === t),
+        requests: s.requests.filter((_, i) => requestSite[i] === t),
         screenshots: s.screenshots.filter((e) => keepShot(e.label)),
         attributedFrom: { session: s.id, site: s.site },
         errors: [],
         interaction:
-          firstHost === h
+          firstSite === t
             ? s.interaction
-            : { ...s.interaction, detail: `${s.interaction.detail} (scelta fatta su ${firstHost ?? 'un altro sito'})` },
-        ...(s.manual ? { manual: { ...s.manual, pages } } : {}),
+            : { ...s.interaction, detail: `${s.interaction.detail} (scelta fatta su ${firstHost ?? 'un altro sito'})`, choiceOn: firstHost ?? 'un altro sito' },
+        ...(s.manual ? { manual: { ...s.manual, pages, totalPages: total } } : {}),
         ...(s.replay ? { replay: { ...s.replay, pages } } : {}),
       };
-      if (firstHost !== h) delete part.bannerAnalysis;
+      if (firstSite !== t) delete part.bannerAnalysis;
       out.push(part);
     }
     const kind = s.manual ? 'la navigazione manuale' : s.replay ? 'il percorso registrato' : 'la sessione';
     if (!ownVisited.length) {
       notes.push(
-        `${s.id}: ${kind} non è mai entrata su ${siteHost} (pagine visitate solo su ${off.join(', ')}). I fatti osservati sono attribuiti a ${off.join(', ')}; per descrivere ${siteHost} va rifatta partendo da ${siteHost}.`,
+        `${s.id}: ${kind} non è mai entrata su ${siteHost} (pagine visitate solo su ${offHosts.join(', ')}). I fatti osservati sono attribuiti a ${offHosts.join(', ')}; per descrivere ${siteHost} va rifatta partendo da ${siteHost}.`,
       );
       continue;
     }
     notes.push(
-      `${s.id}: ${kind} è passata anche da ${off.join(', ')}, fuori da ${siteHost}: cookie e richieste osservati su quelle pagine sono attribuiti a ${off.length === 1 ? 'quel sito' : 'quei siti'}.`,
+      `${s.id}: ${kind} è passata anche da ${offHosts.join(', ')}, fuori da ${siteHost}: cookie e richieste osservati su quelle pagine sono attribuiti a ${off.length === 1 ? 'quel sito' : 'quei siti'}.`,
     );
+    const startedElsewhere = !!firstSite;
     out.push({
       ...s,
-      pages: s.pages.filter((u) => {
-        const h = hostname(u);
-        return !h || mine.has(h);
-      }),
-      cookies: s.cookies.filter((_, i) => !cookieHost[i]),
-      storage: s.storage.filter((_, i) => !storageHost[i]),
-      requests: s.requests.filter((_, i) => !requestHost[i]),
-      screenshots: s.screenshots.filter((e) => (FIRST_PAGE_SHOTS.test(e.label) ? !firstHost || mine.has(firstHost) : !lastHost || mine.has(lastHost))),
-      interaction:
-        firstHost && !mine.has(firstHost)
-          ? { ...s.interaction, detail: `${s.interaction.detail} (scelta fatta su ${firstHost})` }
-          : s.interaction,
-      ...(firstHost && !mine.has(firstHost) ? { bannerAnalysis: undefined } : {}),
-      ...(s.manual ? { manual: { ...s.manual, pages: ownVisited } } : {}),
+      pages: s.pages.filter((u) => !siteFor(u)),
+      cookies: s.cookies.filter((_, i) => !cookieSite[i]),
+      storage: s.storage.filter((_, i) => !storageSite[i]),
+      requests: s.requests.filter((_, i) => !requestSite[i]),
+      screenshots: s.screenshots.filter((e) => (FIRST_PAGE_SHOTS.test(e.label) ? !firstSite : !lastSite)),
+      interaction: startedElsewhere ? { ...s.interaction, detail: `${s.interaction.detail} (scelta fatta su ${firstHost})`, choiceOn: firstHost ?? 'un altro sito' } : s.interaction,
+      ...(startedElsewhere ? { bannerAnalysis: undefined } : {}),
+      ...(s.manual ? { manual: { ...s.manual, pages: ownVisited, totalPages: total } } : {}),
       ...(s.replay ? { replay: { ...s.replay, pages: ownVisited } } : {}),
     });
   }

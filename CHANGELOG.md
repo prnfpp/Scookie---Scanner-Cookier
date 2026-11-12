@@ -2,6 +2,28 @@
 
 ## Non rilasciato
 
+Correzioni dopo la verifica di tre rilevazioni reali (due siti WordPress senza banner e un sito assicurativo con due
+gestori del consenso, sottodomini e navigazioni manuali). Ogni voce vale per qualsiasi sito.
+
+- **Un host che rimanda al sito è lo stesso sito.** Le pagine viste su un host che appartiene a un sito della
+  rilevazione (con o senza `www`, o quello a cui porta la home) sono attribuite a quel sito: prima `esempio.it` che
+  rimanda a `www.esempio.it` diventava un "sito non incluso nella configurazione" a parte, con rilievi propri.
+- **Banner e gestore visti altrove.** Quando la scelta è fatta su un altro sito e la navigazione prosegue (es. scelta
+  su www, modulo su app), banner e gestore di quella scelta non descrivono il sito di arrivo (`interaction.choiceOn`):
+  `sottodomini-disomogenei` e `categorie-non-presentate` non li usano più per quel sito.
+- **Dati digitati dall'operatore.** Per ogni campo vale l'ultimo valore: le correzioni e le date digitate una cifra
+  alla volta (0002-05-01, 0020-05-01…) non restano tra i dati di prova; le date con anno non plausibile sono
+  scartate e quelle scritte con spazi ("09 / 05 / 1997") sono riconosciute. I campi che non emettono l'evento
+  "change" dell'utente (campi con maschera) si registrano all'uscita dal campo, all'invio del modulo o all'uscita
+  dalla pagina.
+- **`dati-personali-a-terzi`**: il testo nomina come dati di prova solo quelli che lo sono; gli altri valori trovati
+  nelle stesse richieste sono indicati a parte come da verificare. Lo stesso valore non compare due volte nei dettagli.
+- **Navigazione manuale "probabilmente incompleta"**: si valuta sull'intera navigazione, non sulla parte attribuita
+  a un sito, e non basta che sia durata meno di un minuto: una sola pagina, oppure fino a 3 pagine in meno di 45 s.
+- **Scenario "chiudi"**: se la chiusura del banner coincide con il comando di rifiuto (es. "Continua senza
+  accettare") i Limiti lo dicono, invece di "il banner non ha una X di chiusura".
+- **Testi**: "1 terza parte non classificata viene contattata"; nella sintesi l'elenco dei siti non è più ripetuto.
+
 Correzioni dopo la revisione completa del codice.
 
 - **Dati di prova nei percorsi rigiocati.** I valori dei campi di un percorso registrato valgono come dati di prova

@@ -165,6 +165,11 @@ export interface InteractionReport {
   via: 'click' | 'api' | null;
   /** Descrizione leggibile, es. "click su #onetrust-reject-all-handler". */
   detail: string;
+  /**
+   * La scelta è avvenuta su un altro sito (host), da cui la navigazione è poi arrivata qui: banner e gestore del
+   * consenso descritti in questo esito sono quelli di quel sito, non di questo.
+   */
+  choiceOn?: string;
   /** Esito della verifica dello stato di consenso dopo la scelta. */
   verification: 'verificato' | 'diverso' | 'non-verificabile' | 'non-applicabile';
   verificationDetail: string;
@@ -262,7 +267,7 @@ export interface SessionResult {
   /** Prima pagina non raggiungibile (es. connessione assente, computer in stop): la sessione non descrive il sito. */
   unreachable?: string;
   /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
-  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; steps?: import('./browser/replay.js').RecordedStep[]; errorPages?: { url: string; status: number }[]; extraTabs?: number };
+  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; /** Pagine dell'intera navigazione, anche su altri siti (la sessione può essere divisa per sito). */ totalPages?: number; steps?: import('./browser/replay.js').RecordedStep[]; errorPages?: { url: string; status: number }[]; extraTabs?: number };
   /** Sessione automatica che ha rigiocato un percorso registrato in una navigazione manuale. */
   replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string; fills?: { value: string; hint: string }[] };
   /**
@@ -393,4 +398,13 @@ export interface Finding {
   unverifiable?: string[];
   /** Precisazione sul fornitore per la sintesi (es. "di prima parte, senza cookie"). */
   subjectNote?: string;
+}
+
+/**
+ * Navigazione manuale probabilmente incompleta: una sola pagina, oppure pochissime pagine in pochi secondi. Conta
+ * l'intera navigazione, non la parte attribuita a un sito; un operatore veloce su molte pagine non è "incompleto".
+ */
+export function manualIncomplete(m: { pages: string[]; seconds: number; totalPages?: number }): boolean {
+  const n = m.totalPages ?? m.pages.length;
+  return n <= 1 || (m.seconds < 45 && n <= 3);
 }

@@ -48,7 +48,7 @@ export const elementiNonClassificati: Rule = {
         severity: unknownBefore ? 'media' : undefined,
         groupKey: 'tutti',
         ...(nb ? { noBanner: true } : {}),
-        headline: unknownBefore ? `${unknownBefore} terze parti non classificate vengono contattate ${nb ? 'in assenza di banner' : 'prima della scelta'}` : undefined,
+        headline: unknownBefore ? `${unknownBefore === 1 ? '1 terza parte non classificata viene contattata' : `${unknownBefore} terze parti non classificate vengono contattate`} ${nb ? 'in assenza di banner' : 'prima della scelta'}` : undefined,
         description:
           `${plural(unique.length, `1 elemento ${seen} non è riconosciuto`, `${unique.length} elementi ${seenPl} non sono riconosciuti`)} dalle fonti di classificazione ` +
           // solo le voci presenti: niente "0 cookie" o "di cui 0 contattati"

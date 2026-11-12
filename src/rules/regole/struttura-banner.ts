@@ -246,7 +246,8 @@ export const categorieNonPresentate: Rule = {
     const out: RawFinding[] = [];
     const seen = new Set<string>();
     for (const s of sessions) {
-      if (seen.has(s.site)) continue;
+      // la configurazione letta dopo una scelta fatta su un altro sito è quella di quel sito
+      if (seen.has(s.site) || s.interaction.choiceOn) continue;
       // lo stato in cui il centro preferenze era leggibile (dopo la scelta o, se no, prima)
       const groups = [s.interaction.consentStateAfter, s.interaction.consentStateBefore]
         .map((st) => (st as { onetrust?: { gruppi?: OtGroupState[] | null } } | undefined)?.onetrust?.gruppi)

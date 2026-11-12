@@ -62,6 +62,14 @@ function item(title: string, fs: Finding[]): SummaryItem {
   };
 }
 
+/** Titolo di una scheda senza l'elenco dei siti in coda (aggiunto quando la scheda riunisce più siti): la sintesi lo riporta già. */
+function stripHosts(f: Finding): string {
+  const hosts = [...new Set((f.sites?.length ? f.sites : [f.site]).map(hostOf))];
+  const tail = ` (${hosts.join(', ')})`;
+  const h = f.headline ?? f.ruleTitle;
+  return hosts.length > 1 && h.endsWith(tail) ? h.slice(0, -tail.length) : h;
+}
+
 const phasesOf = (fs: Finding[]) => PHASE_ORDER.filter((p) => fs.some((f) => PHASE[f.ruleId] === p));
 
 /** Fornitore canonico: lo stesso fornitore con nomi diversi nelle fonti (es. "Bing / Microsoft" e "Microsoft") conta una volta. */
@@ -219,7 +227,7 @@ export function summaryItems(findings: Finding[]): SummaryItem[] {
     take([f]);
   }
 
-  for (const f of findings) if (free(f) && f.headline && (f.severity === 'alta' || f.severity === 'media')) items.push(item(f.headline, [f]));
+  for (const f of findings) if (free(f) && f.headline && (f.severity === 'alta' || f.severity === 'media')) items.push(item(stripHosts(f), [f]));
 
   return items.filter((i) => i.severity === 'alta' || i.severity === 'media').sort((a, b) => b.score - a.score);
 }

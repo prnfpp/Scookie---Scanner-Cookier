@@ -6,7 +6,7 @@ import { adStorageGranted, consensoConcessoDopoRifiuto } from '../src/rules/rego
 import { describeGoogleConsent, strongestRequest, uetConsentSummary } from '../src/rules/helpers.js';
 import { tidy } from '../src/rules/engine.js';
 import { cfFromTestData, detectPii, maskedCfMatchesTestSurname, maskPii, registerTypedValue, reviveTestHits, setTestData, typedTestData } from '../src/util/pii.js';
-import type { CookieRecord, DeclaredSet, InteractionReport, RequestRecord, SessionResult } from '../src/types.js';
+import { manualIncomplete, type CookieRecord, type DeclaredSet, type InteractionReport, type RequestRecord, type SessionResult } from '../src/types.js';
 
 const interaction = (extra: Partial<InteractionReport> = {}): InteractionReport => ({
   method: 'adattatore:onetrust',
@@ -201,4 +201,43 @@ test('testi delle schede: spazi ridotti e tentativi precedenti spostati nei dett
   const t = tidy('Dopo la revoca (click su link "Impostazioni Cookie     🍪\n   ", poi rifiuto (scelta via API (tentativi precedenti: a (b) | c))), per X partono 2 richieste.', ['riga   uno']);
   assert.equal(t.description, 'Dopo la revoca (click su link "Impostazioni Cookie 🍪 ", poi rifiuto (scelta via API)), per X partono 2 richieste.');
   assert.deepEqual(t.details, ['riga uno', 'Tentativi prima della scelta riuscita: a (b) | c']);
+});
+
+test('attribuzione per host: il dominio senza www che rimanda a www è lo stesso sito, non un sito a parte', () => {
+  // navigazione per canegatto partita da esempio.test (che rimanda a www.esempio.test, sito della rilevazione)
+  const auto = session({ id: 'S001_www_nessuna-azione', site: 'https://www.esempio.test', scenario: 'nessuna-azione', pageType: 'home', pages: ['https://www.esempio.test/'], interaction: interaction({ outcome: 'non-applicabile' }) });
+  const man = session({
+    id: 'S043_pet_rifiuta-manuale',
+    site: 'https://pet.esempio.test',
+    manual: { instructions: 'modulo', pages: ['https://esempio.test/', 'https://www.esempio.test/', 'https://pet.esempio.test/nome', 'https://pet.esempio.test/tipo'], endedBy: 'operatore', seconds: 50 },
+    requests: [req('https://esempio.test/'), req('https://www.esempio.test/'), req('https://pet.esempio.test/nome')],
+  });
+  const { sessions } = attributeByHost([auto, man]);
+  assert.deepEqual([...new Set(sessions.map((s) => s.site))].sort(), ['https://pet.esempio.test', 'https://www.esempio.test']);
+  const www = sessions.find((s) => s.site === 'https://www.esempio.test' && s.attributedFrom)!;
+  assert.equal(www.requests.length, 2, 'le pagine su esempio.test e www.esempio.test sono dello stesso sito');
+  const pet = sessions.find((s) => s.site === 'https://pet.esempio.test')!;
+  // la scelta è stata fatta su un altro sito: banner e gestore non descrivono questo sito
+  assert.equal(pet.interaction.choiceOn, 'esempio.test');
+  // la navigazione intera ha 4 pagine: la parte su questo sito (2 pagine, 50 s) non è "incompleta"
+  assert.equal(pet.manual!.totalPages, 4);
+  assert.equal(manualIncomplete(pet.manual!), false);
+  assert.equal(manualIncomplete({ pages: ['https://x.test/'], seconds: 300 }), true);
+  assert.equal(manualIncomplete({ pages: ['a', 'b', 'c', 'd', 'e', 'f'], seconds: 30 }), false);
+});
+
+test('dati digitati: un campo vale per l\'ultimo valore; date parziali e con spazi', () => {
+  setTestData([]);
+  // campo data digitato una cifra alla volta: restano solo i valori plausibili, e solo l'ultimo del campo
+  for (const v of ['0002-05-01', '0020-05-01', '0202-05-01', '2020-05-01']) registerTypedValue(v, 'input[name="nascita"]', 'm1|input[name="nascita"]');
+  assert.deepEqual(typedTestData().map((t) => t.valore), ['2020-05-01']);
+  // correzione nello stesso campo
+  registerTypedValue('Renat', 'input[name="nome"] Nome', 'm1|input[name="nome"]');
+  registerTypedValue('Renato', 'input[name="nome"] Nome', 'm1|input[name="nome"]');
+  assert.deepEqual(typedTestData().map((t) => t.valore), ['2020-05-01', 'Renato']);
+  // campo con maschera: spazi attorno ai separatori
+  const e = registerTypedValue('09 / 05 / 1997', 'input[name="dataNascita"]', 'm1|d');
+  assert.equal(e?.tipo, 'data');
+  assert.ok(detectPii('https://app.test/p?dataNascita=09-05-1997').some((h) => h.test));
+  setTestData([]);
 });
