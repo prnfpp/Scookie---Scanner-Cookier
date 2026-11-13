@@ -92,7 +92,7 @@ h1{font-size:24px;margin:0 0 4px}.subtitle{font-size:17px;margin:0 0 6px;font-we
 .card h3{margin-top:0}.part{border-top:1px solid var(--line);margin-top:12px;padding-top:8px}.part h4{font-size:14.5px;margin:4px 0 6px}.shots{display:flex;gap:8px;flex-wrap:wrap}.shots figure{margin:0;width:calc(50% - 4px)}.shots img{width:100%;border:1px solid var(--line)}figcaption{font-size:11px;color:var(--muted)}
 pre{background:var(--alt);padding:8px;font-size:11.5px;white-space:pre-wrap;word-break:break-all;border-radius:4px}code{font-size:12px}
 ul{margin:4px 0;padding-left:20px}.kv td:first-child{width:28%;font-weight:600;background:var(--alt)}
-@page{size:A4;margin:14mm 12mm}@media print{body{padding:0 2px;max-width:none;width:auto}a{color:inherit}table{table-layout:fixed}}`;
+.brief{border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:18px 0;background:var(--alt);page-break-inside:avoid}.brief h2{border:0;margin:0 0 10px;padding:0;font-size:18px}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:0 0 12px}.kpi{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.kpi b{display:block;font-size:22px;line-height:1.2;font-variant-numeric:tabular-nums}.kpi span{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.kpi.alta b{color:var(--alta)}.kpi.media b{color:var(--media)}.kpi.bassa b{color:var(--bassa)}.toc{columns:2;column-gap:24px;margin:6px 0 0;padding-left:20px}.toc a{color:var(--fg)}.brief .start li{margin:3px 0}.anchor{display:block;position:relative;top:-8px}.up{float:right;font-size:12px;font-weight:400;color:var(--muted);text-decoration:none}.up:hover{text-decoration:underline}@page{size:A4;margin:14mm 12mm}@media print{body{padding:0 2px;max-width:none;width:auto}a{color:inherit}table{table-layout:fixed}.up{display:none}.toc{columns:1}}`;
 
 /**
  * Righe della tabella delle interazioni: le sessioni consecutive "nessuna azione" dello stesso sito con lo stesso esito
@@ -141,6 +141,18 @@ export function renderHtml(r: ReportInput): string {
   const withForms = sessions.some((s) => s.manual || s.replay);
   const parts: string[] = [];
 
+  // In breve: il colpo d'occhio per chi legge (legale, DPO, marketing) prima del dettaglio, con l'indice cliccabile
+  const sevCount = (sv: Severity) => findings.filter((f) => f.severity === sv).length;
+  const validSessions = sessions.filter((s) => !s.blocked && !s.unreachable).length;
+  const start = summaryItems(findings).slice(0, 3);
+  const SEV_KPI: Record<Severity, string> = { alta: 'priorità alta', media: 'priorità media', bassa: 'priorità bassa', informativa: 'di contesto' };
+  const briefHtml = `<div class="brief"><h2>In breve</h2>
+<div class="kpis"><div class="kpi"><b>${findings.length}</b><span>rilievi</span></div>${SEV.map((sv) => `<div class="kpi ${sv}"><b>${sevCount(sv)}</b><span>${SEV_KPI[sv]}</span></div>`).join('')}<div class="kpi"><b>${sites.length}</b><span>${sites.length === 1 ? 'sito analizzato' : 'siti analizzati'}</span></div><div class="kpi"><b>${validSessions}</b><span>sessioni valide</span></div></div>
+${start.length ? `<p><strong>Da dove iniziare.</strong> I fatti con priorità di verifica più alta (elenco completo nella sezione 1):</p><ol class="start">${start.map((i) => `<li>${esc(i.title)} <span class="muted">(${esc(i.hosts.join(', '))})</span> — ${sevBadge(i.severity)} ${i.findings.map((f) => `<a href="#${f.id}">${f.id}</a>`).join(', ')}</li>`).join('')}</ol>` : `<p>${findings.length ? 'Nessun rilievo con priorità di verifica alta o media: i rilievi presenti sono di priorità minore o di contesto (sezione 3).' : 'Le regole attive non hanno segnalato rilievi sui siti e negli scenari analizzati (limiti nella sezione 5).'}</p>`}
+<p class="muted">La priorità indica l'ordine in cui conviene esaminare i rilievi, non una valutazione di conformità.</p>
+<p><strong>Contenuto</strong></p>
+<ol class="toc"><li><a href="#sez-1">Sintesi</a></li><li><a href="#sez-2">Perimetro e metodo</a></li><li><a href="#sez-3">Rilievi</a></li><li><a href="#sez-4">Inventario e confronto con l'elenco dichiarato</a></li><li><a href="#sez-5">Limiti</a></li><li><a href="#sez-6">Allegati e verifica di integrità</a></li></ol></div>`;
+
   parts.push(`<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Rapporto tecnico di verifica – ${esc(config.cliente)}</title><style>${CSS}</style></head><body>
 <h1>Rapporto tecnico di verifica sull'uso di cookie e altri strumenti di tracciamento</h1>
@@ -149,6 +161,7 @@ ${config.report.sottotitolo ? `<p class="subtitle">${esc(config.report.sottotito
 ${r.regeneratedAt ? `<p class="muted"><strong>Rapporto rigenerato</strong> il ${esc(fmt(r.regeneratedAt))} con Scookie ${esc(r.toolVersion)}, dai dati raccolti nella rilevazione del ${esc(fmt(r.startedAt))}: le sessioni, le prove e i file di traffico sono quelli originali.</p>` : ''}
 ${r.review ? `<p class="warn"><strong>Rapporto rivisto.</strong> È stata applicata la revisione manuale dei rilievi (file <code>revisione.csv</code>): ${nWords(r.findings.filter((f) => reviewOf(f)?.esito === 'confermato').length, 'confermato', 'confermati')}, ${nWords(excluded.length, 'escluso', 'esclusi')} come falso positivo (elencati in fondo alla sezione 3), ${nWords(r.findings.filter((f) => !reviewOf(f)?.esito).length, 'non revisionato', 'non revisionati')}. I dati raccolti e le prove non cambiano.</p>` : ''}
 ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.exit.note)}</p>` : ''}
+${briefHtml}
 <h2>Natura del documento</h2>
 <p>Il rapporto documenta, con metodo tecnico ripetibile, il comportamento dei siti indicati rispetto alle scelte dell'utente sul banner di consenso: quali cookie, archivi locali e comunicazioni verso terze parti vengono attivati ${esc(listIt(config.scenari.attivi.map((a) => SCENARIO_TEXT[a] ?? a)))}. Confronta quanto osservato con quanto dichiarato nel banner e nella cookie policy, e segnala gli elementi che meritano verifica, ciascuno con le relative prove (screenshot, registrazioni del traffico, dati grezzi) e i riferimenti normativi pertinenti.</p>
 <p>Il controllo è condotto su un campione di pagine e percorsi${withForms ? ', compresi percorsi con moduli' : ''}, ${reps > 1 ? `ripetuto ${reps} volte` : 'eseguito una volta'} con profili di navigazione puliti. Le prove sono conservate con impronta crittografica (SHA-256) che ne consente la verifica di integrità.</p>
@@ -163,8 +176,7 @@ ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.e
   <li><em>informativa</em>: contesto utile alla lettura.</li></ul></li>
 <li><strong>Forza della prova</strong>: cosa è stato osservato (risorsa scaricata, dati inviati, identificativo scritto nel browser). <strong>Ripetibilità</strong>: in quante delle esecuzioni il fatto si è ripetuto.</li>
 </ul>
-<h3>Contenuto</h3>
-<ol><li>Sintesi</li><li>Perimetro e metodo</li><li>Rilievi</li><li>Inventario e confronto con l'elenco dichiarato</li><li>Limiti</li><li>Allegati e verifica di integrità</li></ol>`);
+`);
 
   // 1. Sintesi: i fatti principali raggruppati per causa, con rimando ai rilievi
   const top = summaryItems(findings).slice(0, 10);
@@ -176,7 +188,7 @@ ${!r.exit.matches ? `<p class="warn"><strong>Paese di uscita.</strong> ${esc(r.e
   const bySite = new Map<string, Finding[]>();
   for (const f of findings) for (const s of f.sites?.length ? f.sites : [f.site]) bySite.set(s, [...(bySite.get(s) ?? []), f]);
   const byRule = groupBy(findings, (f) => f.ruleTitle);
-  parts.push(`<h2>1. Sintesi</h2>
+  parts.push(`<a id="sez-1" class="anchor"></a><h2>1. Sintesi</h2>
 ${top.length ? `<p>I fatti principali, raggruppati per causa e ordinati per priorità di verifica, forza della prova e ripetibilità. I rilievi che derivano dallo stesso fatto sono riuniti in un punto; il dettaglio e le prove sono nei rilievi indicati.</p>
 <ol>${top.map((i) => `<li>${esc(i.title)} <span class="muted">(${esc(i.hosts.join(', '))}${i.repeats ? ` · ${esc(i.repeats)}` : ''})</span> — ${sevBadge(i.severity)} ${i.findings.map((f) => `<a href="#${f.id}">${f.id}</a>`).join(', ')}</li>`).join('')}</ol>` : '<p>Nessun rilievo con priorità di verifica alta o media.</p>'}
 ${findings.length > inTop.size ? `<p class="muted">${findings.length - inTop.size === 1 ? 'Un altro rilievo, di priorità minore o di contesto, è nella sezione 3.' : `Altri ${findings.length - inTop.size} rilievi, di priorità minore o di contesto, sono nella sezione 3.`}</p>` : ''}
@@ -192,7 +204,7 @@ ${findings.some((f) => (f.sites?.length ?? 1) > 1) ? `<p class="muted">Un riliev
     .join('')}</table>`);
 
   // 2. Perimetro e metodo
-  parts.push(`<h2>2. Perimetro e metodo</h2><table class="kv">
+  parts.push(`<a id="sez-2" class="anchor"></a><h2>2. Perimetro e metodo</h2><table class="kv">
 ${config.committente ? `<tr><td>Committente</td><td>${esc(config.committente)}</td></tr>` : ''}
 <tr><td>Titolare dei siti verificati</td><td>${esc(config.cliente)}</td></tr>
 <tr><td>Siti</td><td>${esc(config.siti.map((s) => s.url).join(', '))}</td></tr>
@@ -271,7 +283,7 @@ ${sessionRows(sessions)
     .join('')}</table>`);
 
   // 3. Rilievi
-  parts.push('<h2>3. Rilievi</h2>');
+  parts.push('<a id="sez-3" class="anchor"></a><h2>3. Rilievi</h2>');
   if (!findings.length) parts.push('<p>Nessun rilievo dalle regole attive.</p>');
   const shotsOf = (ev: Finding['evidence']) => {
     const images = ev.filter((e) => e.file.endsWith('.png'));
@@ -292,7 +304,7 @@ ${sessionRows(sessions)
     const unverifiable = f.unverifiable?.length ? `<p><strong>Condizioni rilevanti non verificabili dal browser.</strong></p><ul>${f.unverifiable.map((u) => `<li>${esc(u)}</li>`).join('')}</ul>` : '';
     if (f.parts?.length) {
       // Scheda per fornitore: un riepilogo dei momenti, poi una sezione per momento con le sue prove
-      parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · Tracciamenti di ${esc(f.subjects?.[0] ?? '')}</h3>
+      parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3><a class="up" href="#sez-1">↑ Sintesi</a>${f.id} · Tracciamenti di ${esc(f.subjects?.[0] ?? '')}</h3>
 <p class="muted">Priorità di verifica: ${sevBadge(f.severity)} (la più alta tra i momenti)</p>
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 <table><tr><th>Momento</th><th>Priorità</th><th>Fatto osservato</th></tr>${f.parts.map((p) => `<tr><td>${esc(momentLabel(p))}</td><td>${sevBadge(p.severity)}</td><td>${esc(p.headline ?? p.ruleTitle)}</td></tr>`).join('')}</table>
@@ -309,7 +321,7 @@ ${detailsOf(p)}${shotsOf(p.evidence)}${excerptOf(p)}${filesOf(p.evidence)}</div>
 ${norms}</div>`);
       continue;
     }
-    parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · ${esc(f.ruleTitle)}</h3>
+    parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3><a class="up" href="#sez-1">↑ Sintesi</a>${f.id} · ${esc(f.ruleTitle)}</h3>
 <p class="muted">Priorità di verifica: ${sevBadge(f.severity)}</p>
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
 ${where(f)}
@@ -330,7 +342,7 @@ ${norms}</div>`);
   }
 
   // 4. Inventario e confronto con l'elenco dichiarato
-  parts.push(`<h2>4. Inventario e confronto con l'elenco dichiarato</h2>
+  parts.push(`<a id="sez-4" class="anchor"></a><h2>4. Inventario e confronto con l'elenco dichiarato</h2>
 <p>Tutti i cookie e le terze parti osservati nelle sessioni valide, con il confronto con l'elenco dichiarato dal sito (sezione 2). L'elenco completo, anche degli archivi locali, è in <code>cookie.csv</code>, <code>storage.csv</code>, <code>richieste.csv</code> e <code>confronto-dichiarati.csv</code>.</p>
 <table><tr><th>Sito</th><th>Osservati e dichiarati</th><th>Osservati, non dichiarati</th><th>Dichiarati, non osservati</th></tr>${sites
     .map((site) => {
@@ -478,7 +490,7 @@ ${[...third]
   for (const n of pageviewCoherence(sessions)) errBy.set(n, []);
   for (const s of sessions) for (const e of new Set(s.errors)) errBy.set(e, [...(errBy.get(e) ?? []), s.id]);
   const errors = [...errBy].map(([e, ids]) => (!ids.length ? e : ids.length === 1 ? `${ids[0]}: ${e}` : `${e} — in ${ids.length} sessioni (${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''})`));
-  parts.push(`<h2>5. Limiti</h2>
+  parts.push(`<a id="sez-5" class="anchor"></a><h2>5. Limiti</h2>
 <h3>Limiti del metodo</h3><ul>${[...LIMITS, ...config.report.noteLimiti].map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
 <h3>Cosa non è stato osservato in questa rilevazione</h3>${notSeen.length ? `<ul>${[...new Set(notSeen)].map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : '<p>Tutti gli scenari previsti sono stati eseguiti su tutti i siti.</p>'}
 ${errors.length ? `<h3>Anomalie durante l'esecuzione</h3><ul>${errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}`);
@@ -487,7 +499,7 @@ ${errors.length ? `<h3>Anomalie durante l'esecuzione</h3><ul>${errors.map((e) =>
   // manifest.json.sha256): nel rapporto basta il riepilogo, per non occupare decine di pagine.
   const kinds = groupBy(r.files, (f) => (/\.har(\.gz)?$/.test(f.path) ? 'registrazioni del traffico (HAR)' : f.path.endsWith('.png') ? 'screenshot' : f.path.endsWith('.json') ? 'estratti delle richieste (JSON)' : 'altri file'));
   const mb = (n: number) => `${(n / 1048576).toLocaleString('it-IT', { maximumFractionDigits: 1 })} MB`;
-  parts.push(`<h2>6. Allegati e verifica di integrità</h2>
+  parts.push(`<a id="sez-6" class="anchor"></a><h2>6. Allegati e verifica di integrità</h2>
 <p>Le prove sono nella cartella <code>evidenze/</code>; quelle citate nei rilievi sono copiate in <code>evidenze/rilievi/</code> con il numero del rilievo nel nome. L'impronta SHA-256 di <strong>ogni file</strong> della cartella della rilevazione (compresi questo rapporto, i CSV e la configurazione usata) è in <code>manifest.json</code>; l'impronta di <code>manifest.json</code> è nel file <code>manifest.json.sha256</code>. Per verificare l'integrità si ricalcola l'impronta del manifest e la si confronta, poi quella dei singoli file.</p>
 <table><tr><th>Tipo di evidenza</th><th>File</th><th>Dimensione</th></tr>${[...kinds].map(([k, fs]) => `<tr><td>${esc(k)}</td><td>${fs.length}</td><td>${mb(fs.reduce((a, f) => a + f.bytes, 0))}</td></tr>`).join('')}</table>
 <p>Dati grezzi: <code>cookie.csv</code>, <code>storage.csv</code>, <code>richieste.csv</code>, <code>sessioni.csv</code>, <code>rilievi.csv</code>, <code>confronto-dichiarati.csv</code>, <code>dati.json</code>.</p>

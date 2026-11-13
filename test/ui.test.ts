@@ -170,9 +170,10 @@ test('arresto forzato dell\'audit dal pulsante "Interrompi"', async () => {
   await page.click('#clients >> text=Cliente di prova');
   await page.waitForFunction(() => (document.querySelector('#f-cliente') as HTMLInputElement).value === 'Cliente di prova');
   await page.click('.step[data-step="4"]');
-  page.once('dialog', (d) => void d.accept());
   await page.click('#run');
   await page.click('#stop-job', { timeout: 30000 });
+  // conferma nella finestra dell'interfaccia (non quella nativa del browser)
+  await page.click('#ask-ok');
   await page.waitForSelector('text=Audit interrotto.', { timeout: 60000 });
   assert.match(await page.textContent('#job-badge') ?? '', /Interrotto/);
   // la cartella resta, marcata come incompleta, senza rapporto
