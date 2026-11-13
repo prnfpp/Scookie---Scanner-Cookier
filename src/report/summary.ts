@@ -205,7 +205,7 @@ export function summaryItems(input: Finding[]): SummaryItem[] {
 
   const banner = findings.filter((f) => free(f) && BANNER.includes(f.ruleId) && (f.severity === 'alta' || f.severity === 'media'));
   if (banner.length) {
-    items.push(item(`Banner: ${banner.map((f) => f.headline ?? f.ruleTitle).filter((t, i, a) => a.indexOf(t) === i).slice(0, 3).join('; ')}`, banner));
+    items.push(item(`Banner: ${banner.map((f) => stripHosts(f)).filter((t, i, a) => a.indexOf(t) === i).slice(0, 3).join('; ')}`, banner));
     take(banner);
   }
 

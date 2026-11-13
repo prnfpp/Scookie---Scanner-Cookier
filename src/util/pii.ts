@@ -210,6 +210,27 @@ export function registerTypedValue(value: string, hint = '', field?: string): Te
   return entry;
 }
 
+/**
+ * Valori con nome di dato personale negli indirizzi delle pagine del sito durante una navigazione manuale (es. il
+ * modulo della home che apre /preventivo?dataNascita=…&targa=…): li ha inseriti l'operatore, anche quando il campo non
+ * li ha consegnati come testo digitato (calendari, campi composti, selettori). Solo pagine del dominio indicato.
+ */
+export function typedValuesFromUrl(url: string, siteDomain: (host: string) => boolean): { value: string; hint: string; field: string }[] {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return [];
+  }
+  if (!siteDomain(u.hostname)) return [];
+  const out: { value: string; hint: string; field: string }[] = [];
+  for (const [name, raw] of u.searchParams) {
+    const v = raw.trim();
+    if (PARAMS.some((p) => p.re.test(name) && p.value.test(v))) out.push({ value: v, hint: `[name="${name}"] ${name}`, field: `url|${name}` });
+  }
+  return out;
+}
+
 /** Dati digitati dall'operatore e riconosciuti come dati di prova (non dichiarati nella configurazione). */
 export function typedTestData(): TestEntry[] {
   return testData.filter((t) => t.typed).map((t) => ({ tipo: t.tipo, valore: t.value, ...(t.kind !== t.tipo ? { etichetta: t.kind } : {}) }));

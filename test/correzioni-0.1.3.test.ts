@@ -8,7 +8,7 @@ import { assembleHar } from '../src/browser/har.js';
 import { hasSecretStep, recordedFills, type RecordedStep } from '../src/browser/replay.js';
 import { sessionBudgetMs } from '../src/browser/session.js';
 import { configSchema } from '../src/config/schema.js';
-import { detectPii, registerTypedValue, setTestData } from '../src/util/pii.js';
+import { detectPii, registerTypedValue, setTestData, typedTestData, typedValuesFromUrl } from '../src/util/pii.js';
 import { chromium } from 'playwright';
 import { rejectOnPreferencesPage } from '../src/cmp/revoke.js';
 import { consolidateByVendor, VENDOR_RULE } from '../src/report/consolidate.js';
@@ -186,10 +186,37 @@ test('pagina di preferenze propria del sito: interruttori spenti e "Salva", senz
     assert.deepEqual(await page.evaluate(() => (window as unknown as { saved: unknown }).saved), { ads: 'off', st: false });
     assert.equal(await page.evaluate(() => (window as unknown as { accepted?: boolean }).accepted ?? false), false);
     assert.match(r.detail, /Salva preferenze personalizzate/);
+    // pulsante di salvataggio fatto con un <div> (come su alcuni siti HubSpot CMS), radio con l'etichetta che le contiene
+    await page.setContent(`<div class="checkboxes_cookie"><h3>Cookie analitici</h3><div>
+        <label for="on">On <input id="on" checked name="an" type="radio"><span class="checkmark"></span></label>
+        <label for="off">Off <input id="off" name="an" type="radio"><span class="checkmark"></span></label></div></div>
+      <div class="wrap"><div id="ACCEPT_" class="conte_container_button">Accetta i cookie</div></div>
+      <div class="wrap"><div id="SAVE_PREFERENCES" class="conte_container_button button_conte_custom" onclick="window.saved = document.getElementById('off').checked">Salva preferenze personalizzate</div></div>`);
+    const r2 = await rejectOnPreferencesPage(page);
+    assert.ok(r2.ok, r2.detail);
+    assert.equal(await page.evaluate(() => (window as unknown as { saved: boolean }).saved), true);
     // nessun modulo: niente da fare
     await page.setContent('<p>Informativa</p><button>Accetta</button>');
     assert.equal((await rejectOnPreferencesPage(page)).ok, false);
   } finally {
     await browser.close();
   }
+});
+
+test('dati inseriti dall\'operatore ritrovati nell\'indirizzo delle pagine del sito', () => {
+  setTestData([]);
+  const own = (h: string) => h.endsWith('esempio.it');
+  const vals = typedValuesFromUrl('https://app.esempio.it/preventivo/inizio/?dataNascita=09%2F05%2F1997&targa=GA979MD&tipo=auto', own);
+  assert.deepEqual(vals.map((v) => v.value), ['09/05/1997', 'GA979MD']);
+  // pagine di altri siti: niente
+  assert.equal(typedValuesFromUrl('https://tracker.example/p?dataNascita=09/05/1997', own).length, 0);
+  for (const v of vals) registerTypedValue(v.value, v.hint, v.field);
+  assert.deepEqual(typedTestData().map((t) => [t.tipo, t.etichetta ?? '', t.valore]), [
+    ['data', 'data di nascita', '09/05/1997'],
+    ['targa', '', 'GA979MD'],
+  ]);
+  // la data inviata a un terzo è riconosciuta come dato di prova e resta in chiaro
+  const hits = detectPii('https://www.google.com/collect?dl=https%3A%2F%2Fapp.esempio.it%2F%3FdataNascita%3D09%252F05%252F1997');
+  assert.ok(hits.some((h) => h.test && h.kind === 'data di nascita'), JSON.stringify(hits));
+  setTestData([]);
 });

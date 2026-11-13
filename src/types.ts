@@ -267,7 +267,7 @@ export interface SessionResult {
   /** Prima pagina non raggiungibile (es. connessione assente, computer in stop): la sessione non descrive il sito. */
   unreachable?: string;
   /** Sessione con navigazione manuale dell'operatore dopo la scelta. */
-  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; /** Pagine dell'intera navigazione, anche su altri siti (la sessione può essere divisa per sito). */ totalPages?: number; steps?: import('./browser/replay.js').RecordedStep[]; errorPages?: { url: string; status: number }[]; extraTabs?: number };
+  manual?: { instructions: string; pages: string[]; endedBy: 'operatore' | 'tempo' | 'pagina-chiusa'; seconds: number; /** Pagine dell'intera navigazione, anche su altri siti (la sessione può essere divisa per sito). */ totalPages?: number; steps?: import('./browser/replay.js').RecordedStep[]; errorPages?: { url: string; status: number }[]; extraTabs?: number; urlValues?: { value: string; hint: string }[] };
   /** Sessione automatica che ha rigiocato un percorso registrato in una navigazione manuale. */
   replay?: { pages: string[]; stepsDone: number; stepsTotal: number; stoppedAt?: string; seconds: number; recordedAt: string; fromSession: string; fills?: { value: string; hint: string }[] };
   /**
