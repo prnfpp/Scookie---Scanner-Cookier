@@ -1,3 +1,4 @@
+import { expandFindings } from '../src/report/parts.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,7 +20,7 @@ let result: RunResult;
 const HOST = 'complianz-like.test';
 const url = (host: string, path = '/') => `http://${host}:${srv.port}${path}`;
 const session = (scenario: string): SessionResult => result.sessions.find((s) => s.scenario === scenario && !s.attributedFrom)!;
-const findings = (rule: string): Finding[] => result.findings.filter((f) => f.ruleId === rule);
+const findings = (rule: string): Finding[] => expandFindings(result.findings).filter((f) => f.ruleId === rule);
 
 before(async () => {
   srv = await startFixtureServer();
@@ -66,7 +67,7 @@ test('fix 1: dopo "Nega" e dopo la X il banner è chiuso e non ricompare alla pa
   assert.match(x.description, /registra un rifiuto/);
   const csv = readFileSync(join(result.runDir, 'sessioni.csv'), 'utf8');
   assert.match(csv, /banner_visibile_dopo_scelta;banner_alla_pagina_successiva/);
-  for (const f of result.findings) assert.doesNotMatch([f.description, ...f.details].join(' '), /banner ancora visibile dopo la scelta/, f.id);
+  for (const f of expandFindings(result.findings)) assert.doesNotMatch([f.description, ...f.details].join(' '), /banner ancora visibile dopo la scelta/, f.id);
 });
 
 test('fix 2: analisi del banner limitata al banner, categorie del gestore, X presente', () => {
@@ -95,11 +96,15 @@ test('fix 3: personalizza con l\'adattatore Complianz, stato verificato, video a
   assert.equal(f.severity, 'bassa');
   assert.match(p.detail, /attivazione di "Statistiche"/);
   assert.match(f.description, /stesso comportamento del rifiuto/);
+  // il rimando porta al rilievo dopo il rifiuto: un'altra scheda, o un'altra sezione della stessa scheda per fornitore
   const ids = /vedi (R-\d{3}(?:, R-\d{3})*)/.exec(f.description)?.[1].split(', ') ?? [];
-  assert.ok(ids.length, f.description);
+  if (!ids.length) {
+    assert.match(f.description, /vedi le altre sezioni di questa scheda/);
+    ids.push(f.id);
+  }
   for (const id of ids) {
-    const ref = result.findings.find((x) => x.id === id)!;
-    assert.equal(ref.ruleId, 'attivazione-dopo-rifiuto', id);
+    const ref = expandFindings(result.findings).find((x) => x.id === id && x.ruleId === 'attivazione-dopo-rifiuto');
+    assert.ok(ref, id);
     assert.ok(ref.subjects?.includes('VideoTest'), id);
   }
 });

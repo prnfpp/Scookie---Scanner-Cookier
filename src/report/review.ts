@@ -79,7 +79,12 @@ export function writeReviewTemplate(runDir: string, findings: Finding[], cliente
   const prev = previousReview(runDir, cliente);
   let prefilled = 0;
   const rows = findings.map((f) => {
-    const old = prev?.review.get(findingKey(f));
+    // scheda per fornitore: se la revisione precedente aveva le schede per momento e tutte hanno lo stesso esito, vale quello
+    let old = prev?.review.get(findingKey(f));
+    if (!old?.esito && prev && f.parts?.length) {
+      const olds = f.parts.map((p) => prev.review.get(findingKey(p))).filter((e): e is ReviewEntry => !!e?.esito);
+      if (olds.length && olds.every((e) => e.esito === olds[0].esito)) old = { esito: olds[0].esito, nota: [...new Set(olds.map((e) => e.nota).filter(Boolean))].join(' / ') };
+    }
     if (old?.esito) prefilled++;
     return [
       f.id,
@@ -151,7 +156,7 @@ interface Manifest {
   strumento: { versione: string; commit?: string | null };
   inizio: string;
   fine: string;
-  ambiente: { browser: string; userAgent: string; uscita: ExitInfo };
+  ambiente: { browser: string; userAgent: string; userAgentManuale?: string; uscita: ExitInfo };
   configurazione: { contenuto: string; file?: string; sha256?: string };
   norme: { file: string };
   file: { path: string; sha256: string; bytes: number }[];
@@ -183,6 +188,7 @@ export async function applyReview(runDir: string, opts: { pdf?: boolean } = {}):
     toolVersion: m.strumento.versione,
     browserVersion: m.ambiente.browser,
     userAgent: m.ambiente.userAgent,
+    userAgentManual: m.ambiente.userAgentManuale,
     startedAt: m.inizio,
     endedAt: m.fine,
     discovery: dati.discovery,

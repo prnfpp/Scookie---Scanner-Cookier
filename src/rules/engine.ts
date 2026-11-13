@@ -4,6 +4,7 @@ import { parse } from 'yaml';
 import type { Finding, NormRef, Severity } from '../types.js';
 import { registrableDomain } from '../util/domains.js';
 import { RULES } from './index.js';
+import { expandFindings } from '../report/parts.js';
 import type { RuleContext } from './types.js';
 
 export const DEFAULT_NORMS_FILE = fileURLToPath(new URL('../../../config/norme.yaml', import.meta.url));
@@ -85,15 +86,28 @@ const REF = /\{\{rilievi:([a-z0-9-]+):([^}:]*)(?::([a-z-]+))?\}\}/g;
  * Da applicare dopo la numerazione definitiva dei rilievi.
  */
 export function resolveRefs(list: Finding[]): Finding[] {
-  const fix = (f: Finding, t: string) =>
+  // i rilievi contenuti nelle schede per fornitore si cercano con il numero della scheda
+  const pool = expandFindings(list);
+  /** `f`: il rilievo che contiene il rimando; `self`: il numero della scheda in cui compare. */
+  const fix = (f: Finding, self: string, t: string) =>
     t.replace(REF, (_m, rule: string, subject: string, category?: string) => {
-      const same = list.filter((x) => x.ruleId === rule && (x.subjects ?? []).includes(subject) && x.sites.some((s) => f.sites.includes(s)));
+      const same = pool.filter((x) => x.ruleId === rule && (x.subjects ?? []).includes(subject) && x.sites.some((s) => f.sites.includes(s)));
       // con la categoria, solo i rilievi di quella categoria (la chiave dei rilievi dopo la scelta è fornitore|categoria)
       const byCat = category ? same.filter((x) => (x.key ?? '').includes(`|${subject}|${category}|`)) : same;
-      const ids = (byCat.length ? byCat : same).map((x) => x.id);
-      return ids.length ? `vedi ${ids.join(', ')}` : `vedi le schede "${RULES.find((r) => r.id === rule)?.title ?? rule}"`;
+      const all = [...new Set((byCat.length ? byCat : same).map((x) => x.id))];
+      const ids = all.filter((id) => id !== self);
+      if (ids.length) return `vedi ${ids.join(', ')}`;
+      // il rilievo citato è un'altra sezione della stessa scheda per fornitore
+      if (all.length) return 'vedi le altre sezioni di questa scheda';
+      return `vedi le schede "${RULES.find((r) => r.id === rule)?.title ?? rule}"`;
     });
-  return list.map((f) => ({ ...f, description: fix(f, f.description), details: f.details.map((d) => fix(f, d)), ...(f.headline ? { headline: fix(f, f.headline) } : {}) }));
+  const fixAll = (f: Finding, self: string): Finding => ({
+    ...f,
+    description: fix(f, self, f.description),
+    details: f.details.map((d) => fix(f, self, d)),
+    ...(f.headline ? { headline: fix(f, self, f.headline) } : {}),
+  });
+  return list.map((f) => ({ ...fixAll(f, f.id), ...(f.parts ? { parts: f.parts.map((p) => fixAll(p, f.id)) } : {}) }));
 }
 
 /**

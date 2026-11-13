@@ -47,6 +47,7 @@ dominiPropri: []           # es. [esempio-cdn.com] se un dominio diverso è dell
 report:
   pdf: true
   harContenuti: testo     # tutti | testo | nessuno — corpi delle risposte nei HAR (le richieste restano sempre)
+  raggruppaPerFornitore: true  # una scheda per fornitore, con una sezione per momento (prima della scelta, dopo il rifiuto…)
 
 siti:
   - url: https://www.esempio.it/

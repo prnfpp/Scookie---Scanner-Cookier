@@ -1,3 +1,4 @@
+import { expandFindings } from '../src/report/parts.js';
 import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -17,7 +18,7 @@ let srv: Awaited<ReturnType<typeof startFixtureServer>>;
 let result: RunResult;
 const url = (host: string, path = '/') => `http://${host}:${srv.port}${path}`;
 const bySite = (host: string) => (f: Finding) => f.site.includes(host);
-const rules = (host: string) => result.findings.filter(bySite(host)).map((f) => f.ruleId);
+const rules = (host: string) => expandFindings(result.findings).filter(bySite(host)).map((f) => f.ruleId);
 const session = (host: string, scenario: string) => result.sessions.find((s) => s.site.includes(host) && s.scenario === scenario)!;
 
 before(async () => {
@@ -67,12 +68,12 @@ test('sito-a: chiusura con la X, banner che ricompare, tracciamenti dopo la X', 
   assert.equal(x.layer, 'chiusura-x');
   assert.match(x.detail, /X di chiusura/);
   assert.equal(x.bannerOnNextPage, true);
-  const esito = result.findings.find((f) => f.ruleId === 'esito-chiusura-x' && f.site.includes('sito-a.test'))!;
+  const esito = expandFindings(result.findings).find((f) => f.ruleId === 'esito-chiusura-x' && f.site.includes('sito-a.test'))!;
   assert.ok(esito, 'scheda sulla chiusura con la X');
   assert.match(esito.description, /il banner ricompare/);
-  assert.ok(result.findings.some((f) => f.ruleId === 'attivazione-dopo-chiusura' && f.site.includes('sito-a.test')));
+  assert.ok(expandFindings(result.findings).some((f) => f.ruleId === 'attivazione-dopo-chiusura' && f.site.includes('sito-a.test')));
   // la struttura del banner riconosce la X dall'etichetta
-  const s = result.findings.find((f) => f.ruleId === 'struttura-banner' && f.site.includes('sito-a.test'));
+  const s = expandFindings(result.findings).find((f) => f.ruleId === 'struttura-banner' && f.site.includes('sito-a.test'));
   if (s) assert.doesNotMatch(s.description, /chiusura \(X\) assente/);
 });
 
@@ -91,7 +92,7 @@ test('sito-a: tracciamenti prima della scelta e dopo il rifiuto', () => {
   assert.ok(r.includes('cookie-prima-del-consenso'), 'cookie _ga prima della scelta');
   assert.ok(r.includes('richiesta-tracker-prima-del-consenso'), 'pixel AdTest prima della scelta');
   assert.ok(r.includes('consent-mode-senza-consenso'), 'ping gcs=G100');
-  const afterAll = result.findings.filter((f) => f.site.includes('sito-a.test') && f.ruleId === 'attivazione-dopo-rifiuto');
+  const afterAll = expandFindings(result.findings).filter((f) => f.site.includes('sito-a.test') && f.ruleId === 'attivazione-dopo-rifiuto');
   const after = afterAll.find((f) => /SessionTest|Hotjar/.test(f.description));
   assert.ok(after, 'registrazione sessioni dopo il rifiuto');
   // il sito riscrive _ga a ogni pagina anche dopo il rifiuto: cookie già presente e rinnovato, è un'attività dopo la scelta
@@ -110,7 +111,7 @@ test('www.sito-b: adattatore OneTrust, rifiuto solo al secondo livello, stato ve
   assert.ok(rules('www.sito-b.test').includes('rifiuto-non-al-primo-livello'));
   // Hotjar (dichiarato necessario) riscrive il suo cookie a ogni pagina anche dopo il rifiuto: unico fatto dopo la scelta,
   // nessun cookie nuovo né richiesta a tracker
-  const afterReject = result.findings.filter((f) => f.site.includes('www.sito-b.test') && f.ruleId === 'attivazione-dopo-rifiuto');
+  const afterReject = expandFindings(result.findings).filter((f) => f.site.includes('www.sito-b.test') && f.ruleId === 'attivazione-dopo-rifiuto');
   assert.deepEqual(afterReject.map((f) => f.subjects), [['Hotjar']]);
   assert.match(afterReject[0].description, /riscritto 1 cookie già presente prima della scelta.*_hjSessionUser_42/);
   assert.equal(session('www.sito-b.test', 'accetta').interaction.verification, 'verificato');
@@ -131,7 +132,7 @@ test('www.sito-b: confronto con elenco dichiarato da GetDomainData', () => {
 
 test('shop.sito-b: sottodominio senza banner', () => {
   assert.ok(rules('shop.sito-b.test').includes('banner-assente'));
-  const f = result.findings.find((x) => x.ruleId === 'sottodomini-disomogenei' && x.site === 'sito-b.test');
+  const f = expandFindings(result.findings).find((x) => x.ruleId === 'sottodomini-disomogenei' && x.site === 'sito-b.test');
   assert.ok(f, 'disomogeneità tra www e shop');
 });
 
@@ -150,7 +151,7 @@ test('sito-d: banner in iframe, elenco dichiarato da file, policy su altro host'
   assert.equal(r.method, 'euristica');
   assert.match(r.detail, /Solo necessari/);
   assert.ok(rules('sito-d.test').includes('dichiarati-non-osservati'));
-  assert.ok(result.findings.some((f) => f.ruleId === 'sottodomini-disomogenei' && f.site.includes('sito-d.test')));
+  assert.ok(expandFindings(result.findings).some((f) => f.ruleId === 'sottodomini-disomogenei' && f.site.includes('sito-d.test')));
 });
 
 test('sito-e: euristica al secondo livello sceglie "Rifiuta tutti" nelle preferenze', () => {
@@ -186,17 +187,17 @@ test('sito-f: tracciamento attivato dallo scroll distinto dal caricamento', () =
   const s = session('sito-f.test', 'nessuna-azione');
   assert.equal(s.cookies.find((c) => c.name === '_ga')?.stage, 'scroll');
   assert.equal(s.cookies.find((c) => c.name === 'tecnico_f')?.stage, 'caricamento');
-  const f = result.findings.find((x) => x.site.includes('sito-f.test') && x.ruleId === 'cookie-prima-del-consenso')!;
+  const f = expandFindings(result.findings).find((x) => x.site.includes('sito-f.test') && x.ruleId === 'cookie-prima-del-consenso')!;
   assert.match(f.description, /solo dopo lo scroll/);
-  const t = result.findings.find((x) => x.site.includes('sito-f.test') && x.ruleId === 'richiesta-tracker-prima-del-consenso')!;
+  const t = expandFindings(result.findings).find((x) => x.site.includes('sito-f.test') && x.ruleId === 'richiesta-tracker-prima-del-consenso')!;
   assert.match(t.description, /solo dopo lo scroll/);
   // sito-a invece traccia già al caricamento
-  const a = result.findings.find((x) => x.site.includes('sito-a.test') && x.ruleId === 'cookie-prima-del-consenso')!;
+  const a = expandFindings(result.findings).find((x) => x.site.includes('sito-a.test') && x.ruleId === 'cookie-prima-del-consenso')!;
   assert.match(a.description, /già al caricamento/);
 });
 
 test('sito-a: dati personali verso terzi, mascherati nel report e nei dati', () => {
-  const f = result.findings.find((x) => x.ruleId === 'dati-personali-a-terzi' && x.site.includes('sito-a.test'))!;
+  const f = expandFindings(result.findings).find((x) => x.ruleId === 'dati-personali-a-terzi' && x.site.includes('sito-a.test'))!;
   // dati di prova non dichiarati nella configurazione: trovati per nome del parametro, certezza media
   assert.equal(f.severity, 'media');
   assert.ok(f.details.some((d) => /^Certezza: media/.test(d)));
@@ -208,7 +209,7 @@ test('sito-a: dati personali verso terzi, mascherati nel report e nei dati', () 
 });
 
 test('sito-a: elementi non classificati segnalati invece di restare invisibili', () => {
-  const f = result.findings.find((x) => x.site.includes('sito-a.test') && x.ruleId === 'elementi-non-classificati');
+  const f = expandFindings(result.findings).find((x) => x.site.includes('sito-a.test') && x.ruleId === 'elementi-non-classificati');
   assert.ok(f);
   assert.ok(f.details.some((d) => d.includes('xyz_misterioso')));
   assert.ok(f.details.some((d) => d.includes('widget.ignoto.example')));
@@ -240,15 +241,15 @@ test('analisi del banner: comandi, categorie pre-attivate, informativa, revoca',
   assert.ok(e.preferences?.toggles.some((t) => /Statistiche/.test(t.label) && t.checked && !t.disabled));
   const r = rules('sito-e.test');
   for (const id of ['categorie-preattivate', 'revoca-non-trovata', 'struttura-banner']) assert.ok(r.includes(id), id);
-  const pre = result.findings.find((f) => f.ruleId === 'categorie-preattivate' && f.site.includes('sito-e.test'))!;
+  const pre = expandFindings(result.findings).find((f) => f.ruleId === 'categorie-preattivate' && f.site.includes('sito-e.test'))!;
   assert.match(pre.description, /"Statistiche"/);
   assert.doesNotMatch(pre.description, /Necessari/);
   // OneTrust: categoria configurata ma senza interruttore nel centro preferenze
-  const np = result.findings.find((f) => f.ruleId === 'categorie-non-presentate' && f.site.includes('www.sito-b.test'))!;
+  const np = expandFindings(result.findings).find((f) => f.ruleId === 'categorie-non-presentate' && f.site.includes('www.sito-b.test'))!;
   assert.match(np.description, /"Cookie funzionali" \(1 elemento\)/);
   assert.equal(session('www.sito-b.test', 'accetta').interaction.verification === 'diverso', false, 'categoria non presentata: lo stato non risulta diverso dalla scelta');
   // Dynatrace dichiarato tecnico ma attivo solo dopo l'accettazione
-  const dt = result.findings.find((f) => f.ruleId === 'tecnico-solo-dopo-consenso' && f.site.includes('www.sito-b.test'))!;
+  const dt = expandFindings(result.findings).find((f) => f.ruleId === 'tecnico-solo-dopo-consenso' && f.site.includes('www.sito-b.test'))!;
   assert.match(dt.headline ?? '', /^Dynatrace: elementi dichiarati tecnici/);
   // OneTrust: link "Impostazioni cookie" nel footer
   const b = result.sessions.find((s) => s.site.includes('www.sito-b.test') && s.bannerAnalysis)!.bannerAnalysis!;
@@ -262,7 +263,7 @@ test('analisi del banner: comandi, categorie pre-attivate, informativa, revoca',
   assert.equal(pa.accept?.background, '#2e7d32');
   assert.equal(pa.reject?.kind, 'link');
   assert.ok((pa.accept!.width * pa.accept!.height) > 3 * (pa.reject!.width * pa.reject!.height));
-  const sa = result.findings.find((f) => f.ruleId === 'evidenza-asimmetrica' && f.site.includes('sito-a.test'))!;
+  const sa = expandFindings(result.findings).find((f) => f.ruleId === 'evidenza-asimmetrica' && f.site.includes('sito-a.test'))!;
   assert.equal(sa.severity, 'media');
   assert.match(sa.description, /"Accetta tutti" è un pulsante con sfondo pieno #2e7d32 .*del banner; "Rifiuta" è un link senza sfondo/);
   assert.ok(!/contrasto/.test(sa.description), 'il contrasto resta solo nei dettagli');
@@ -284,7 +285,7 @@ test('scenario personalizza: rispettato su vanilla-cookieconsent, violato su One
   const b = session('www.sito-b.test', 'personalizza').interaction;
   assert.equal(b.method, 'adattatore:onetrust');
   assert.equal(b.verification, 'verificato', b.verificationDetail);
-  const f = result.findings.find((x) => x.ruleId === 'personalizzazione-non-rispettata' && x.site.includes('www.sito-b.test'));
+  const f = expandFindings(result.findings).find((x) => x.ruleId === 'personalizzazione-non-rispettata' && x.site.includes('www.sito-b.test'));
   assert.ok(f, 'pixel pubblicitario con la sola statistica');
   assert.match(f.description, /AdTest/);
   // CMP senza supporto affidabile: scenario dichiarato non eseguibile
@@ -303,12 +304,12 @@ test('scenario revoca: link nel footer e cookie rimasti; sito senza modo di revo
   assert.match(b.revocation!.how, /Impostazioni cookie/);
   assert.ok(b.revocation!.remaining.some((c) => c.startsWith('_ga')));
   // dopo la revoca si ripete solo il comportamento del rifiuto (cookie Hotjar riscritto): accorpato, priorità bassa
-  const afterRevoke = result.findings.filter((f) => f.ruleId === 'attivazione-dopo-revoca' && f.site.includes('www.sito-b.test'));
+  const afterRevoke = expandFindings(result.findings).filter((f) => f.ruleId === 'attivazione-dopo-revoca' && f.site.includes('www.sito-b.test'));
   assert.ok(afterRevoke.every((f) => f.severity === 'bassa' && /si comporta come dopo il rifiuto/.test(f.headline ?? '')), afterRevoke.map((f) => f.headline).join(' | '));
-  assert.ok(result.findings.some((f) => f.ruleId === 'esito-revoca' && f.site.includes('www.sito-b.test')));
+  assert.ok(expandFindings(result.findings).some((f) => f.ruleId === 'esito-revoca' && f.site.includes('www.sito-b.test')));
   const a = session('sito-a.test', 'revoca');
   assert.equal(a.revocation?.outcome, 'non-trovata');
-  assert.ok(result.findings.some((f) => f.ruleId === 'esito-revoca' && f.site.includes('sito-a.test') && /non è stato trovato/.test(f.headline ?? '')));
+  assert.ok(expandFindings(result.findings).some((f) => f.ruleId === 'esito-revoca' && f.site.includes('sito-a.test') && /non è stato trovato/.test(f.headline ?? '')));
 });
 
 test('sito-h: pagina di verifica anti-bot riconosciuta, sessioni non valide e nessuna criticità sul sito', () => {
@@ -336,7 +337,7 @@ test('output: report, dati, evidenze con hash verificabili', () => {
   // HAR compressi; quelli delle sessioni non citate nelle schede senza corpi delle risposte
   const hars = manifest.file.filter((f) => f.path.endsWith('.har.gz'));
   assert.ok(hars.length && !manifest.file.some((f) => f.path.endsWith('.har')));
-  const cited = new Set(result.findings.flatMap((f) => f.evidence.map((e) => e.file)));
+  const cited = new Set(expandFindings(result.findings).flatMap((f) => f.evidence.map((e) => e.file)));
   const uncited = hars.find((f) => !cited.has(f.path))!;
   const log = JSON.parse(gunzipSync(readFileSync(join(result.runDir, uncited.path))).toString('utf8')) as { log: { entries: { response: { content: { text?: string } } }[] } };
   assert.ok(log.log.entries.length && log.log.entries.every((e) => e.response.content.text === undefined));
@@ -345,7 +346,7 @@ test('output: report, dati, evidenze con hash verificabili', () => {
     assert.equal(h, f.sha256, f.path);
   }
   // le evidenze delle criticità richiamano il numero della criticità
-  const withShot = result.findings.find((f) => f.evidence.some((e) => e.file.endsWith('.png')))!;
+  const withShot = expandFindings(result.findings).find((f) => f.evidence.some((e) => e.file.endsWith('.png')))!;
   assert.ok(withShot.evidence.some((e) => e.file.includes(`${withShot.id}_`)));
   const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
   assert.match(html, /2\. Perimetro e metodo/);

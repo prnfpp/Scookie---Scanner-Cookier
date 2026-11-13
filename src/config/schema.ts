@@ -287,13 +287,18 @@ export const configSchema = z
          * la cartella si consegna più facilmente. Su Mac un doppio clic sul .gz restituisce il .har.
          */
         harCompressi: z.boolean().default(true),
+        /**
+         * Una scheda per fornitore e dominio con una sezione per momento (prima della scelta, dopo il rifiuto, dopo la X,
+         * dopo la revoca), invece di una scheda per ogni momento. Il confronto tra rilevazioni abbina comunque i momenti.
+         */
+        raggruppaPerFornitore: z.boolean().default(true),
         /** Sottotitolo del rapporto (es. "Verifica post-intervento su esempio.it e sottodomini"). */
         sottotitolo: z.string().optional(),
         /** Testo libero da includere nella sezione "Limiti". */
         noteLimiti: z.array(z.string()).default([]),
       })
       .strict()
-      .default({ pdf: true, harContenuti: 'testo', harCompressi: true, noteLimiti: [] }),
+      .default({ pdf: true, harContenuti: 'testo', harCompressi: true, raggruppaPerFornitore: true, noteLimiti: [] }),
     siti: z.array(siteSchema).min(1),
   })
   .strict()

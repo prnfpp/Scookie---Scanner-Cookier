@@ -1,3 +1,4 @@
+import { expandFindings } from '../src/report/parts.js';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -69,7 +70,7 @@ test('navigazione manuale: registrata come una sessione, con le pagine percorse 
   assert.equal(s.manual!.endedBy, 'operatore');
   assert.ok(s.manual!.pages.some((p) => p.endsWith('/prodotti/alfa.html')), s.manual!.pages.join(', '));
   // il tracciamento dopo il rifiuto durante la navigazione manuale è rilevato come nelle sessioni automatiche
-  assert.ok(result.findings.some((f) => f.ruleId === 'attivazione-dopo-rifiuto' && f.scenario === 'rifiuta'));
+  assert.ok(expandFindings(result.findings).some((f) => f.ruleId === 'attivazione-dopo-rifiuto' && f.scenario === 'rifiuta'));
   const html = readFileSync(join(result.runDir, 'report.html'), 'utf8');
   assert.match(html, /Navigazione manuale<\/strong> — sessione .*-manuale, scenario "rifiuta", conclusa dall'operatore/);
 });
@@ -83,7 +84,7 @@ test('navigazioni manuali eseguite prima delle sessioni automatiche', () => {
 test('sito irraggiungibile: sessioni non valide, nessuna criticità, avviso nel report', () => {
   const ss = result.sessions.filter((x) => x.site.includes('spento.test'));
   assert.ok(ss.length && ss.every((x) => x.unreachable));
-  assert.ok(!result.findings.some((f) => f.sites.some((x) => x.includes('spento.test'))));
+  assert.ok(!expandFindings(result.findings).some((f) => f.sites.some((x) => x.includes('spento.test'))));
   assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Pagine non caricate\.<\/strong>/);
   assert.match(readFileSync(join(result.runDir, 'report.html'), 'utf8'), /Nessun dato per spento\.test/);
 });
@@ -91,7 +92,7 @@ test('sito irraggiungibile: sessioni non valide, nessuna criticità, avviso nel 
 test('ripetizioni: ogni scenario due volte, le schede dicono in quante è stato osservato', () => {
   const a = result.sessions.filter((x) => x.site.includes('sito-a.test') && x.scenario === 'nessuna-azione');
   assert.deepEqual(a.map((x) => x.repeat).sort(), [1, 2]);
-  const f = result.findings.find((x) => x.ruleId === 'cookie-prima-del-consenso' && x.site.includes('sito-a.test'))!;
+  const f = expandFindings(result.findings).find((x) => x.ruleId === 'cookie-prima-del-consenso' && x.site.includes('sito-a.test'))!;
   assert.equal(f.repeats?.seen, 2);
   assert.equal(f.repeats?.of, 2);
   assert.ok(!f.repeats?.manual);

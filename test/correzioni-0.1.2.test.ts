@@ -1,3 +1,4 @@
+import { expandFindings } from '../src/report/parts.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,7 +22,7 @@ let result: RunResult;
 const MATOMO = 'senza-banner-matomo-cookieless.test';
 const SPOTIFY = 'senza-banner-embed-spotify.test';
 const url = (host: string, path = '/') => `http://${host}:${srv.port}${path}`;
-const of = (host: string) => result.findings.filter((f) => f.site.includes(host));
+const of = (host: string) => expandFindings(result.findings).filter((f) => f.site.includes(host));
 const texts = (f: Finding) => [f.ruleTitle, f.description, f.headline ?? '', ...f.details].join('\n');
 
 before(async () => {

@@ -9,6 +9,7 @@ import { pageviewCoherence } from './coherence.js';
 import { COOKIE_STATE_LABEL, isMatomo, matomoCookieMode } from '../classify/firstparty.js';
 import { CLAIM_LABEL, compareTextual } from '../declared/textual.js';
 import { summaryItems } from './summary.js';
+import { momentLabel } from './consolidate.js';
 import { categoriesUnreliable, NO_STATS_CATEGORY } from '../rules/regole/struttura-banner.js';
 import type { TestEntry } from '../util/pii.js';
 import { nWords, plural } from '../util/text.js';
@@ -25,6 +26,8 @@ export interface ReportInput {
   toolVersion: string;
   browserVersion: string;
   userAgent: string;
+  /** User agent della finestra delle navigazioni manuali, se diverso. */
+  userAgentManual?: string;
   startedAt: string;
   endedAt: string;
   discovery: DiscoveryResult[];
@@ -86,7 +89,7 @@ h1{font-size:24px;margin:0 0 4px}.subtitle{font-size:17px;margin:0 0 6px;font-we
 .muted{color:var(--muted)}.warn{border:1px solid var(--media);background:#fff4e5;padding:8px 12px;border-radius:6px}table{border-collapse:collapse;width:100%;margin:8px 0 16px;font-size:12.5px}th,td{border:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;word-break:break-word}th{background:var(--alt)}
 .sev{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-size:12px;font-weight:600;text-transform:uppercase}.sev-alta{background:var(--alta)}.sev-media{background:var(--media)}.sev-bassa{background:var(--bassa)}.sev-informativa{background:var(--info)}
 .card{border:1px solid var(--line);border-left:5px solid var(--info);border-radius:6px;padding:12px 16px;margin:14px 0;page-break-inside:avoid}.card.alta{border-left-color:var(--alta)}.card.media{border-left-color:var(--media)}.card.bassa{border-left-color:var(--bassa)}
-.card h3{margin-top:0}.shots{display:flex;gap:8px;flex-wrap:wrap}.shots figure{margin:0;width:calc(50% - 4px)}.shots img{width:100%;border:1px solid var(--line)}figcaption{font-size:11px;color:var(--muted)}
+.card h3{margin-top:0}.part{border-top:1px solid var(--line);margin-top:12px;padding-top:8px}.part h4{font-size:14.5px;margin:4px 0 6px}.shots{display:flex;gap:8px;flex-wrap:wrap}.shots figure{margin:0;width:calc(50% - 4px)}.shots img{width:100%;border:1px solid var(--line)}figcaption{font-size:11px;color:var(--muted)}
 pre{background:var(--alt);padding:8px;font-size:11.5px;white-space:pre-wrap;word-break:break-all;border-radius:4px}code{font-size:12px}
 ul{margin:4px 0;padding-left:20px}.kv td:first-child{width:28%;font-weight:600;background:var(--alt)}
 @page{size:A4;margin:14mm 12mm}@media print{body{padding:0 2px;max-width:none;width:auto}a{color:inherit}table{table-layout:fixed}}`;
@@ -196,7 +199,7 @@ ${config.committente ? `<tr><td>Committente</td><td>${esc(config.committente)}</
 ${r.configFile ? `<tr><td>Configurazione</td><td><code>${esc(r.configFile)}</code>${r.configSha256 ? `<br><span class="muted">impronta SHA-256 ${esc(r.configSha256)}; il contenuto completo è in <code>manifest.json</code></span>` : ''}</td></tr>` : ''}
 <tr><td>Inizio / fine</td><td>${esc(fmt(r.startedAt))} — ${esc(fmt(r.endedAt))}</td></tr>
 <tr><td>Strumento</td><td>Scookie ${esc(r.toolVersion)}${r.toolCommit ? ` (codice <code>${esc(r.toolCommit)}</code>)` : ''}; browser ${esc(r.browserVersion)} (${config.browser.canale === 'chromium' ? 'Chromium incluso nello strumento' : `${esc(config.browser.canale)} installato sul computer`}, ${config.browser.headless ? 'senza finestra (headless)' : 'con finestra visibile'}${config.browser.headless && r.sessions.some((s) => s.manual) ? '; navigazioni manuali con finestra visibile' : ''})</td></tr>
-<tr><td>User agent</td><td><code>${esc(r.userAgent)}</code>${config.browser.uaNormale ? '<br><span class="muted">Esecuzione di controllo: user agent di un browser comune, senza la dichiarazione dello strumento, e browser che non si dichiara automatizzato (navigator.webdriver falso).</span>' : ''}</td></tr>
+<tr><td>User agent</td><td><code>${esc(r.userAgent)}</code>${r.userAgentManual ? `<br><span class="muted">navigazioni manuali (browser con finestra):</span> <code>${esc(r.userAgentManual)}</code>` : ''}${config.browser.uaNormale ? '<br><span class="muted">Esecuzione di controllo: user agent di un browser comune, senza la dichiarazione dello strumento, e browser che non si dichiara automatizzato (navigator.webdriver falso).</span>' : ''}</td></tr>
 <tr><td>Lingua / fuso orario</td><td>${esc(config.browser.locale)} / ${esc(config.browser.timezone)}</td></tr>
 <tr><td>Paese di uscita</td><td>dichiarato ${esc(r.exit.declared)}; ${r.exit.verified ? `rilevato <strong>${esc(r.exit.country)}</strong> (fonte ${esc(r.exit.source)}; l'indirizzo IP è in <code>manifest.json</code>)` : 'non rilevato'}${config.browser.proxy ? ' — tramite proxy' : ''}<br><span class="muted">${esc(r.exit.note)}</span></td></tr>
 <tr><td>Scenari di consenso</td><td>${esc(config.scenari.attivi.join(', '))} — modalità "${esc(config.scenari.modalita)}", ${config.scenari.pagineDopoScelta} pagine visitate dopo la scelta${r.discovery.filter((d) => d.skippedChoice).map((d) => `<br><span class="muted">${esc(host(d.site))}: eseguito solo "nessuna-azione"; scenari con scelta non eseguiti perché nessun banner è comparso in ${nWords(d.skippedChoice!.sessions, 'sessione', 'sessioni')} (opzione <code>scenari.saltaSenzaBanner</code>)</span>`).join('')}</td></tr>
@@ -270,22 +273,55 @@ ${sessionRows(sessions)
   // 3. Rilievi
   parts.push('<h2>3. Rilievi</h2>');
   if (!findings.length) parts.push('<p>Nessun rilievo dalle regole attive.</p>');
+  const shotsOf = (ev: Finding['evidence']) => {
+    const images = ev.filter((e) => e.file.endsWith('.png'));
+    return images.length ? `<p><strong>Prove.</strong></p><div class="shots">${images.map((e) => `<figure><img src="${esc(e.file)}" alt="${esc(e.label)}"><figcaption>${esc(e.label)} — ${esc(e.file)}</figcaption></figure>`).join('')}</div>` : '';
+  };
+  const filesOf = (ev: Finding['evidence']) => {
+    const others = ev.filter((e) => !e.file.endsWith('.png'));
+    return others.length ? `<p class="muted">File: ${others.map((e) => esc(e.file)).join(', ')}</p>` : '';
+  };
+  const detailsOf = (f: Finding) =>
+    f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo negli allegati: dati.json e CSV)</li>` : ''}</ul>` : '';
+  const excerptOf = (f: Finding) => (f.requestExcerpt ? `<p><strong>Estratto della richiesta</strong> (completa nel file HAR):</p><pre>${esc(JSON.stringify(f.requestExcerpt, null, 2))}</pre>` : '');
+  const strength = (f: Finding) => (f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}${f.evidenceExtra ? `; inoltre ${esc(f.evidenceExtra)}` : ''}.</p>` : '');
+  const where = (f: Finding) => `<p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>`;
   for (const f of findings) {
-    const images = f.evidence.filter((e) => e.file.endsWith('.png'));
-    const others = f.evidence.filter((e) => !e.file.endsWith('.png'));
+    const review = reviewOf(f)?.esito ? `<p><strong>Revisione manuale.</strong> ${esc(reviewOf(f)!.esito)}${reviewOf(f)!.nota ? ` — ${esc(reviewOf(f)!.nota)}` : ''}</p>` : '';
+    const norms = f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.map((n) => `<li>${n.url ? `<a href="${esc(n.url)}">${esc(n.title)}</a>` : esc(n.title)} — ${esc(n.reference)}</li>`).join('')}</ul>` : '';
+    const unverifiable = f.unverifiable?.length ? `<p><strong>Condizioni rilevanti non verificabili dal browser.</strong></p><ul>${f.unverifiable.map((u) => `<li>${esc(u)}</li>`).join('')}</ul>` : '';
+    if (f.parts?.length) {
+      // Scheda per fornitore: un riepilogo dei momenti, poi una sezione per momento con le sue prove
+      parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · Tracciamenti di ${esc(f.subjects?.[0] ?? '')}</h3>
+<p class="muted">Priorità di verifica: ${sevBadge(f.severity)} (la più alta tra i momenti)</p>
+<p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
+<table><tr><th>Momento</th><th>Priorità</th><th>Fatto osservato</th></tr>${f.parts.map((p) => `<tr><td>${esc(momentLabel(p))}</td><td>${sevBadge(p.severity)}</td><td>${esc(p.headline ?? p.ruleTitle)}</td></tr>`).join('')}</table>
+${review}${unverifiable}
+${f.parts
+  .map(
+    (p) => `<div class="part"><h4>${esc(momentLabel(p))} · ${sevBadge(p.severity)}</h4>
+<p class="muted">${esc(p.ruleTitle)}</p>
+<p>${esc(p.description)}</p>
+${where(p)}${strength(p)}${p.repeats ? `<p><strong>Ripetibilità.</strong> ${esc(repeatsText(p.repeats))}</p>` : ''}
+${detailsOf(p)}${shotsOf(p.evidence)}${excerptOf(p)}${filesOf(p.evidence)}</div>`,
+  )
+  .join('')}
+${norms}</div>`);
+      continue;
+    }
     parts.push(`<div class="card ${f.severity}" id="${f.id}"><h3>${f.id} · ${esc(f.ruleTitle)}</h3>
 <p class="muted">Priorità di verifica: ${sevBadge(f.severity)}</p>
 <p><strong>Cosa succede.</strong> ${esc(f.description)}</p>
-<p><strong>Dove.</strong> ${esc(f.site)}${f.scenario ? ` · scenario "${esc(f.scenario)}"` : ''}${f.pageUrl ? ` · ${esc(f.pageUrl)}` : ''}</p>
-${f.evidenceLevel ? `<p><strong>Forza della prova.</strong> ${esc(EVIDENCE_LABEL[f.evidenceLevel])}${f.evidenceExtra ? `; inoltre ${esc(f.evidenceExtra)}` : ''}.</p>` : ''}
-${f.unverifiable?.length ? `<p><strong>Condizioni rilevanti non verificabili dal browser.</strong></p><ul>${f.unverifiable.map((u) => `<li>${esc(u)}</li>`).join('')}</ul>` : ''}
+${where(f)}
+${strength(f)}
+${unverifiable}
 ${f.repeats ? `<p><strong>Ripetibilità.</strong> ${esc(repeatsText(f.repeats))}</p>` : ''}
-${reviewOf(f)?.esito ? `<p><strong>Revisione manuale.</strong> ${esc(reviewOf(f)!.esito)}${reviewOf(f)!.nota ? ` — ${esc(reviewOf(f)!.nota)}` : ''}</p>` : ''}
-${f.details.length ? `<ul>${f.details.slice(0, 40).map((d) => `<li>${esc(d)}</li>`).join('')}${f.details.length > 40 ? `<li class="muted">… altri ${f.details.length - 40} (elenco completo negli allegati: dati.json e CSV)</li>` : ''}</ul>` : ''}
-${images.length ? `<p><strong>Prove.</strong></p><div class="shots">${images.map((e) => `<figure><img src="${esc(e.file)}" alt="${esc(e.label)}"><figcaption>${esc(e.label)} — ${esc(e.file)}</figcaption></figure>`).join('')}</div>` : ''}
-${f.requestExcerpt ? `<p><strong>Estratto della richiesta</strong> (completa nel file HAR):</p><pre>${esc(JSON.stringify(f.requestExcerpt, null, 2))}</pre>` : ''}
-${others.length ? `<p class="muted">File: ${others.map((e) => esc(e.file)).join(', ')}</p>` : ''}
-${f.norms.length ? `<p><strong>Riferimenti normativi.</strong></p><ul>${f.norms.map((n) => `<li>${n.url ? `<a href="${esc(n.url)}">${esc(n.title)}</a>` : esc(n.title)} — ${esc(n.reference)}</li>`).join('')}</ul>` : ''}</div>`);
+${review}
+${detailsOf(f)}
+${shotsOf(f.evidence)}
+${excerptOf(f)}
+${filesOf(f.evidence)}
+${norms}</div>`);
   }
 
   if (excluded.length) {
