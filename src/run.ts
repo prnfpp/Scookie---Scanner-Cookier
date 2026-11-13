@@ -481,7 +481,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
       }
       // I valori del percorso registrato sono i dati di prova di questa esecuzione: vanno riconosciuti nelle richieste
       // già durante la raccolta, come quelli digitati in una navigazione manuale
-      if (recording) for (const f of recordedFills(recording.steps)) registerTypedValue(f.value, f.hint);
+      if (recording) for (const f of recordedFills(recording.steps, recording.site)) registerTypedValue(f.value, f.hint);
       if (site.navigazioneManuale && !recording) {
         const start = manualStart(site.navigazioneManuale.partenza, site.url, site.url);
         if (!entersSite([start], site.url)) {
@@ -844,6 +844,8 @@ async function finishRun(
   for (const s of [...collected.sessions, ...collected.discarded]) {
     // per ogni campo vale l'ultimo valore digitato (non le correzioni né le date parziali)
     for (const f of recordedFills(s.manual?.steps ?? [])) registerTypedValue(f.value, f.hint);
+    // dati inseriti dall'operatore ritrovati negli indirizzi delle pagine del sito (es. data di nascita da un calendario)
+    for (const f of s.manual?.urlValues ?? []) registerTypedValue(f.value, f.hint);
     // percorsi rigiocati: i valori inseriti sono quelli del percorso registrato
     for (const f of s.replay?.fills ?? []) registerTypedValue(f.value, f.hint);
   }

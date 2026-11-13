@@ -1,5 +1,6 @@
 import type { Page } from 'playwright';
-import { maskPii, registerTypedValue } from '../util/pii.js';
+import { maskPii, registerTypedValue, typedValuesFromUrl } from '../util/pii.js';
+import { registrableDomain } from '../util/domains.js';
 import type { Collector } from './collector.js';
 import { RECORDER, type RecordedStep } from './replay.js';
 
@@ -28,6 +29,8 @@ export interface ManualOutcome {
   errorPages?: { url: string; status: number }[];
   /** Numero di schede aperte durante la navigazione (oltre la prima). */
   extraTabs?: number;
+  /** Dati inseriti dall'operatore ritrovati negli indirizzi delle pagine del sito (vedi typedValuesFromUrl). */
+  urlValues?: { value: string; hint: string }[];
 }
 
 /**
@@ -185,8 +188,18 @@ export async function manualJourney(
   const open = new Set<Page>([page]);
   let active = page;
   let extraTabs = 0;
+  // dati dell'operatore negli indirizzi delle pagine del sito (stesso dominio registrabile del sito del controllo)
+  const siteDomain = plan.siteHost ? registrableDomain(plan.siteHost) : null;
+  const urlValues = new Map<string, { value: string; hint: string }>();
+  const fromUrl = (raw: string) => {
+    if (!siteDomain) return;
+    for (const v of typedValuesFromUrl(raw, (h) => registrableDomain(h) === siteDomain)) {
+      if (registerTypedValue(v.value, v.hint, `${fieldScope}|${v.field}`) || urlValues.has(v.field)) urlValues.set(v.field, { value: v.value, hint: v.hint });
+    }
+  };
   const record = (p: Page) => {
     active = p;
+    fromUrl(p.url());
     const url = maskPii(p.url());
     if (url === 'about:blank' || !url) return;
     collector.currentUrl = url;
@@ -246,6 +259,7 @@ export async function manualJourney(
     steps,
     ...(errorPages.length ? { errorPages } : {}),
     ...(extraTabs ? { extraTabs } : {}),
+    ...(urlValues.size ? { urlValues: [...urlValues.values()] } : {}),
     lastPage: active,
   };
 }

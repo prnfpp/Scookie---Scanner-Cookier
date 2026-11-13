@@ -165,10 +165,17 @@ export async function rejectOnPreferencesPage(page: Page): Promise<{ ok: boolean
             const visible = shown(el) || shown(input.labels?.[0]) || shown(el.parentElement);
             if (visible && !input.checked && !input.disabled && offRe.test(ownLabel(el))) mark(el, `scelta di "${ownLabel(el)}"`);
           }
-          const save = Array.from(document.querySelectorAll('button, [role=button], input[type=submit], input[type=button], a')).find((b) => {
-            const t = txt(b) || (b as HTMLInputElement).value || '';
-            return shown(b) && saveRe.test(t) && !acceptRe.test(t);
+          // Il pulsante può essere un elemento qualsiasi reso cliccabile dal sito (es. <div class="button">): si prende
+          // l'elemento più interno il cui testo è il comando di salvataggio, preferendo quelli che si presentano come pulsanti
+          const label = (b: Element) => txt(b) || (b as HTMLInputElement).value || '';
+          const matches = Array.from(document.querySelectorAll('button, [role=button], input[type=submit], input[type=button], a, div, span')).filter((b) => {
+            const t = label(b);
+            return t.length <= 60 && shown(b) && saveRe.test(t) && !acceptRe.test(t);
           });
+          const innermost = matches.filter((b) => !matches.some((o) => o !== b && b.contains(o)));
+          const buttonLike = (b: Element) =>
+            b.matches('button, [role=button], input, a') || /button|btn|save|salva/i.test(`${b.id} ${b.className}`) || getComputedStyle(b).cursor === 'pointer';
+          const save = innermost.find(buttonLike) ?? innermost[0];
           if (save) save.setAttribute('data-scookie-save', '1');
           return { marked, save: save ? (txt(save) || (save as HTMLInputElement).value || '').slice(0, 60) : null };
         },

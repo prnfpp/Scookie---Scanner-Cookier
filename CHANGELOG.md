@@ -2,6 +2,18 @@
 
 ## Non rilasciato
 
+Terza verifica della rilevazione (navigazioni manuali corrette, tre ripetizioni).
+
+- **Dati dell'operatore nell'indirizzo delle pagine.** Durante una navigazione manuale, i valori con nome di dato
+  personale negli indirizzi delle pagine del sito (es. `/preventivo?dataNascita=…&targa=…`, aperto dal modulo della
+  home) valgono come dati di prova anche quando il campo non li ha consegnati come testo digitato (calendari, campi
+  composti): la data di nascita del preventivo ora è riconosciuta come dato di prova, non solo la targa. Vale anche
+  per i percorsi registrati e per "rigenera" (`manual.urlValues`).
+- **Pagina di preferenze con pulsanti non standard.** Il comando "Salva preferenze" può essere un elemento qualsiasi
+  reso cliccabile dal sito (es. `<div class="button">`), non solo un `<button>`: prima la pagina di canegatto.conte.it
+  risultava "senza pulsante per salvare" e la revoca passava all'API del gestore.
+- **Sintesi**: anche nel punto sul banner l'elenco dei siti non è più ripetuto.
+
 Seconda verifica della rilevazione con navigazioni manuali e gestori diversi tra sottodomini.
 
 - **Navigazione manuale con lo user agent del browser con finestra.** La finestra delle navigazioni manuali usava lo

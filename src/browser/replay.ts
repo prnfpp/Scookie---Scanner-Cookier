@@ -1,6 +1,7 @@
 import type { Frame, Locator, Page } from 'playwright';
 import { readableFrame } from '../cmp/dom.js';
-import { maskPii } from '../util/pii.js';
+import { maskPii, typedValuesFromUrl } from '../util/pii.js';
+import { registrableDomain } from '../util/domains.js';
 import type { Collector } from './collector.js';
 
 /** Un'azione dell'operatore durante la navigazione manuale, registrata per poterla rigiocare. */
@@ -43,9 +44,14 @@ export interface ReplayOutcome {
 }
 
 /** Valori dei campi di un percorso registrato, con il nome o l'etichetta del campo: sono i dati di prova da riconoscere. */
-export function recordedFills(steps: RecordedStep[]): { value: string; hint: string }[] {
+export function recordedFills(steps: RecordedStep[], siteUrl?: string): { value: string; hint: string }[] {
   const byField = new Map<string, { value: string; hint: string }>();
   for (const st of steps) if (st.type === 'fill' && !st.secret && st.value?.trim()) byField.set(st.css, { value: st.value, hint: `${st.css} ${st.text}` });
+  // dati inseriti dall'operatore ritrovati negli indirizzi delle pagine del sito su cui ha agito
+  if (siteUrl) {
+    const domain = registrableDomain(new URL(siteUrl).hostname);
+    for (const st of steps) for (const v of typedValuesFromUrl(st.url, (h) => registrableDomain(h) === domain)) byField.set(v.field, { value: v.value, hint: v.hint });
+  }
   return [...byField.values()];
 }
 
@@ -250,6 +256,6 @@ export async function replayJourney(page: Page, collector: Collector, path: Reco
   } finally {
     context.off('page', onPage);
   }
-  const fills = recordedFills(path.steps);
+  const fills = recordedFills(path.steps, path.site);
   return { pages, stepsDone: done, stepsTotal: path.steps.length, ...(fills.length ? { fills } : {}), ...(stoppedAt ? { stoppedAt } : {}), seconds: Math.round((Date.now() - started) / 1000), lastPage: cur };
 }
