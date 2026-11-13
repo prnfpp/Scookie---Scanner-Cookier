@@ -4,6 +4,20 @@
 
 Seconda verifica della rilevazione con navigazioni manuali e gestori diversi tra sottodomini.
 
+- **Interfaccia più chiara.** Sezioni **Clienti · Audit · Rapporti**, con percorso (Clienti › cliente, Rapporti ›
+  revisione) e una sola azione primaria per schermata, il passo successivo consigliato. La scheda Audit mostra la
+  percentuale da qualsiasi sezione e, senza audit in corso, una schermata che spiega cosa fare. Primo avvio guidato
+  in tre passi; card dei clienti con **Configura e avvia** e **Apri l'ultimo rapporto**. Configurazione: indirizzo
+  controllato quando si lascia il campo (`https://` aggiunto se manca), passi completi con ✓, intestazione del
+  rapporto e dati di prova raccolti in sezioni facoltative, avviso prima di uscire con modifiche non salvate.
+  Pulsanti con stato di attesa (niente doppi invii), elenchi con segnaposto durante il caricamento, avviso se Scookie
+  non risponde con riconnessione automatica, errori che dicono anche come risolvere e restano visibili finché non
+  li chiudi, conferme nella finestra dell'interfaccia. Rapporti filtrabili per cliente, con legenda della priorità
+  di verifica; revisione con barra di avanzamento e filtro "solo da valutare".
+- **Rapporto: "In breve".** In apertura del rapporto un riquadro con i numeri principali (rilievi per priorità, siti,
+  sessioni valide), i tre fatti da cui iniziare con il rimando ai rilievi e l'indice cliccabile; ogni rilievo ha un
+  collegamento di ritorno alla sintesi (nascosto in stampa).
+
 - **Navigazione manuale con lo user agent del browser con finestra.** La finestra delle navigazioni manuali usava lo
   user agent letto dal browser senza finestra ("HeadlessChrome"). Alcuni siti rispondono diversamente: su un sito
   HubSpot CMS l'indirizzo con la barra finale, che per un browser comune rimanda alla pagina giusta (301), per

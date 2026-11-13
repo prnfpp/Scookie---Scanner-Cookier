@@ -6,7 +6,8 @@
 <title>Scookie</title>
 <style>
 /* Barra marrone in alto, area di lavoro chiara larga al massimo 1120px; card bianche solo dove c'è un'azione.
-   Palette: bianco ottico, marrone per testo e struttura, azzurro per le azioni. Nessuna risorsa esterna (lo strumento è locale). */
+   Palette: bianco ottico, marrone per testo e struttura, azzurro per le azioni. Nessuna risorsa esterna (lo strumento è locale).
+   Regola d'uso: una sola azione primaria (azzurra) per schermata o per card, il passo successivo consigliato. */
 :root {
   --bg: #F8F9FA; --card: #FFFFFF; --warm: #F3EEE9; --ink: #4A3B32; --ink-2: #6E5D53; --line: #E4DCD5;
   --primary: #2563EB; --primary-ink: #FFFFFF; --accent: #3B82F6; --accent-soft: #E6EFFE;
@@ -19,7 +20,7 @@
 }
 @media (prefers-color-scheme: dark) { :root {
   --bg: #1B1714; --card: #251F1B; --warm: #2E2621; --ink: #F1EAE3; --ink-2: #C3B4A8; --line: #3D332C;
-  --accent: #60A5FA; --accent-soft: #1E2B44; --header: #120F0D; --header-ink: #F1EAE3;
+  --primary: #3B82F6; --primary-ink: #FFFFFF; --accent: #60A5FA; --accent-soft: #1E2B44; --header: #120F0D; --header-ink: #F1EAE3;
   --ok: #6CC49A; --ok-soft: #1D3229; --warn: #E2A84B; --warn-soft: #3A2D16; --bad: #E58A73; --bad-soft: #3D231C; --info: #C3B4A8; --info-soft: #322A24;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25); color-scheme: dark;
 } }
@@ -43,9 +44,12 @@ header.top { position: sticky; top: 0; z-index: 5; background: var(--header); co
 .brand { display: flex; align-items: center; gap: 10px; font: 800 1.15rem var(--f-display); }
 .brand small { font: 500 .78rem var(--f-body); opacity: .7; }
 nav.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-nav.tabs button { background: transparent; border: 0; color: var(--header-ink); opacity: .78; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+nav.tabs button { background: transparent; border: 0; color: var(--header-ink); opacity: .78; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 nav.tabs button:hover { opacity: 1; background: rgba(255,255,255,.08); }
 nav.tabs button.on { opacity: 1; background: rgba(255,255,255,.15); }
+.tab-badge { border-radius: 999px; padding: 1px 7px; font-size: .72rem; font-weight: 750; background: #93C5FD; color: #12213D; font-variant-numeric: tabular-nums; }
+.tab-badge.wait { background: #F2C46B; color: #3A2D16; }
+.tab-badge.done { background: #8FD4B0; color: #133325; }
 .status { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: .86rem; background: rgba(255,255,255,.1); padding: 6px 12px 6px 9px; border-radius: 999px; border: 0; color: inherit; cursor: pointer; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #8FD4B0; flex: none; }
 .status.st-run .dot { background: #93C5FD; animation: pulse 1.4s infinite; }
@@ -54,6 +58,7 @@ nav.tabs button.on { opacity: 1; background: rgba(255,255,255,.15); }
 @keyframes pulse { 50% { opacity: .35; } }
 .mini { width: 60px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.22); overflow: hidden; }
 .mini i { display: block; height: 100%; background: #93C5FD; width: 0; transition: width .4s; }
+.banner { max-width: 1120px; margin: 16px auto 0; padding: 0 16px; }
 
 main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 80px; display: grid; gap: 20px; }
 section { display: grid; gap: 18px; }
@@ -69,36 +74,64 @@ section { display: grid; gap: 18px; }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
 .btn.primary:hover { filter: brightness(1.07); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--primary); padding-inline: 6px; }
+.btn.ghost:hover { text-decoration: underline; }
 .btn.sm { padding: 6px 11px; font-size: .86rem; }
+.btn.lg { padding: 12px 24px; font-size: 1.04rem; }
 .btn.danger { color: var(--bad); border-color: var(--bad-soft); }
 .btn.danger:hover { border-color: var(--bad); }
+.btn.danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; }
 .btn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+.btn.busy { opacity: .85; cursor: progress; }
+.spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.link { background: none; border: 0; padding: 0; color: var(--primary); cursor: pointer; font-weight: 600; }
+.link:hover { text-decoration: underline; }
 .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 10px; font-size: .78rem; font-weight: 600; background: var(--info-soft); color: var(--info); white-space: nowrap; }
 .chip.ok { background: var(--ok-soft); color: var(--ok); } .chip.warn { background: var(--warn-soft); color: var(--warn); }
-.chip.bad { background: var(--bad-soft); color: var(--bad); } .chip.blue { background: var(--accent-soft); color: var(--primary); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); } .chip.blue { background: var(--accent-soft); color: var(--accent); }
 .msg { padding: 10px 14px; border-radius: 10px; font-size: .92rem; white-space: pre-wrap; }
 .msg.ok { background: var(--ok-soft); color: var(--ok); } .msg.err { background: var(--bad-soft); color: var(--bad); } .msg.warn { background: var(--warn-soft); color: var(--ink); }
+.msg .fix { display: block; margin-top: 6px; color: var(--ink); }
+.msg .fix b { color: inherit; }
 .empty { color: var(--ink-2); text-align: center; padding: 30px 10px; }
+.skel { border-radius: 14px; min-height: 150px; background: linear-gradient(90deg, var(--warm) 25%, var(--line) 50%, var(--warm) 75%); background-size: 200% 100%; animation: skel 1.2s linear infinite; }
+.skel.thin { min-height: 90px; }
+@keyframes skel { to { background-position: -200% 0; } }
+.crumbs { display: flex; gap: 8px; align-items: center; font-size: .88rem; color: var(--ink-2); flex-wrap: wrap; }
+.crumbs span[aria-current] { color: var(--ink); font-weight: 600; }
 
 /* Clienti */
-.clients { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
-.client { text-align: left; cursor: pointer; display: grid; gap: 12px; align-content: start; }
+.clients { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.client { cursor: pointer; display: grid; gap: 12px; align-content: start; }
 .client:hover { border-color: var(--ink-2); }
 .client .sites { display: flex; flex-wrap: wrap; gap: 6px; }
 .client .last { border-top: 1px solid var(--line); padding-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .86rem; color: var(--ink-2); }
-.client.new { place-content: center; justify-items: center; text-align: center; border-style: dashed; box-shadow: none; color: var(--ink-2); min-height: 150px; }
+.client .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.onboard { display: grid; gap: 18px; justify-items: start; }
+.ob { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; counter-reset: ob; width: 100%; }
+.ob li { counter-increment: ob; background: var(--bg); border-radius: 12px; padding: 14px; display: grid; gap: 4px; }
+.ob li::before { content: counter(ob); width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--primary); display: grid; place-items: center; font-weight: 750; margin-bottom: 4px; }
+.ob li span { font-size: .88rem; color: var(--ink-2); }
+.appfoot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 14px; font-size: .86rem; color: var(--ink-2); }
 
 /* Configurazione a passi */
 .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.step { border: 0; background: transparent; text-align: left; cursor: pointer; padding: 10px 12px 12px; border-radius: 10px; border-top: 3px solid var(--line); display: grid; gap: 2px; }
-.step b { font-family: var(--f-display); font-size: .95rem; }
-.step span { font-size: .8rem; color: var(--ink-2); }
+.step { border: 0; background: transparent; text-align: left; cursor: pointer; padding: 10px 12px 12px; border-radius: 10px; border-top: 3px solid var(--line); display: grid; gap: 2px; color: var(--ink); }
+.step b { font-family: var(--f-display); font-size: .95rem; display: flex; align-items: center; gap: 8px; }
+.step .n { width: 20px; height: 20px; border-radius: 50%; background: var(--line); color: var(--ink); display: inline-grid; place-items: center; font: 700 .72rem var(--f-body); flex: none; }
+.step span.d { font-size: .8rem; color: var(--ink-2); }
+.step.done { border-top-color: var(--ok); }
+.step.done .n { background: var(--ok); color: #fff; }
 .step.on { border-top-color: var(--primary); background: var(--accent-soft); }
-.step.attn { border-top-color: var(--warn); }
+.step.on .n { background: var(--primary); color: #fff; }
+.step.attn:not(.on) { border-top-color: var(--warn); }
 @media (max-width: 640px) { .steps { grid-template-columns: repeat(2, 1fr); } }
 label.f { display: grid; gap: 6px; font-weight: 600; font-size: .9rem; }
 .hint { font-weight: 400; color: var(--ink-2); font-size: .82rem; }
+.req { color: var(--bad); }
+.field-err { color: var(--bad); font-size: .82rem; font-weight: 500; }
 input[type=text], input[type=url], input[type=number], textarea, select { width: 100%; border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 9px 11px; }
+input.invalid { border-color: var(--bad); }
 textarea { min-height: 64px; resize: vertical; }
 textarea.yaml { min-height: 460px; font-family: var(--f-mono); font-size: .84rem; }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -107,16 +140,26 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
 .site-h .site-title { font: 650 1rem var(--f-display); margin-right: auto; word-break: break-all; }
 .hint-box { display: flex; gap: 12px; align-items: flex-start; background: var(--warn-soft); border-radius: 10px; padding: 12px 14px; font-size: .9rem; }
 .hint-box b { display: block; }
-.manual { border-left: 3px solid var(--accent); padding-left: 14px; display: grid; gap: 10px; }
+details.manual { border-left: 3px solid var(--accent); padding-left: 14px; }
+details.manual > summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; list-style: none; }
+details.manual > summary::-webkit-details-marker { display: none; }
+details.manual > summary h3::before { content: "▸ "; color: var(--ink-2); }
+details.manual[open] > summary h3::before { content: "▾ "; }
+details.manual > .stack { margin-top: 12px; gap: 10px; }
 .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
 .check { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; font-weight: 400; }
+.check:has(input:checked) { border-color: color-mix(in srgb, var(--primary) 45%, var(--line)); }
 .check input { margin-top: 3px; accent-color: var(--primary); width: 16px; height: 16px; flex: none; }
 .check b { display: block; font-size: .92rem; }
 .check span { font-size: .82rem; color: var(--ink-2); }
 details.adv > summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
 details.adv[open] > summary { margin-bottom: 12px; }
+.preview-box { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px dashed var(--line); border-radius: 12px; padding: 14px 16px; }
+.preview-box > div { display: grid; gap: 2px; flex: 1 1 280px; }
 .savebar { position: sticky; bottom: 0; z-index: 3; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .savebar #save-msg { flex: 1 1 260px; min-width: 0; }
+@media (max-width: 560px) { .savebar { padding: 8px 12px; } .savebar #save-msg > .muted { display: none; } .savebar #save-msg:has(> .muted) { flex-basis: 0; } }
+.dirty { color: var(--warn); font-weight: 600; font-size: .86rem; white-space: nowrap; }
 .foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 16px; }
 
 table { border-collapse: collapse; width: 100%; font-size: .9rem; }
@@ -127,7 +170,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .checklist { display: grid; gap: 8px; }
 .ci { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--bg); }
 .ci .ic { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem; font-weight: 700; }
-.ci.ok .ic { background: var(--ok-soft); color: var(--ok); } .ci.warn .ic { background: var(--warn-soft); color: var(--warn); } .ci.bad .ic { background: var(--bad-soft); color: var(--bad); }
+.ci.ok .ic { background: var(--ok-soft); color: var(--ok); } .ci.warn .ic { background: var(--warn-soft); color: var(--warn); } .ci.bad .ic { background: var(--bad-soft); color: var(--bad); } .ci.info .ic { background: var(--accent-soft); color: var(--accent); }
 .ci b { display: block; font-size: .92rem; }
 .ci span { font-size: .84rem; color: var(--ink-2); }
 
@@ -144,35 +187,55 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 12px; transition: width .5s ease; }
 .bar.indet i { width: 30% !important; animation: indet 1.3s ease-in-out infinite; }
 .bar.wait i { background: var(--warn); }
+.bar.ok i { background: var(--ok); }
 @keyframes indet { 0% { left: -30%; } 100% { left: 100%; } }
-@media (prefers-reduced-motion: reduce) { .bar.indet i { animation: none; left: 0; width: 100% !important; opacity: .4; } .dot { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .bar.indet i { animation: none; left: 0; width: 100% !important; opacity: .4; } .dot, .spin, .skel { animation: none !important; } }
 .action { border: 2px solid var(--warn); background: var(--warn-soft); border-radius: 14px; padding: 18px; display: grid; gap: 10px; }
 .sp { display: grid; grid-template-columns: minmax(150px, 1.3fr) 3fr auto; gap: 12px; align-items: center; font-size: .9rem; }
 .sp .bar { height: 7px; }
 @media (max-width: 560px) { .sp { grid-template-columns: 1fr auto; } .sp .bar { grid-column: 1 / -1; grid-row: 2; } }
 pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; max-height: 300px; overflow: auto; font: .8rem/1.6 var(--f-mono); margin: 12px 0 0; white-space: pre-wrap; word-break: break-word; color: var(--ink-2); }
+.empty-state { display: grid; gap: 12px; justify-items: center; text-align: center; padding: 44px 22px; }
+.empty-state p { max-width: 520px; color: var(--ink-2); }
 
-/* Esecuzioni */
+/* Rapporti */
 .run { display: grid; gap: 14px; }
 .run-h { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
 .sev { display: flex; gap: 8px; flex-wrap: wrap; }
 .sev .s { display: grid; gap: 2px; min-width: 76px; padding: 8px 12px; border-radius: 10px; background: var(--bg); }
 .sev .s b { font: 800 1.25rem var(--f-display); font-variant-numeric: tabular-nums; }
 .sev .s span { font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
-.sev .alta b { color: var(--bad); } .sev .media b { color: var(--warn); } .sev .bassa b { color: var(--primary); } .sev .informativa b { color: var(--info); }
+.sev .alta b { color: var(--bad); } .sev .media b { color: var(--warn); } .sev .bassa b { color: var(--ink); } .sev .informativa b { color: var(--ink-2); font-weight: 650; }
+.next-hint { font-size: .9rem; display: flex; gap: 8px; align-items: baseline; }
+.next-hint::before { content: "→"; color: var(--primary); font-weight: 700; }
 .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .fs { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; align-content: start; }
 .fs .k { font-size: .72rem; color: var(--ink-2); font-weight: 650; letter-spacing: .05em; text-transform: uppercase; }
 .fs.done { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.fs.done .k::after { content: " ✓"; color: var(--ok); }
 .fs.next { border-color: var(--primary); background: var(--accent-soft); }
 @media (max-width: 760px) { .flow { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 460px) { .flow { grid-template-columns: 1fr; } }
+details.more > summary { cursor: pointer; color: var(--ink-2); font-size: .86rem; font-weight: 600; }
+details.more[open] > summary { margin-bottom: 8px; }
 .cmp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .cmp .c { border-radius: 10px; padding: 12px; background: var(--bg); display: grid; gap: 4px; }
 .cmp .c b { font: 800 1.6rem var(--f-display); }
 @media (max-width: 560px) { .cmp { grid-template-columns: 1fr; } }
-.rev td select { min-width: 140px; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar select { width: auto; min-width: 200px; }
+.legend { font-size: .86rem; color: var(--ink-2); }
+.rev td select { min-width: 160px; }
 .rev td input { min-width: 160px; }
-.toast { position: fixed; right: 16px; bottom: 16px; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: .9rem; box-shadow: var(--shadow); z-index: 20; max-width: 420px; }
+.rev tr.set td { background: color-mix(in srgb, var(--ok-soft) 35%, transparent); }
+.toast { position: fixed; right: 16px; bottom: 16px; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: .9rem; box-shadow: var(--shadow); z-index: 20; max-width: 440px; display: flex; gap: 12px; align-items: flex-start; }
+.toast.err { background: var(--bad-soft); color: var(--bad); border: 1px solid var(--bad); }
+.toast.err .fix { color: var(--ink); display: block; margin-top: 4px; }
+.toast button { background: none; border: 0; color: inherit; cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 0 2px; }
+dialog { border: 1px solid var(--line); border-radius: 14px; padding: 22px; max-width: 460px; width: calc(100% - 32px); background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+dialog::backdrop { background: rgba(30,22,18,.45); }
+dialog form { display: grid; gap: 14px; }
+dialog p { color: var(--ink-2); white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -183,81 +246,88 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
       <span>Scookie <small id="version"></small></span>
     </div>
     <nav class="tabs" aria-label="Sezioni">
-      <button id="tab-clienti" class="on">Clienti</button>
-      <button id="tab-audit">Audit in corso</button>
-      <button id="tab-esecuzioni">Esecuzioni</button>
+      <button id="tab-clienti" class="on" aria-current="page">Clienti</button>
+      <button id="tab-audit">Audit <span class="tab-badge hidden" id="tab-audit-badge"></span></button>
+      <button id="tab-esecuzioni">Rapporti</button>
     </nav>
-    <button class="status" id="status" title="Stato dello strumento"><span class="dot"></span><span id="status-t">Pronto</span><span class="mini hidden" id="mini"><i></i></span></button>
+    <button class="status" id="status" title="Stato di Scookie: clic per i dettagli"><span class="dot"></span><span id="status-t">Pronto</span><span class="mini hidden" id="mini"><i></i></span></button>
   </div>
 </header>
+
+<div class="banner hidden" id="conn-lost" role="alert">
+  <div class="msg err"><b>Scookie non risponde.</b><span class="fix"><b>Come risolvere:</b> probabilmente Scookie è stato chiuso o il computer è andato in stop. Riaprilo dall'icona sulla Scrivania (oppure con <code>npm run interfaccia</code> nel Terminale): questa pagina si ricollega da sola appena torna disponibile. <button class="link" id="conn-retry">Riprova ora</button></span></div>
+</div>
 
 <main>
   <!-- CLIENTI -->
   <section id="view-clienti">
     <div class="row spread">
-      <div class="stack" style="gap:4px"><h1>Clienti</h1><p class="muted">Scegli un cliente per controllarne la configurazione e avviare l'audit.</p></div>
-      <button class="btn" id="new-client">+ Nuovo cliente</button>
+      <div class="stack" style="gap:4px"><h1>Clienti</h1><p class="muted">Apri un cliente per indicare i siti e avviare l'audit, oppure consulta il suo ultimo rapporto.</p></div>
+      <button class="btn primary" id="new-client">+ Nuovo cliente</button>
     </div>
-    <div class="clients" id="clients"></div>
-    <p class="muted small" id="clients-dir"></p>
-    <div class="card row spread" id="app-bar">
-      <div class="stack" style="gap:2px"><b>Programma</b><span class="small muted" id="upd-text">Controllo degli aggiornamenti…</span></div>
-      <div class="row"><button class="btn primary hidden" id="upd-go">Aggiorna e riavvia</button><button class="btn hidden" id="quit">Chiudi Scookie</button></div>
-    </div>
+    <div class="clients" id="clients" aria-live="polite"></div>
+    <footer class="appfoot" id="app-bar">
+      <span><span id="upd-text">Controllo degli aggiornamenti…</span> <span id="clients-dir"></span></span>
+      <span class="row" style="gap:8px"><button class="btn sm primary hidden" id="upd-go">Aggiorna e riavvia</button><button class="btn sm hidden" id="quit">Chiudi Scookie</button></span>
+    </footer>
   </section>
 
   <!-- CONFIGURAZIONE -->
   <section id="view-config" class="hidden">
+    <nav class="crumbs" aria-label="Percorso"><button class="link" id="back-clients">Clienti</button><span aria-hidden="true">›</span><span aria-current="page" id="crumb-title">Cliente</span></nav>
     <div class="row spread">
-      <div class="stack" style="gap:4px"><span class="eyebrow">Configurazione</span><h1 id="editor-title">Cliente</h1></div>
-      <div class="row"><button class="btn sm" id="toggle-yaml">Modifica come testo (YAML)</button><button class="btn ghost" id="back-clients">← Tutti i clienti</button></div>
+      <div class="stack" style="gap:4px"><span class="eyebrow">Configura l'audit</span><h1 id="editor-title">Cliente</h1></div>
+      <button class="btn ghost sm" id="toggle-yaml" title="Per utenti esperti: tutte le opzioni del file di configurazione">Modifica avanzata (YAML)</button>
     </div>
     <div id="form" class="stack">
       <div class="steps" role="tablist" aria-label="Passi della configurazione">
-        <button class="step" data-step="1"><b>1 · Siti</b><span id="st1">indirizzi e pagine</span></button>
-        <button class="step" data-step="2"><b>2 · Opzioni</b><span id="st2">scenari e browser</span></button>
-        <button class="step" data-step="3"><b>3 · Controllo</b><span id="st3">anteprima e verifiche</span></button>
-        <button class="step" data-step="4"><b>4 · Avvio</b><span id="st4">durata stimata</span></button>
+        <button class="step" role="tab" data-step="1"><b><span class="n">1</span>Siti</b><span class="d" id="st1">cliente e indirizzi</span></button>
+        <button class="step" role="tab" data-step="2"><b><span class="n">2</span>Scenari</b><span class="d" id="st2">cosa provare sul banner</span></button>
+        <button class="step" role="tab" data-step="3"><b><span class="n">3</span>Verifica</b><span class="d" id="st3">controlli prima di partire</span></button>
+        <button class="step" role="tab" data-step="4"><b><span class="n">4</span>Avvio</b><span class="d" id="st4">durata stimata</span></button>
       </div>
 
-      <div class="card stack" data-s="1">
+      <div class="card stack" data-s="1" role="tabpanel">
         <div class="grid2">
-          <label class="f">Cliente, titolare dei siti <span class="hint">nome del cliente, senza versioni</span><input type="text" id="f-cliente" placeholder="Es. Rossi Srl"></label>
-          <label class="f">Committente <span class="hint">facoltativo: chi ha chiesto la verifica, se diverso (es. lo studio legale)</span><input type="text" id="f-committente" placeholder="Es. Studio Legale Bianchi"></label>
-          <label class="f">Sottotitolo del rapporto <span class="hint">facoltativo</span><input type="text" id="f-sottotitolo" placeholder="Es. Verifica post-intervento su esempio.it e sottodomini"></label>
-          <label class="f" id="file-box">Nome del file <span class="hint">solo lettere, numeri, - e _</span><input type="text" id="f-file" placeholder="rossi"></label>
+          <label class="f"><span>Nome del cliente <span class="req" aria-hidden="true">*</span></span><span class="hint">il titolare dei siti, come comparirà nel rapporto</span><input type="text" id="f-cliente" placeholder="Es. Rossi Srl" autocomplete="off"></label>
+          <label class="f" id="file-box">Nome del file di configurazione <span class="hint">proposto in automatico: solo lettere, numeri, - e _</span><input type="text" id="f-file" placeholder="rossi-srl"></label>
         </div>
-        <div class="row spread"><div><h2>Siti da controllare</h2><p class="muted small">Ogni sito o sottodominio (www, app, shop…) è una voce a sé.</p></div><button class="btn sm" id="add-site">+ Aggiungi sito</button></div>
+        <div class="row spread"><div><h2>Siti da analizzare</h2><p class="muted small">Un indirizzo per ogni dominio o sottodominio (www, app, shop…): ognuno viene analizzato e riportato a parte.</p></div><button class="btn sm" id="add-site">+ Aggiungi un sito</button></div>
         <div id="sites" class="stack"></div>
-        <div class="foot"><span></span><button class="btn primary" data-go-step="2">Avanti: opzioni</button></div>
+        <details class="adv" id="adv-header"><summary>Intestazione del rapporto <span class="hint">facoltativa</span></summary>
+          <div class="grid2">
+            <label class="f">Committente <span class="hint">chi ha chiesto la verifica, se diverso dal cliente (es. lo studio legale)</span><input type="text" id="f-committente" placeholder="Es. Studio Legale Bianchi"></label>
+            <label class="f">Sottotitolo del rapporto <span class="hint">compare sotto il titolo</span><input type="text" id="f-sottotitolo" placeholder="Es. Verifica post-intervento su esempio.it e sottodomini"></label>
+          </div>
+        </details>
+        <details class="adv" id="dp-box"><summary>Dati di prova per i moduli <span class="hint">servono solo con la navigazione manuale</span></summary>
+          <div class="stack" style="gap:8px">
+            <p class="small muted">I dati che inserirai nei moduli del sito (contatti, registrazione, preventivo…). Usa dati palesemente fittizi o concordati con il committente: il rapporto li riconosce come prova certa in ogni formato (es. 01/01/1990 o 1990-01-01) e li mostra in chiaro.</p>
+            <div class="stack" id="dp-list" style="gap:8px"></div>
+            <div><button class="btn sm" type="button" id="dp-add">+ Aggiungi un dato di prova</button></div>
+          </div>
+        </details>
+        <div class="foot"><span></span><button class="btn primary" data-go-step="2">Continua: scegli gli scenari →</button></div>
       </div>
 
-      <div class="card stack hidden" data-s="2">
-        <h2>Opzioni dell'audit</h2>
-        <div class="stack" style="gap:8px"><b>Scenari</b>
-          <div class="opts">
-            <label class="check"><input type="checkbox" id="f-sc-nessuna" checked><div><b>Nessuna azione</b><span>Cosa succede senza toccare il banner</span></div></label>
-            <label class="check"><input type="checkbox" id="f-sc-rifiuta" checked><div><b>Rifiuta</b><span>Il rifiuto viene rispettato?</span></div></label>
-            <label class="check"><input type="checkbox" id="f-sc-accetta" checked><div><b>Accetta</b><span>Cosa si attiva con il consenso</span></div></label>
-            <label class="check"><input type="checkbox" id="f-sc-personalizza" checked><div><b>Personalizza</b><span>Solo statistiche: parte altro?</span></div></label>
-            <label class="check"><input type="checkbox" id="f-sc-revoca" checked><div><b>Accetta poi revoca</b><span>La revoca ferma i tracciamenti?</span></div></label>
-            <label class="check"><input type="checkbox" id="f-sc-chiudi" checked><div><b>Chiudi con la X</b><span>La X equivale a un rifiuto?</span></div></label>
-          </div>
+      <div class="card stack hidden" data-s="2" role="tabpanel">
+        <div class="stack" style="gap:4px"><h2>Cosa provare sul banner</h2><p class="muted small">Ogni scenario simula un visitatore che fa una scelta diversa. Lasciali tutti attivi per un rapporto completo.</p></div>
+        <div class="opts">
+          <label class="check"><input type="checkbox" id="f-sc-nessuna" checked><div><b>Nessuna azione</b><span>Cosa parte prima di qualsiasi scelta</span></div></label>
+          <label class="check"><input type="checkbox" id="f-sc-rifiuta" checked><div><b>Rifiuta</b><span>Il rifiuto viene rispettato?</span></div></label>
+          <label class="check"><input type="checkbox" id="f-sc-accetta" checked><div><b>Accetta</b><span>Cosa si attiva con il consenso</span></div></label>
+          <label class="check"><input type="checkbox" id="f-sc-personalizza" checked><div><b>Personalizza</b><span>Solo statistiche: parte altro?</span></div></label>
+          <label class="check"><input type="checkbox" id="f-sc-revoca" checked><div><b>Accetta, poi revoca</b><span>La revoca ferma i tracciamenti?</span></div></label>
+          <label class="check"><input type="checkbox" id="f-sc-chiudi" checked><div><b>Chiudi con la X</b><span>La X equivale a un rifiuto?</span></div></label>
         </div>
         <div class="grid2">
-          <label class="f">Ripetizioni di ogni scenario <span class="hint">Più ripetizioni: prove più solide, audit più lungo.</span>
-            <select id="f-ripetizioni"><option value="1">1 volta</option><option value="2">2 volte</option><option value="3">3 volte</option></select></label>
-          <label class="f">Paese di uscita atteso <span class="hint">Verificato all'avvio.</span><input type="text" id="f-paese" maxlength="2" placeholder="IT"></label>
-          <label class="f">Se il paese non corrisponde <span class="hint">&nbsp;</span>
-            <select id="f-verifica"><option value="blocca">Fermati (consigliato)</option><option value="avvisa">Avvisa nel report</option><option value="no">Non verificare</option></select></label>
+          <label class="f">Ripetizioni di ogni scenario <span class="hint">Più ripetizioni rendono le prove più solide, ma l'audit dura di più.</span>
+            <select id="f-ripetizioni"><option value="1">1 volta (più veloce)</option><option value="2">2 volte</option><option value="3">3 volte (prove più solide)</option></select></label>
+          <label class="f">Paese da cui navigare <span class="hint">Sigla di 2 lettere, verificata all'avvio.</span><input type="text" id="f-paese" maxlength="2" placeholder="IT"></label>
+          <label class="f">Se il paese non corrisponde <span class="hint">Es. VPN attiva o rete aziendale estera.</span>
+            <select id="f-verifica"><option value="blocca">Ferma l'audit (consigliato)</option><option value="avvisa">Prosegui e segnalalo nel rapporto</option><option value="no">Non verificare</option></select></label>
           <label class="f">Browser <span class="hint">Quello incluso va bene quasi sempre.</span>
-            <select id="f-canale"><option value="chromium">Browser incluso nel tool</option><option value="chrome">Google Chrome installato</option><option value="msedge">Microsoft Edge installato</option></select></label>
-        </div>
-        <div class="stack" style="gap:8px">
-          <h3>Dati di prova delle navigazioni manuali</h3>
-          <p class="small muted">I dati che inserirai nei moduli del sito (contatti, registrazione, preventivo…). Usa dati palesemente fittizi o concordati con il committente. Il rapporto li riconosce come prova certa, in ogni formato (es. una data come 01/01/1990 o 1990-01-01), e li mostra in chiaro.</p>
-          <div class="stack" id="dp-list" style="gap:8px"></div>
-          <div><button class="btn sm" type="button" id="dp-add">+ Aggiungi un dato di prova</button></div>
+            <select id="f-canale"><option value="chromium">Browser incluso in Scookie</option><option value="chrome">Google Chrome installato</option><option value="msedge">Microsoft Edge installato</option></select></label>
         </div>
         <details class="adv" id="adv-general"><summary>Opzioni avanzate</summary>
           <div class="stack">
@@ -269,132 +339,148 @@ pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 1
                 <select id="f-har"><option value="testo">Solo risposte testuali (consigliato)</option><option value="tutti">Tutto (file molto grandi)</option><option value="nessuno">Nessuna risposta</option></select></label>
             </div>
             <div class="opts">
-              <label class="check"><input type="checkbox" id="f-pdf" checked><div><b>Genera il PDF</b><span>Oltre al report HTML</span></div></label>
+              <label class="check"><input type="checkbox" id="f-pdf" checked><div><b>Genera anche il PDF</b><span>Oltre al rapporto HTML</span></div></label>
               <label class="check"><input type="checkbox" id="f-visibile"><div><b>Mostra il browser</b><span>Utile con siti protetti da anti-bot</span></div></label>
               <label class="check"><input type="checkbox" id="f-controllo"><div><b>Esecuzione di controllo</b><span>User agent di un browser normale, senza dichiarazione dell'audit</span></div></label>
-              <label class="check"><input type="checkbox" id="f-saltaSenzaBanner" checked><div><b>Salta gli scenari con scelta se non c'è un banner</b><span>Se nessuna sessione "nessuna azione" mostra un banner, rifiuta, accetta, personalizza, revoca e chiudi non si eseguono (audit più breve)</span></div></label>
+              <label class="check"><input type="checkbox" id="f-saltaSenzaBanner" checked><div><b>Salta gli scenari con scelta se non c'è un banner</b><span>Se nessuna sessione "nessuna azione" mostra un banner, gli altri scenari non si eseguono (audit più breve)</span></div></label>
             </div>
           </div>
         </details>
-        <div class="foot"><button class="btn" data-go-step="1">Indietro</button><button class="btn primary" data-go-step="3">Avanti: controllo</button></div>
+        <div class="foot"><button class="btn" data-go-step="1">← Indietro</button><button class="btn primary" data-go-step="3">Continua: verifica prima dell'avvio →</button></div>
       </div>
 
-      <div class="card stack hidden" data-s="3">
-        <div class="row spread"><h2>Controllo prima dell'avvio</h2><button class="btn" id="preview">Anteprima pagine</button></div>
-        <p class="muted small">L'anteprima mostra quali pagine verranno visitate (1-2 minuti, nessuna sessione di audit). Se mancano pagine importanti, aggiungile al passo 1.</p>
+      <div class="card stack hidden" data-s="3" role="tabpanel">
+        <div class="stack" style="gap:4px"><h2>Verifica prima dell'avvio</h2><p class="muted small">Pochi controlli per evitare di ripetere l'audit.</p></div>
         <div class="checklist" id="checklist"></div>
-        <div id="preview-result"></div>
-        <div class="foot"><button class="btn" data-go-step="2">Indietro</button><button class="btn primary" data-go-step="4">Avanti: avvio</button></div>
+        <div class="preview-box">
+          <div><b>Anteprima delle pagine</b><span class="small muted">Scopri in 1-2 minuti per sito quali pagine verranno analizzate, senza avviare l'audit. Consigliata la prima volta: se manca una pagina importante, aggiungila al passo 1.</span></div>
+          <button class="btn" id="preview">Mostra le pagine</button>
+        </div>
+        <div id="preview-result" aria-live="polite"></div>
+        <div class="foot"><button class="btn" data-go-step="2">← Indietro</button><button class="btn" data-go-step="4" id="go-4">Continua: avvio →</button></div>
       </div>
 
-      <div class="card stack hidden" data-s="4">
-        <h2>Pronto per l'avvio</h2>
+      <div class="card stack hidden" data-s="4" role="tabpanel">
+        <h2>Tutto pronto</h2>
         <div class="grid2">
           <div class="stack" style="gap:6px"><span class="eyebrow">Durata stimata</span><b id="est-time" style="font:800 2rem var(--f-display)">—</b><span class="muted small" id="est-detail"></span></div>
           <div class="stack" style="gap:6px"><span class="eyebrow">Cosa succede</span><ol class="small" style="margin:0;padding-left:18px" id="est-steps"></ol></div>
         </div>
-        <div class="foot"><button class="btn" data-go-step="3">Indietro</button><button class="btn primary" id="run">Avvia audit</button></div>
+        <p class="small muted">La configurazione si salva da sola all'avvio. Durante l'audit puoi usare il computer per altro: l'indicatore in alto a destra mostra l'avanzamento e ti avvisa quando il rapporto è pronto.</p>
+        <div class="foot"><button class="btn" data-go-step="3">← Indietro</button><button class="btn primary lg" id="run">Avvia l'audit</button></div>
       </div>
     </div>
 
     <div id="yaml-box" class="card stack hidden">
-      <p class="muted small">Modifica avanzata: tutte le opzioni sono descritte in <code>config/esempio.yaml</code>. Rispettare i rientri (spazi, non tabulazioni).</p>
-      <textarea id="f-yaml" class="yaml" spellcheck="false"></textarea>
+      <p class="muted small">Modifica avanzata: tutte le opzioni sono descritte in <code>config/esempio.yaml</code>. Usa solo spazi per i rientri (niente tabulazioni). Per tornare al modulo guidato usa il pulsante in alto.</p>
+      <textarea id="f-yaml" class="yaml" spellcheck="false" aria-label="Configurazione in formato YAML"></textarea>
     </div>
 
-    <div class="savebar"><div id="save-msg"><span class="muted small">Le modifiche si salvano con "Salva" e prima di ogni avvio.</span></div><div class="row"><button class="btn" id="save-copy" title="Una nuova configurazione con lo stesso cliente, per esempio per una versione successiva">Salva una copia…</button><button class="btn primary" id="save">Salva</button></div></div>
+    <div class="savebar"><div id="save-msg" aria-live="polite"></div><span class="dirty hidden" id="dirty">● Modifiche non salvate</span><div class="row"><button class="btn ghost sm" id="save-copy" title="Una nuova configurazione con lo stesso cliente, per esempio per una versione successiva">Salva una copia…</button><button class="btn" id="save">Salva</button></div></div>
   </section>
 
-  <!-- AUDIT IN CORSO -->
+  <!-- AUDIT -->
   <section id="view-audit" class="hidden">
     <div class="row spread">
       <div class="stack" style="gap:4px"><span class="eyebrow" id="job-kind">Audit</span><h1 id="job-title">Nessun audit in corso</h1></div>
-      <span id="job-badge" class="chip">—</span>
+      <span id="job-badge" class="chip hidden">—</span>
+    </div>
+    <div class="card empty-state hidden" id="audit-empty">
+      <h2>Nessun audit in corso</h2>
+      <p>Avvia un audit da un cliente: qui vedrai l'avanzamento in tempo reale e, alla fine, il link al rapporto. Ti avviseremo anche se serve un tuo intervento.</p>
+      <button class="btn primary" id="audit-go-clients">Scegli un cliente</button>
     </div>
     <div class="card stack" id="job-progress">
       <div class="phases" id="phases">
-        <div class="ph" data-p="uscita"><i></i><b>Verifica uscita</b><span>paese e IP</span></div>
-        <div class="ph" data-p="scoperta"><i></i><b>Scoperta pagine</b><span id="ph-scoperta">siti</span></div>
+        <div class="ph" data-p="uscita"><i></i><b>Verifica connessione</b><span>paese e IP</span></div>
+        <div class="ph" data-p="scoperta"><i></i><b>Ricerca pagine</b><span id="ph-scoperta">siti</span></div>
         <div class="ph" data-p="manuale"><i></i><b>Navigazione manuale</b><span id="ph-manuale">se prevista</span></div>
-        <div class="ph" data-p="automatiche"><i></i><b>Sessioni automatiche</b><span id="ph-auto">—</span></div>
+        <div class="ph" data-p="automatiche"><i></i><b>Analisi automatica</b><span id="ph-auto">—</span></div>
         <div class="ph" data-p="report"><i></i><b>Rapporto</b><span>HTML, PDF, CSV</span></div>
       </div>
       <div class="row spread" style="align-items:flex-end"><div class="pct" id="pct">—</div><div class="eta"><span class="muted small" id="eta-l">Tempo rimanente</span><b id="eta">—</b></div></div>
-      <div class="bar" id="bar"><i style="width:0"></i></div>
+      <div class="bar" id="bar" role="progressbar" aria-label="Avanzamento dell'audit" aria-valuemin="0" aria-valuemax="100"><i style="width:0"></i></div>
       <div class="row" id="now"></div>
-      <p class="small muted">Il computer resta sveglio fino alla fine dell'audit, anche se non lo usi. Non chiudere il coperchio del portatile: con il coperchio chiuso il Mac va comunque in stop.</p>
-      <div class="row spread hidden" id="stop-box"><span class="small muted" id="stop-hint">Se l'audit sembra bloccato o l'hai avviato per errore, puoi fermarlo: i dati raccolti fin qui non producono un rapporto.</span><button class="btn sm danger" id="stop-job">Interrompi l'audit</button></div>
+      <p class="small muted">Puoi usare il computer per altro: resta sveglio da solo fino alla fine. Non chiudere il coperchio del portatile, altrimenti il Mac va comunque in stop.</p>
+      <div class="row spread hidden" id="stop-box"><span class="small muted" id="stop-hint">Sembra bloccato o l'hai avviato per errore? Puoi fermarlo: i dati raccolti fin qui non producono un rapporto.</span><button class="btn sm danger" id="stop-job">Interrompi l'audit</button></div>
     </div>
-    <div class="action hidden" id="job-action">
+    <div class="action hidden" id="job-action" role="alert">
       <div class="row spread"><h2>Tocca a te: navigazione manuale</h2><span class="chip warn">In attesa</span></div>
-      <p>Si è aperta una finestra del browser: il tool ha già fatto la scelta sul banner. Segui le istruzioni nel riquadro in basso a sinistra della finestra e premi <b>"Ho finito"</b>.</p>
+      <p>Si è aperta una finestra del browser e Scookie ha già fatto la scelta sul banner. Segui le istruzioni nel riquadro in basso a sinistra della finestra, poi premi <b>"Ho finito"</b>.</p>
       <p class="small muted">Non toccare il banner dei cookie. Usa solo dati palesemente fittizi o concordati con il cliente: i moduli inviati arrivano davvero al sito e ai suoi fornitori.</p>
-      <div class="row"><button class="btn primary" id="manual-done">Ho finito la navigazione</button><span class="small muted">Stesso effetto del pulsante nel riquadro della finestra: usalo se il riquadro non si vede.</span></div>
+      <div class="row"><button class="btn primary" id="manual-done">Ho finito la navigazione</button><span class="small muted">Stesso effetto del pulsante nella finestra: usalo se il riquadro non si vede.</span></div>
     </div>
-    <div class="msg warn hidden" id="job-offline"><b>Connessione assente.</b> Il tool riprova da solo ogni 10 secondi: controlla il Wi-Fi o che il computer non sia in stop.</div>
-    <div id="job-result"></div>
+    <div class="msg warn hidden" id="job-offline"><b>Connessione assente: audit in pausa.</b><span class="fix">Scookie riprova da solo ogni 10 secondi e riprende da dove si era fermato. Controlla il Wi-Fi o che il computer non sia in stop.</span></div>
+    <div id="job-result" aria-live="polite"></div>
     <div class="card stack" id="sites-box"><h2>Avanzamento per sito</h2><div class="stack" id="sites-prog" style="gap:10px"></div></div>
     <details class="card" id="job-log-box"><summary style="cursor:pointer;font-weight:600">Dettaglio tecnico (registro)</summary><pre class="log" id="job-log"></pre></details>
   </section>
 
-  <!-- ESECUZIONI -->
+  <!-- RAPPORTI -->
   <section id="view-esecuzioni" class="hidden">
     <div class="row spread">
-      <div class="stack" style="gap:4px"><h1>Esecuzioni</h1><p class="muted">Per ogni audit: leggi il rapporto, revisiona i rilievi, genera il rapporto rivisto, confronta con il precedente.</p></div>
-      <button class="btn sm" id="refresh-runs">Aggiorna</button>
+      <div class="stack" style="gap:4px"><h1>Rapporti</h1><p class="muted">Ogni audit produce un rapporto con le prove. Percorso consigliato: leggi → revisiona i rilievi → genera il rapporto rivisto → confronta con l'audit precedente.</p></div>
     </div>
-    <div id="runs" class="stack"></div>
+    <div class="toolbar">
+      <label class="small muted" for="runs-filter">Cliente</label>
+      <select id="runs-filter"><option value="">Tutti i clienti</option></select>
+      <button class="btn ghost sm" id="refresh-runs">Aggiorna l'elenco</button>
+    </div>
+    <p class="legend">I numeri indicano i <b>rilievi per priorità di verifica</b>: l'ordine in cui conviene esaminarli, non una valutazione di conformità (quella spetta al legale o al DPO).</p>
+    <div id="runs" class="stack" aria-live="polite"></div>
     <p class="muted small" id="runs-dir"></p>
   </section>
 
   <!-- REVISIONE -->
   <section id="view-revisione" class="hidden">
-    <div class="row spread">
-      <div class="stack" style="gap:4px"><span class="eyebrow">Revisione manuale</span><h1 id="rev-title">Esecuzione</h1></div>
-      <button class="btn ghost" id="rev-back">← Esecuzioni</button>
-    </div>
+    <nav class="crumbs" aria-label="Percorso"><button class="link" id="rev-back">Rapporti</button><span aria-hidden="true">›</span><span aria-current="page">Revisione</span></nav>
+    <div class="stack" style="gap:4px"><span class="eyebrow">Revisione dei rilievi</span><h1 id="rev-title">Esecuzione</h1></div>
     <div class="card stack">
-      <p class="muted small">Per ogni rilievo indica se l'hai verificato (<b>confermato</b>), se è un <b>falso positivo</b> o se resta <b>da verificare</b>, con una nota. Il report originale e le prove non cambiano: il report rivisto riporta l'esito accanto a ogni scheda e sposta i falsi positivi in coda.</p>
+      <p class="small">Per ogni rilievo scegli un esito: <b>Confermato</b> se hai verificato il fatto, <b>Falso positivo</b> se il fatto non sussiste (esce dal corpo del rapporto rivisto e va in coda), <b>Da verificare</b> se serve un approfondimento. Aggiungi una nota per motivare. Il rapporto originale e le prove non cambiano.</p>
+      <div class="stack" style="gap:6px"><div class="row spread"><span class="small" id="rev-count"></span><label class="small row" style="gap:6px;cursor:pointer"><input type="checkbox" id="rev-only-open"> Mostra solo i rilievi ancora da valutare</label></div><div class="bar ok" id="rev-bar"><i style="width:0"></i></div></div>
       <div class="tbl"><table class="rev"><thead><tr><th>Rilievo</th><th>Priorità</th><th>Fatto osservato</th><th>Esito</th><th>Nota</th></tr></thead><tbody id="rev-rows"></tbody></table></div>
-      <div class="foot"><span class="muted small" id="rev-count"></span><div class="row"><button class="btn" id="rev-save">Salva</button><button class="btn primary" id="rev-apply">Salva e genera il report rivisto</button></div></div>
+      <div class="foot"><span class="dirty hidden" id="rev-dirty">● Modifiche non salvate</span><div class="row" style="margin-left:auto"><button class="btn" id="rev-save">Salva la bozza</button><button class="btn primary" id="rev-apply">Salva e genera il rapporto rivisto</button></div></div>
     </div>
   </section>
 </main>
 <div class="toast hidden" id="toast" role="status"></div>
+<dialog id="ask"><form method="dialog"><h2 id="ask-t"></h2><p id="ask-p"></p><div class="row" style="justify-content:flex-end"><button class="btn" value="no" id="ask-no">Annulla</button><button class="btn primary" value="ok" id="ask-ok">Conferma</button></div></form></dialog>
 
 <template id="site-tpl">
   <div class="site">
-    <div class="site-h"><span class="site-title">Nuovo sito</span><span class="s-chips row"></span><button class="btn sm remove">Rimuovi</button></div>
+    <div class="site-h"><span class="site-title">Nuovo sito</span><span class="s-chips row"></span><button class="btn sm danger remove" type="button">Rimuovi</button></div>
     <div class="s-warn"></div>
-    <label class="f">Indirizzo <span class="hint">es. https://www.rossi.it/</span><input type="url" class="s-url" placeholder="https://"></label>
+    <label class="f"><span>Indirizzo del sito <span class="req" aria-hidden="true">*</span></span><span class="hint">es. https://www.rossi.it/ (se manca, https:// si aggiunge da solo)</span><input type="url" class="s-url" placeholder="https://www.esempio.it/" autocomplete="off"><span class="field-err s-url-err hidden" role="alert"></span></label>
     <div class="grid2">
-      <label class="f">Quali pagine controllare
+      <label class="f">Quali pagine analizzare
         <select class="s-mode">
-          <option value="auto">Scelte in automatico (sitemap e link)</option>
-          <option value="mix">In automatico + pagine che indico io</option>
+          <option value="auto">Le sceglie Scookie (sitemap e link) – consigliato</option>
+          <option value="mix">Le sceglie Scookie + quelle che indico io</option>
           <option value="solo">Solo la home e le pagine che indico io</option>
         </select></label>
-      <label class="f s-auto-box">Sezioni da escludere <span class="hint">una per riga, es. /area-riservata</span><textarea class="s-escludi" placeholder="/area-riservata&#10;/en/"></textarea></label>
+      <label class="f s-auto-box">Sezioni da escludere <span class="hint">facoltativo, una per riga, es. /area-riservata</span><textarea class="s-escludi" placeholder="/area-riservata&#10;/en/"></textarea></label>
     </div>
     <label class="f s-extra-box">Pagine da includere sempre <span class="hint">una per riga, percorso o indirizzo completo</span><textarea class="s-extra" placeholder="/contatti&#10;/preventivo/step-1"></textarea></label>
-    <div class="manual">
-      <div class="row spread"><h3>Navigazione manuale</h3><span class="chip s-manual-chip">Non attiva</span></div>
-      <p class="small muted">Per percorsi che il tool non sa fare da solo, come moduli in più passi (contatti, registrazione, preventivo). Se scrivi le istruzioni, all'inizio dell'audit si apre una finestra del browser: il tool fa la scelta sul banner, poi navighi tu e premi "Ho finito". Usa dati palesemente fittizi o concordati con il cliente.</p>
-      <div class="grid2">
-        <label class="f">Istruzioni per chi naviga <textarea class="s-manuale" rows="2" placeholder="Es. compila il modulo (contatti, registrazione, preventivo…) con i dati di prova, fino alla pagina di conferma"></textarea></label>
-        <label class="f">Pagina di partenza <span class="hint">facoltativa: un percorso (/contatti) o un indirizzo completo (https://www.esempio.it/)</span><input type="text" class="s-manuale-partenza" placeholder="/contatti"></label>
+    <details class="manual s-manual-d">
+      <summary><h3>Navigazione manuale <span class="hint">per moduli in più passi (contatti, registrazione, preventivo)</span></h3><span class="chip s-manual-chip">Non attiva</span></summary>
+      <div class="stack">
+        <p class="small muted">Per i percorsi che Scookie non sa fare da solo. Se scrivi le istruzioni, all'inizio dell'audit si apre una finestra del browser: Scookie fa la scelta sul banner, poi navighi tu e premi "Ho finito". Usa dati palesemente fittizi o concordati con il cliente (puoi indicarli in "Dati di prova per i moduli", più in basso).</p>
+        <div class="grid2">
+          <label class="f">Istruzioni per chi naviga <textarea class="s-manuale" rows="2" placeholder="Es. compila il modulo preventivo con i dati di prova, fino alla pagina di conferma"></textarea></label>
+          <label class="f">Pagina di partenza <span class="hint">facoltativa: un percorso (/contatti) o un indirizzo completo</span><input type="text" class="s-manuale-partenza" placeholder="/contatti"></label>
+        </div>
+        <div class="hint-box hidden s-partenza-warn"></div>
+        <p class="small muted">La prima volta i tuoi clic e i campi compilati vengono registrati: dalle esecuzioni successive il percorso si ripete da solo, senza bisogno di te.</p>
+        <div class="hint-box hidden s-rec"></div>
       </div>
-      <div class="hint-box hidden s-partenza-warn"></div>
-      <p class="small muted">La prima volta i tuoi clic e i campi compilati vengono registrati: dalle esecuzioni successive il percorso si rigioca da solo, in ogni ripetizione, senza bisogno di te.</p>
-      <div class="hint-box hidden s-rec"></div>
-    </div>
+    </details>
     <details class="adv">
       <summary>Opzioni avanzate del sito</summary>
       <div class="stack">
         <div class="grid2">
-          <label class="f">Nome nel report <span class="hint">facoltativo</span><input type="text" class="s-nome"></label>
-          <label class="f">Indirizzo della cookie policy <span class="hint">facoltativo</span><input type="url" class="s-policy" placeholder="https://"></label>
-          <label class="f">File cookie dichiarati <span class="hint">CSV, percorso</span><input type="text" class="s-dichiarati" placeholder="./dichiarati-rossi.csv"></label>
+          <label class="f">Nome nel rapporto <span class="hint">facoltativo</span><input type="text" class="s-nome"></label>
+          <label class="f">Indirizzo della cookie policy <span class="hint">facoltativo: se vuoto, Scookie la cerca da solo</span><input type="url" class="s-policy" placeholder="https://"></label>
+          <label class="f">File dei cookie dichiarati <span class="hint">CSV, percorso del file</span><input type="text" class="s-dichiarati" placeholder="./dichiarati-rossi.csv"></label>
           <label class="f">Esplorazione con clic <span class="hint">per applicazioni web</span>
             <select class="s-esplora"><option value="auto">Automatica: se si trovano poche pagine</option><option value="sempre">Sempre</option><option value="no">Mai</option></select></label>
         </div>
@@ -425,14 +511,45 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 const host = (u) => { try { return new URL(u).hostname; } catch { return u; } };
 const mins = (sec) => { const m = Math.max(1, Math.round(sec / 60)); return m === 1 ? 'circa 1 minuto' : `circa ${m} minuti`; };
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
+/* ---------- Errori: cosa è successo e come risolvere ---------- */
+const REMEDIES = [
+  [/Scookie non risponde|Failed to fetch|NetworkError|Load failed/i, 'Controlla che Scookie sia ancora aperto (icona sulla Scrivania, oppure "npm run interfaccia" nel Terminale), poi riprova.'],
+  [/già in corso un'altra operazione|Un audit è in corso/i, 'Attendi che finisca (l\'avanzamento è in alto a destra) oppure interrompilo dalla scheda Audit.'],
+  [/Esiste già una configurazione/i, 'Scegli un nome del file diverso, oppure apri il cliente esistente dalla scheda Clienti.'],
+  [/YAML non valido/i, 'Controlla i rientri (solo spazi, niente tabulazioni) vicino alla riga indicata, oppure torna al modulo guidato con il pulsante in alto.'],
+  [/Sessione non valida/i, 'Chiudi questa scheda e riapri Scookie dall\'icona: la pagina si apre con una nuova chiave di accesso.'],
+  [/Nome file non valido/i, 'Usa solo lettere, numeri, trattini e underscore, per esempio "rossi-2026".'],
+  [/verificaUscita|paese di uscita/i, 'Disattiva VPN o proxy esteri e avvia di nuovo l\'audit. Se l\'uscita da un altro paese è voluta, al passo 2 scegli "Prosegui e segnalalo nel rapporto".'],
+  [/Configurazione non trovata/i, 'Il file potrebbe essere stato spostato o rinominato: torna a Clienti per aggiornare l\'elenco.'],
+  [/non ci sono dati raccolti/i, 'Questa rilevazione non è recuperabile: ripeti l\'audit dal cliente nella scheda Clienti.'],
+  [/Nessuno dei siti indicati/i, 'Controlla che gli indirizzi da ripetere siano ancora nella configurazione del cliente.'],
+  [/Nessuna navigazione manuale in corso/i, 'La navigazione è già stata chiusa: l\'audit prosegue da solo.'],
+  [/Errore 5\d\d/i, 'Riprova tra qualche secondo. Se si ripete, apri "Dettaglio tecnico" nella scheda Audit e invia il registro a chi gestisce Scookie.'],
+];
+const remedy = (m) => REMEDIES.find(([re]) => re.test(m || ''))?.[1] || '';
+/** Riquadro d'errore: titolo, dettaglio e, se noto, come risolvere. */
+function errorHtml(message, title) {
+  const fix = remedy(message);
+  return `<div class="msg err" role="alert"><b>${esc(title || message)}</b>${title && message ? '\n' + esc(message) : ''}${fix ? `<span class="fix"><b>Come risolvere:</b> ${esc(fix)}</span>` : ''}</div>`;
+}
+
+/* ---------- Comunicazione con Scookie ---------- */
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    method: opts.method || 'GET',
-    headers: { 'x-scookie': '1', ...(opts.body ? { 'content-type': 'application/json' } : {}) },
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-    credentials: 'same-origin',
-  });
+  let res;
+  try {
+    res = await fetch(path, {
+      method: opts.method || 'GET',
+      headers: { 'x-scookie': '1', ...(opts.body ? { 'content-type': 'application/json' } : {}) },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      credentials: 'same-origin',
+    });
+  } catch {
+    setConnection(false);
+    throw new Error('Scookie non risponde');
+  }
+  setConnection(true);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const e = new Error(data.errore || (data.errori ? data.errori.join('\n') : `Errore ${res.status}`));
@@ -441,72 +558,176 @@ async function api(path, opts = {}) {
   }
   return data;
 }
-function toast(text) {
+function setConnection(ok) {
+  if (state.online === ok) return;
+  state.online = ok;
+  $('#conn-lost').classList.toggle('hidden', ok);
+  clearInterval(state.reconnect);
+  state.reconnect = null;
+  if (!ok) {
+    renderStatus(null, true);
+    state.reconnect = setInterval(() => api('/api/info').then(() => refreshJob()).catch(() => {}), 5000);
+  }
+}
+$('#conn-retry').onclick = () => api('/api/info').then(() => { refreshJob(); toast('Scookie è di nuovo raggiungibile.'); }).catch(() => toast('Scookie non risponde ancora', 'err'));
+
+function toast(text, kind = 'ok') {
   const t = $('#toast');
-  t.textContent = text;
-  t.classList.remove('hidden');
+  const fix = kind === 'err' ? remedy(text) : '';
+  t.className = 'toast' + (kind === 'err' ? ' err' : '');
+  t.setAttribute('role', kind === 'err' ? 'alert' : 'status');
+  t.innerHTML = `<div><span>${esc(text)}</span>${fix ? `<span class="fix"><b>Come risolvere:</b> ${esc(fix)}</span>` : ''}</div><button type="button" aria-label="Chiudi">×</button>`;
+  t.querySelector('button').onclick = () => t.classList.add('hidden');
   clearTimeout(toast.h);
-  toast.h = setTimeout(() => t.classList.add('hidden'), 4000);
+  // gli errori restano finché non li chiudi: devono poter essere letti con calma
+  if (kind !== 'err') toast.h = setTimeout(() => t.classList.add('hidden'), 4500);
 }
 
-const state = { file: null, isNew: false, data: null, yamlMode: false, step: 1, polling: null, job: null, discovery: null, clients: [], runs: [], review: null };
+/** Pulsante occupato durante un'operazione: niente doppi clic, etichetta che dice cosa sta succedendo. */
+async function busy(btn, label, fn) {
+  if (!btn) return fn();
+  const html = btn.innerHTML;
+  btn.disabled = true;
+  btn.classList.add('busy');
+  btn.setAttribute('aria-busy', 'true');
+  btn.innerHTML = `<span class="spin" aria-hidden="true"></span>${esc(label)}`;
+  try {
+    return await fn();
+  } finally {
+    if (btn.isConnected) {
+      btn.innerHTML = html;
+      btn.disabled = false;
+      btn.classList.remove('busy');
+      btn.removeAttribute('aria-busy');
+      lockButtons();
+    }
+  }
+}
+
+/** Finestra di conferma dell'interfaccia (al posto di quella del browser). */
+function ask({ title, text = '', ok = 'Conferma', cancel = 'Annulla', danger = false }) {
+  const d = $('#ask');
+  $('#ask-t').textContent = title;
+  $('#ask-p').textContent = text;
+  $('#ask-ok').textContent = ok;
+  $('#ask-ok').className = 'btn ' + (danger ? 'danger-solid' : 'primary');
+  $('#ask-no').textContent = cancel;
+  d.returnValue = '';
+  d.showModal();
+  $('#ask-no').focus();
+  return new Promise((res) => d.addEventListener('close', () => res(d.returnValue === 'ok'), { once: true }));
+}
+
+const state = { file: null, isNew: false, data: null, yamlMode: false, step: 1, polling: null, job: null, discovery: null, clients: [], runs: [], review: null, dirty: false, revDirty: false, online: true, view: 'clienti', unseenDone: false };
 
 /* ---------- Viste ---------- */
 const VIEWS = ['clienti', 'config', 'audit', 'esecuzioni', 'revisione'];
 function show(view) {
+  state.view = view;
   for (const v of VIEWS) $('#view-' + v).classList.toggle('hidden', v !== view);
   const tab = view === 'config' ? 'clienti' : view === 'revisione' ? 'esecuzioni' : view;
-  for (const t of ['clienti', 'audit', 'esecuzioni']) $('#tab-' + t).classList.toggle('on', t === tab);
+  for (const t of ['clienti', 'audit', 'esecuzioni']) {
+    $('#tab-' + t).classList.toggle('on', t === tab);
+    if (t === tab) $('#tab-' + t).setAttribute('aria-current', 'page'); else $('#tab-' + t).removeAttribute('aria-current');
+  }
+  if (view === 'audit' && state.unseenDone) { state.unseenDone = false; renderStatus(state.job); }
   if (view === 'esecuzioni') loadRuns();
   if (view === 'clienti') loadClients();
   window.scrollTo({ top: 0 });
 }
-$('#tab-clienti').onclick = () => show('clienti');
-$('#tab-audit').onclick = () => show('audit');
-$('#tab-esecuzioni').onclick = () => show('esecuzioni');
-$('#status').onclick = () => show(state.job && state.job.status === 'in-corso' ? 'audit' : 'esecuzioni');
-$('#back-clients').onclick = () => show('clienti');
+/** Navigazione dell'utente: chiede conferma se si lasciano modifiche non salvate. */
+async function nav(view) {
+  const leavingConfig = state.view === 'config' && view !== 'config' && state.dirty;
+  const leavingReview = state.view === 'revisione' && view !== 'revisione' && state.revDirty;
+  if (leavingConfig && !(await ask({ title: 'Uscire senza salvare?', text: 'Le modifiche alla configurazione andranno perse. Per conservarle, annulla e premi "Salva".', ok: 'Esci senza salvare', cancel: 'Resta qui', danger: true }))) return;
+  if (leavingReview && !(await ask({ title: 'Uscire senza salvare la revisione?', text: 'Gli esiti e le note inseriti dopo l\'ultimo salvataggio andranno persi.', ok: 'Esci senza salvare', cancel: 'Resta qui', danger: true }))) return;
+  if (leavingConfig) setDirty(false);
+  if (leavingReview) setRevDirty(false);
+  show(view);
+}
+$('#tab-clienti').onclick = () => nav('clienti');
+$('#tab-audit').onclick = () => nav('audit');
+$('#tab-esecuzioni').onclick = () => nav('esecuzioni');
+$('#status').onclick = () => nav(state.job && state.job.status === 'in-corso' ? 'audit' : 'esecuzioni');
+$('#back-clients').onclick = () => nav('clienti');
+$('#audit-go-clients').onclick = () => nav('clienti');
+window.addEventListener('beforeunload', (e) => { if (state.dirty || state.revDirty) e.preventDefault(); });
+
+function setDirty(on) {
+  state.dirty = on;
+  $('#dirty').classList.toggle('hidden', !on);
+}
+function setRevDirty(on) {
+  state.revDirty = on;
+  $('#rev-dirty').classList.toggle('hidden', !on);
+}
 
 /* ---------- Clienti ---------- */
 async function loadClients() {
-  const [list, runs] = await Promise.all([api('/api/clienti'), api('/api/esecuzioni').catch(() => [])]);
+  const box = $('#clients');
+  if (!box.children.length) box.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  let list, runs;
+  try {
+    [list, runs] = await Promise.all([api('/api/clienti'), api('/api/esecuzioni').catch(() => [])]);
+  } catch (e) {
+    box.innerHTML = `<div style="grid-column:1/-1" class="stack">${errorHtml(e.message, 'Non riesco a caricare i clienti')}<div><button class="btn sm" id="clients-retry">Riprova</button></div></div>`;
+    $('#clients-retry').onclick = loadClients;
+    return;
+  }
   state.clients = list;
   state.runs = runs;
-  const box = $('#clients');
   box.innerHTML = '';
+  // con clienti già presenti l'azione primaria è sulle loro card: il nuovo cliente diventa secondario
+  $('#new-client').classList.toggle('primary', !list.length);
+  if (!list.length) {
+    box.innerHTML = `<div class="card onboard" style="grid-column:1/-1"><div class="stack" style="gap:4px"><h2>Inizia il tuo primo audit</h2><p class="muted">Tre passi, la maggior parte del lavoro la fa Scookie.</p></div>
+      <ol class="ob"><li><b>Crea il cliente</b><span>Nome e indirizzi dei siti da analizzare (www, app, shop…).</span></li>
+      <li><b>Avvia l'audit</b><span>Scookie visita i siti come un nuovo visitatore e prova ogni scelta sul banner: rifiuta, accetta, personalizza, revoca.</span></li>
+      <li><b>Leggi il rapporto</b><span>Fatti osservati, prove e riferimenti normativi, pronti per la valutazione del legale o del DPO.</span></li></ol>
+      <button class="btn primary" id="first-client">Crea il primo cliente</button></div>`;
+    $('#first-client').onclick = newClient;
+    return;
+  }
   for (const c of list) {
     const last = runs.find((r) => r.configurazione === c.file || r.cliente === c.cliente);
-    const b = document.createElement('button');
-    b.className = 'card client';
-    const alta = last?.gravita?.alta;
-    b.innerHTML = `<div class="row spread"><h2>${esc(c.cliente)}</h2>${c.valido ? '<span class="chip ok">Pronto</span>' : '<span class="chip bad">Da correggere</span>'}</div>
+    const done = last && !last.incompleta;
+    const g = last?.gravita || {};
+    const a = document.createElement('article');
+    a.className = 'card client';
+    a.innerHTML = `<div class="row spread"><h2>${esc(c.cliente)}</h2>${c.valido ? '' : '<span class="chip bad">Configurazione da correggere</span>'}</div>
       <div class="sites">${c.siti.map((s) => `<span class="chip">${esc(host(s))}</span>`).join('') || `<span class="muted small">${esc(c.file)}</span>`}</div>
-      <div class="last">${last ? `Ultimo audit ${esc(fmt(last.inizio))} · ${esc(last.criticita ?? '—')} rilievi${alta ? ` <span class="chip bad">${alta} alta</span>` : ''}` : 'Nessun audit ancora'}</div>`;
-    b.onclick = () => openClient(c.file);
-    box.appendChild(b);
+      <div class="last">${last ? `Ultimo audit ${esc(fmt(last.inizio))}${done ? ` · ${esc(last.criticita ?? '—')} rilievi${g.alta ? ` <span class="chip bad">${g.alta} priorità alta</span>` : ''}${g.media ? ` <span class="chip warn">${g.media} media</span>` : ''}` : ' · rapporto non generato'}` : 'Nessun audit ancora: indica i siti e avvia il primo.'}</div>
+      <div class="acts"><button class="btn sm primary" type="button">${c.valido ? (last ? 'Configura e avvia di nuovo' : 'Configura e avvia') : 'Correggi la configurazione'}</button>${done ? `<a class="btn sm" href="/esecuzioni/${encodeURIComponent(last.name)}/report.html" target="_blank" rel="noopener">Apri l'ultimo rapporto</a>` : ''}</div>`;
+    a.onclick = (e) => {
+      if (e.target.closest('a')) return;
+      const b = a.querySelector('.acts button');
+      busy(b, 'Apertura…', () => openClient(c.file).catch((err) => toast(err.message, 'err')));
+    };
+    box.appendChild(a);
   }
-  const n = document.createElement('button');
-  n.className = 'card client new';
-  n.innerHTML = '<span style="font-size:1.6rem">+</span><b>Nuovo cliente</b><span class="small">Parti da un modulo vuoto</span>';
-  n.onclick = newClient;
-  box.appendChild(n);
 }
 
 async function openClient(file) {
   const c = await api('/api/clienti/' + encodeURIComponent(file));
-  if (state.file !== file) state.discovery = null;
+  if (state.file !== file) { state.discovery = null; state.step = 1; }
   state.file = file;
   state.isNew = false;
   state.data = c.data && typeof c.data === 'object' ? c.data : { cliente: '', siti: [] };
-  $('#editor-title').textContent = c.data?.cliente || file;
+  setTitle(c.data?.cliente || file);
   $('#file-box').classList.add('hidden');
   $('#f-yaml').value = c.yaml;
-  setMsg(c.valid ? '' : 'La configurazione contiene errori:\n' + c.errors.join('\n'), 'err');
+  if (c.valid) setMsg('');
+  else setMsg('La configurazione contiene errori:\n' + c.errors.map(humanError).join('\n'), 'err', 'Correggi le righe indicate qui sotto, poi premi "Salva".');
   setYamlMode(!c.valid || !c.data);
   fillForm(state.data);
+  setDirty(false);
   show('config');
   step(state.step || 1);
   loadRecordings(file);
+}
+function setTitle(t) {
+  $('#editor-title').textContent = t;
+  $('#crumb-title').textContent = t;
 }
 
 function newClient() {
@@ -514,15 +735,17 @@ function newClient() {
   state.isNew = true;
   state.discovery = null;
   state.data = { cliente: '', output: '../runs', browser: { paeseUscita: 'IT', verificaUscita: 'blocca' }, siti: [{ url: '' }] };
-  $('#editor-title').textContent = 'Nuovo cliente';
+  setTitle('Nuovo cliente');
   $('#file-box').classList.remove('hidden');
   $('#f-file').value = '';
   $('#f-yaml').value = '';
   setMsg('');
   setYamlMode(false);
   fillForm(state.data);
+  setDirty(false);
   show('config');
   step(1);
+  $('#f-cliente').focus();
 }
 $('#new-client').onclick = newClient;
 $('#f-cliente').addEventListener('input', () => {
@@ -533,16 +756,18 @@ $('#f-cliente').addEventListener('input', () => {
 function step(n) {
   state.step = n;
   $$('[data-s]').forEach((c) => c.classList.toggle('hidden', c.dataset.s !== String(n)));
-  $$('.step').forEach((s) => s.classList.toggle('on', s.dataset.step === String(n)));
+  $$('.step').forEach((s) => { s.classList.toggle('on', s.dataset.step === String(n)); s.setAttribute('aria-selected', String(s.dataset.step === String(n))); });
   refreshSummary();
 }
 $$('.step').forEach((s) => (s.onclick = () => step(Number(s.dataset.step))));
-$$('[data-go-step]').forEach((b) => (b.onclick = () => step(Number(b.dataset.goStep))));
+$$('[data-go-step]').forEach((b) => (b.onclick = () => { step(Number(b.dataset.goStep)); $('#form').scrollIntoView({ block: 'start' }); }));
 
 /* ---------- Modulo <-> dati ---------- */
 const SCENARI = [['nessuna-azione', '#f-sc-nessuna'], ['rifiuta', '#f-sc-rifiuta'], ['accetta', '#f-sc-accetta'], ['personalizza', '#f-sc-personalizza'], ['revoca', '#f-sc-revoca'], ['chiudi', '#f-sc-chiudi']];
+const SCENARIO_LABEL = { 'nessuna-azione': 'nessuna azione', rifiuta: 'rifiuta', accetta: 'accetta', personalizza: 'personalizza', revoca: 'accetta poi revoca', chiudi: 'chiudi con la X' };
 const lines = (t) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
+const validUrl = (v) => { try { const u = new URL(v); return /^https?:$/.test(u.protocol) && (u.hostname.includes('.') || u.hostname === 'localhost'); } catch { return false; } };
 const DP_TYPES = [['email', 'Email'], ['telefono', 'Telefono'], ['data', 'Data'], ['nome', 'Nome e cognome'], ['indirizzo', 'Indirizzo'], ['codice fiscale', 'Codice fiscale'], ['targa', 'Targa'], ['altro', 'Altro testo']];
 /** Una riga dei dati di prova: tipo, valore e (facoltativa) etichetta per il rapporto. */
 function addTestRow(e = { tipo: 'email', valore: '' }) {
@@ -550,11 +775,11 @@ function addTestRow(e = { tipo: 'email', valore: '' }) {
   row.className = 'grid3 dp-row';
   row.innerHTML = `<label class="f">Tipo<select class="dp-tipo">${DP_TYPES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
     <label class="f">Valore<input type="text" class="dp-valore" placeholder="es. test.verifica@esempio.it"></label>
-    <label class="f">Nome nel rapporto <span class="hint">facoltativo</span><span class="row" style="gap:6px;flex-wrap:nowrap"><input type="text" class="dp-etichetta" placeholder="es. data di nascita"><button class="btn sm" type="button" title="Rimuovi">×</button></span></label>`;
+    <label class="f">Nome nel rapporto <span class="hint">facoltativo</span><span class="row" style="gap:6px;flex-wrap:nowrap"><input type="text" class="dp-etichetta" placeholder="es. data di nascita"><button class="btn sm" type="button" title="Rimuovi questo dato" aria-label="Rimuovi questo dato">×</button></span></label>`;
   row.querySelector('.dp-tipo').value = e.tipo;
   row.querySelector('.dp-valore').value = e.valore || '';
   row.querySelector('.dp-etichetta').value = e.etichetta || '';
-  row.querySelector('button').onclick = () => row.remove();
+  row.querySelector('button').onclick = () => { row.remove(); setDirty(true); refreshSummary(); };
   $('#dp-list').appendChild(row);
 }
 /** Dati di prova dal file: elenco, oppure il formato precedente con un campo per tipo. */
@@ -590,6 +815,7 @@ function addSiteCard(site = {}) {
   q('.s-manuale').value = site.navigazioneManuale?.istruzioni || '';
   q('.s-manuale-partenza').value = site.navigazioneManuale?.partenza || '';
   q('.s-robots').checked = site.rispettaRobots !== false;
+  q('.s-manual-d').open = !!site.navigazioneManuale?.istruzioni;
   const b = site.banner || {};
   q('.s-b-rifiuta').value = b.rifiuta || '';
   q('.s-b-accetta').value = b.accetta || '';
@@ -620,17 +846,38 @@ function addSiteCard(site = {}) {
     } catch {}
     q('.s-partenza-warn').textContent = warn;
     q('.s-partenza-warn').classList.toggle('hidden', !warn);
+    if (on) $('#dp-box').open = true;
     siteHints(node);
   };
+  /** Controllo dell'indirizzo quando si lascia il campo: aggiunge https:// se manca, segnala gli indirizzi non validi. */
+  const checkUrl = () => {
+    const i = q('.s-url');
+    let v = i.value.trim();
+    if (v && !/^[a-z]+:\/\//i.test(v)) v = 'https://' + v;
+    if (v !== i.value) { i.value = v; sync(); }
+    const bad = v && !validUrl(v);
+    i.classList.toggle('invalid', !!bad);
+    i.setAttribute('aria-invalid', String(!!bad));
+    q('.s-url-err').textContent = bad ? 'Indirizzo non valido: scrivilo per intero, per esempio https://www.rossi.it/' : '';
+    q('.s-url-err').classList.toggle('hidden', !bad);
+  };
   q('.s-mode').onchange = sync;
-  q('.s-url').oninput = sync;
+  q('.s-url').oninput = () => { sync(); if (q('.s-url').classList.contains('invalid')) checkUrl(); };
+  q('.s-url').onblur = () => { checkUrl(); refreshSummary(); };
   q('.s-manuale').oninput = sync;
   q('.s-manuale-partenza').oninput = sync;
-  q('.remove').onclick = () => { node.remove(); refreshSummary(); };
+  q('.remove').onclick = async () => {
+    const name = q('.s-url').value.trim() ? host(q('.s-url').value) : 'questo sito';
+    if (q('.s-url').value.trim() && !(await ask({ title: `Rimuovere ${name}?`, text: 'Il sito esce dalla configurazione al prossimo salvataggio. I rapporti già generati non cambiano.', ok: 'Rimuovi', danger: true }))) return;
+    node.remove();
+    setDirty(true);
+    refreshSummary();
+  };
   sync();
   $('#sites').appendChild(node);
+  return node;
 }
-$('#add-site').onclick = () => addSiteCard({});
+$('#add-site').onclick = () => { const n = addSiteCard({}); setDirty(true); refreshSummary(); n.querySelector('.s-url').focus(); };
 
 /** Dopo un'anteprima: pagine trovate per sito e avvisi (es. poche pagine senza navigazione manuale). */
 function siteHints(node) {
@@ -641,7 +888,7 @@ function siteHints(node) {
   q('.s-chips').innerHTML = d ? `<span class="chip ${d.found < 5 ? 'warn' : 'ok'}">${d.found} pagine trovate</span><span class="chip">Campione: ${d.sample.length}</span>` : '';
   const redirects = d ? d.notes.filter((n) => /pagine? (non raggiungibil|.*error)/i.test(n)) : [];
   q('.s-warn').innerHTML = d && d.found < 5 && !manual
-    ? `<div class="hint-box"><div><b>Poche pagine raggiungibili in automatico.</b><span class="small">Se il sito ha percorsi con moduli (es. preventivo), le pagine aperte direttamente spesso portano a una pagina di errore: per controllarli serve la navigazione manuale qui sotto.${redirects.length ? ' ' + esc(redirects[0]) : ''}</span></div></div>`
+    ? `<div class="hint-box"><div><b>Poche pagine raggiungibili in automatico.</b><span class="small">Se il sito ha percorsi con moduli (es. preventivo), aperti direttamente portano spesso a una pagina di errore: per analizzarli attiva la navigazione manuale qui sotto.${redirects.length ? ' ' + esc(redirects[0]) : ''}</span></div></div>`
     : '';
 }
 
@@ -663,8 +910,11 @@ function fillForm(d) {
   $('#f-saltaSenzaBanner').checked = sc.saltaSenzaBanner !== false;
   $('#f-paese').value = br.paeseUscita || '';
   $('#f-sottotitolo').value = rp.sottotitolo || '';
+  $('#adv-header').open = !!(d.committente || rp.sottotitolo);
   $('#dp-list').innerHTML = '';
-  for (const e of testEntries(d)) addTestRow(e);
+  const tests = testEntries(d);
+  for (const e of tests) addTestRow(e);
+  $('#dp-box').open = tests.length > 0 || (d.siti || []).some((s) => s.navigazioneManuale?.istruzioni);
   $('#f-verifica').value = br.verificaUscita || 'avvisa';
   $('#f-har').value = rp.harContenuti || 'testo';
   $('#f-pdf').checked = rp.pdf !== false;
@@ -747,7 +997,7 @@ function plan() {
     const manual = recorded ? 0 : nManual;
     // senza banner (e con l'opzione attiva) si eseguono solo le sessioni "nessuna azione", più al massimo una di conferma
     const noBanner = (attivi.includes('nessuna-azione') ? pages * reps + (pages * reps < 2 ? 1 : 0) : sessions / reps) + (recorded ? nManual * reps : 0);
-    return { site: s.url, pages, sessions: sessions + (recorded ? nManual * reps : 0), noBanner, manual, found: disc?.found, estimated: !disc };
+    return { site: s.url, valid: validUrl(s.url), pages, sessions: sessions + (recorded ? nManual * reps : 0), noBanner, manual, found: disc?.found, estimated: !disc };
   });
   const sessions = rows.reduce((a, r) => a + r.sessions, 0);
   const manual = rows.reduce((a, r) => a + r.manual, 0);
@@ -760,55 +1010,82 @@ function plan() {
 function refreshSummary() {
   if (state.yamlMode || $('#view-config').classList.contains('hidden')) return;
   const p = plan();
-  $('#st1').textContent = `${p.rows.length} ${p.rows.length === 1 ? 'sito' : 'siti'}${p.manual ? ', navigazione manuale' : ''}`;
+  const invalid = p.rows.filter((r) => !r.valid);
+  $('#st1').textContent = p.rows.length ? `${p.rows.length} ${p.rows.length === 1 ? 'sito' : 'siti'}${p.manual ? ', navigazione manuale' : ''}` : 'cliente e indirizzi';
   $('#st2').textContent = `${p.attivi.length} scenari${p.reps > 1 ? ` × ${p.reps}` : ''}`;
-  $('#st3').textContent = state.discovery ? 'anteprima fatta' : 'anteprima da fare';
+  $('#st3').textContent = state.discovery ? 'anteprima fatta' : 'anteprima consigliata';
   $('#st4').textContent = mins(p.sec);
+  const done = { 1: !!p.d.cliente && p.rows.length > 0 && !invalid.length, 2: p.attivi.length > 0, 3: !!state.discovery };
+  $$('.step').forEach((s) => s.classList.toggle('done', !!done[s.dataset.step]));
   $('.step[data-step="3"]').classList.toggle('attn', !state.discovery);
+  // al passo 3 l'azione consigliata è l'anteprima finché non è fatta, poi proseguire
+  $('#preview').classList.toggle('primary', !state.discovery);
+  $('#go-4').classList.toggle('primary', !!state.discovery);
+  $('#go-4').textContent = state.discovery ? 'Continua: avvio →' : 'Salta l\'anteprima e continua →';
   const few = p.rows.filter((r) => r.found !== undefined && r.found < 5 && !r.manual);
   const items = [
-    p.rows.length ? ['ok', 'Siti indicati', p.rows.map((r) => host(r.site)).join(', ')] : ['bad', 'Nessun sito', 'Aggiungi almeno un indirizzo al passo 1.'],
-    p.attivi.length ? ['ok', 'Scenari', `${p.attivi.join(', ')}${p.reps > 1 ? ` · ripetuti ${p.reps} volte` : ''}`] : ['bad', 'Nessuno scenario', 'Scegli almeno uno scenario al passo 2.'],
-    [($('#f-verifica').value === 'no') ? 'warn' : 'ok', `Paese di uscita: ${$('#f-paese').value || 'IT'}`, $('#f-verifica').value === 'blocca' ? "Verificato all'avvio: se non corrisponde l'audit si ferma." : $('#f-verifica').value === 'avvisa' ? 'Verificato all\'avvio: se non corrisponde lo segnala il report.' : 'Non verificato.'],
-    state.discovery ? (few.length ? ['warn', 'Poche pagine su ' + few.map((r) => host(r.site)).join(', '), 'Per percorsi con moduli usa la navigazione manuale (passo 1).'] : ['ok', 'Pagine trovate su tutti i siti', `Campione di ${p.rows.reduce((a, r) => a + r.pages, 0)} pagine in tutto.`]) : ['warn', 'Anteprima non ancora fatta', 'Premi "Anteprima pagine" per vedere quali pagine verranno visitate.'],
-    ...(p.manual && !$$('#dp-list .dp-valore').some((i) => i.value.trim()) ? [['warn', 'Dati di prova non indicati', 'Indica al passo 2 i dati che inserirai nei moduli: il report li riconoscerà come prova certa.']] : []),
+    !p.d.cliente ? ['bad', 'Nome del cliente mancante', 'Indicalo al passo 1: compare nell\'intestazione del rapporto.'] : null,
+    !p.rows.length ? ['bad', 'Nessun sito indicato', 'Aggiungi almeno un indirizzo al passo 1.'] : invalid.length ? ['bad', 'Indirizzi da correggere', `${invalid.map((r) => r.site).join(', ')}: scrivili per intero, per esempio https://www.rossi.it/ (passo 1).`] : ['ok', 'Siti indicati', p.rows.map((r) => host(r.site)).join(', ')],
+    p.attivi.length ? ['ok', 'Scenari', `${p.attivi.map((a) => SCENARIO_LABEL[a] || a).join(', ')}${p.reps > 1 ? ` · ripetuti ${p.reps} volte` : ''}`] : ['bad', 'Nessuno scenario scelto', 'Scegli almeno uno scenario al passo 2.'],
+    [($('#f-verifica').value === 'no') ? 'warn' : 'ok', `Paese da cui navigare: ${$('#f-paese').value.toUpperCase() || 'IT'}`, $('#f-verifica').value === 'blocca' ? "Verificato all'avvio: se non corrisponde (es. VPN attiva) l'audit si ferma subito, senza sprecare tempo." : $('#f-verifica').value === 'avvisa' ? 'Verificato all\'avvio: se non corrisponde lo segnala il rapporto.' : 'Non verificato: assicurati di non avere VPN estere attive.'],
+    state.discovery ? (few.length ? ['warn', 'Poche pagine su ' + few.map((r) => host(r.site)).join(', '), 'Per i percorsi con moduli attiva la navigazione manuale (passo 1).'] : ['ok', 'Pagine trovate su tutti i siti', `Campione di ${p.rows.reduce((a, r) => a + r.pages, 0)} pagine in tutto.`]) : ['warn', 'Anteprima non ancora fatta', 'Facoltativa ma consigliata: premi "Mostra le pagine" qui sotto.'],
+    ...(p.manual && !$$('#dp-list .dp-valore').some((i) => i.value.trim()) ? [['warn', 'Dati di prova non indicati', 'Indicali al passo 1, in "Dati di prova per i moduli": il rapporto li riconoscerà come prova certa.']] : []),
     ...(p.manual ? [['warn', 'Serve la tua presenza all\'inizio', `${p.manual} ${p.manual === 1 ? 'navigazione manuale' : 'navigazioni manuali'} nei primi minuti, poi puoi lasciare il computer.`]] : []),
-    ['warn', 'Computer acceso e collegato alla corrente', 'Se va in stop l\'audit si interrompe. Su Mac avvia l\'interfaccia con: caffeinate -i npm run interfaccia'],
-  ];
-  $('#checklist').innerHTML = items.map(([k, b, t]) => `<div class="ci ${k}"><span class="ic">${k === 'ok' ? '✓' : '!'}</span><div><b>${esc(b)}</b><span>${esc(t)}</span></div></div>`).join('');
+    ['info', 'Il computer resta sveglio da solo', 'Tienilo collegato alla corrente e non chiudere il coperchio del portatile fino alla fine.'],
+  ].filter(Boolean);
+  $('#checklist').innerHTML = items.map(([k, b, t]) => `<div class="ci ${k}"><span class="ic" aria-hidden="true">${k === 'ok' ? '✓' : k === 'info' ? 'i' : '!'}</span><div><b>${esc(b)}</b><span>${esc(t)}</span></div></div>`).join('');
   $('#est-time').textContent = mins(p.sec);
-  $('#est-detail').textContent = `${p.sessions} sessioni automatiche${p.manual ? ` e ${p.manual} manuali` : ''}${p.rows.some((r) => r.estimated) ? ' (stima: fai l\'anteprima per un numero preciso)' : ''}.${p.secNoBanner !== null && p.secNoBanner < p.sec ? ` Se un sito non mostra alcun banner, gli scenari con scelta si saltano: per un sito così l'audit dura meno (${mins(p.secNoBanner)} se nessun sito ha un banner).` : ''} La stima si aggiorna durante l'audit.`;
+  $('#est-detail').textContent = `${p.sessions} sessioni automatiche${p.manual ? ` e ${p.manual} manuali` : ''}${p.rows.some((r) => r.estimated) ? ' (stima: con l\'anteprima il numero è preciso)' : ''}.${p.secNoBanner !== null && p.secNoBanner < p.sec ? ` Se un sito non mostra alcun banner, gli scenari con scelta si saltano e l'audit dura meno (${mins(p.secNoBanner)} se nessun sito ha un banner).` : ''} La stima si aggiorna durante l'audit.`;
   $('#est-steps').innerHTML = [
-    'Verifica dell\'uscita e scoperta delle pagine',
+    'Verifica della connessione e ricerca delle pagine',
     ...(p.manual ? ['<b>Navigazione manuale: tocca a te</b>'] : []),
-    `Sessioni automatiche${p.manual ? ': puoi lasciare il computer' : ''}`,
-    'Report, PDF e modulo di revisione',
+    `Analisi automatica${p.manual ? ': da qui puoi lasciare il computer' : ''}`,
+    'Rapporto con le prove, PDF e modulo di revisione',
   ].map((x) => `<li>${x}</li>`).join('');
 }
 $('#form').addEventListener('change', refreshSummary);
+$('#form').addEventListener('input', () => setDirty(true));
+$('#form').addEventListener('change', () => setDirty(true));
+$('#f-yaml').addEventListener('input', () => setDirty(true));
 
 function setYamlMode(on) {
   state.yamlMode = on;
   $('#form').classList.toggle('hidden', on);
   $('#yaml-box').classList.toggle('hidden', !on);
-  $('#toggle-yaml').textContent = on ? 'Torna al modulo' : 'Modifica come testo (YAML)';
+  $('#toggle-yaml').textContent = on ? '← Torna al modulo guidato' : 'Modifica avanzata (YAML)';
 }
 $('#toggle-yaml').onclick = async () => {
-  if (!state.yamlMode) return setYamlMode(true);
+  if (!state.yamlMode) {
+    if (state.dirty && !(await ask({ title: 'Passare al testo YAML?', text: 'Il testo mostra l\'ultima versione salvata: le modifiche del modulo non ancora salvate non compaiono. Salva prima, se vuoi conservarle.', ok: 'Passa al YAML' }))) return;
+    return setYamlMode(true);
+  }
   if (!state.file) return setYamlMode(false);
+  if (state.dirty && !(await ask({ title: 'Tornare al modulo?', text: 'Le modifiche al testo non salvate andranno perse. Premi "Salva" prima, se vuoi conservarle.', ok: 'Torna al modulo', danger: true }))) return;
   await openClient(state.file);
   setYamlMode(false);
 };
 
-function setMsg(text, kind = 'ok') {
-  $('#save-msg').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : '<span class="muted small">Le modifiche si salvano con "Salva" e prima di ogni avvio.</span>';
+const DEFAULT_MSG = '<span class="muted small">Le modifiche si salvano con "Salva" e, in ogni caso, all\'avvio dell\'audit.</span>';
+function setMsg(text, kind = 'ok', fix = '') {
+  if (!text) return void ($('#save-msg').innerHTML = DEFAULT_MSG);
+  const how = fix || (kind === 'err' ? remedy(text) : '');
+  $('#save-msg').innerHTML = `<div class="msg ${kind}"${kind === 'err' ? ' role="alert"' : ''}>${esc(text)}${how ? `<span class="fix"><b>Come risolvere:</b> ${esc(how)}</span>` : ''}</div>`;
 }
 const humanError = (e) =>
   e.replace(/^siti\.(\d+)\.url: .*/, (m, i) => `Sito ${Number(i) + 1}: indirizzo mancante o non valido (deve iniziare con https://)`)
-   .replace(/^cliente: .*/, 'Nome del cliente mancante')
-   .replace(/^siti: .*/, 'Aggiungere almeno un sito');
+   .replace(/^siti\.(\d+)\.([\w.]+): (.*)/, (m, i, f, t) => `Sito ${Number(i) + 1}, campo "${f}": ${t}`)
+   .replace(/^cliente: .*/, 'Nome del cliente mancante (passo 1)')
+   .replace(/^siti: .*/, 'Aggiungi almeno un sito (passo 1)')
+   .replace(/^scenari\.attivi: .*/, 'Scegli almeno uno scenario (passo 2)')
+   .replace(/^browser\.paeseUscita: .*/, 'Paese da cui navigare: usa una sigla di 2 lettere, es. IT (passo 2)');
 async function save() {
   const file = state.isNew ? ($('#f-file').value.trim() || '').replace(/\.ya?ml$/i, '') + '.yaml' : state.file;
+  if (state.isNew && file === '.yaml') {
+    setMsg('Non salvata: manca il nome del cliente.', 'err', 'Scrivi il nome del cliente al passo 1: il nome del file si compila da solo.');
+    step(1);
+    $('#f-cliente').focus();
+    return false;
+  }
   const body = state.yamlMode ? { file, yaml: $('#f-yaml').value } : { file, data: readForm(), nuovo: state.isNew };
   try {
     await api('/api/clienti', { method: 'POST', body });
@@ -818,12 +1095,13 @@ async function save() {
     setMsg('Configurazione salvata.', 'ok');
     return true;
   } catch (e) {
-    setMsg('Non salvata. ' + (e.errors ? 'Da correggere:\n' + e.errors.map(humanError).join('\n') : e.message), 'err');
+    if (e.errors) setMsg('Non salvata. Da correggere:\n' + e.errors.map(humanError).join('\n'), 'err', 'Correggi i campi indicati e premi di nuovo "Salva".');
+    else setMsg('Non salvata. ' + e.message, 'err');
     return false;
   }
 }
-$('#save').onclick = save;
-$('#dp-add').onclick = () => addTestRow();
+$('#save').onclick = (e) => busy(e.currentTarget, 'Salvataggio…', save);
+$('#dp-add').onclick = () => { addTestRow(); setDirty(true); };
 $('#save-copy').onclick = () => {
   // Stesso cliente, file diverso: la versione della configurazione sta nel nome del file, non nel nome del cliente
   const base = (state.file || $('#f-cliente').value || 'cliente').replace(/\.ya?ml$/i, '');
@@ -831,61 +1109,87 @@ $('#save-copy').onclick = () => {
   $('#file-box').classList.remove('hidden');
   step(1);
   $('#f-file').value = base + '-v2';
-  $('#editor-title').textContent = 'Copia di ' + ($('#f-cliente').value || base);
-  setMsg('Scegli il nome del file della copia e premi "Salva". Il nome del cliente resta lo stesso.', 'warn');
+  setTitle('Copia di ' + ($('#f-cliente').value || base));
+  setDirty(true);
+  setMsg('Scegli il nome del file della copia (passo 1) e premi "Salva". Il nome del cliente resta lo stesso.', 'warn');
   $('#f-file').focus();
 };
 
 /* ---------- Anteprima e audit ---------- */
 async function startJob(kind, extra = {}) {
-  if (kind !== 'avvia-siti' && !(await save())) return;
+  if (kind !== 'avvia-siti' && !(await save())) {
+    if (kind !== 'scopri') toast('Audit non avviato: correggi la configurazione (vedi il messaggio in basso).', 'err');
+    return;
+  }
   try {
     const body = { file: extra.file || state.file, ...extra };
     if (kind !== 'scopri' && !extra.file) body.pdf = $('#f-pdf').checked;
     await api('/api/' + (kind === 'scopri' ? 'scopri' : 'avvia'), { method: 'POST', body });
     if (kind === 'scopri') {
-      $('#preview-result').innerHTML = '<div class="msg warn">Anteprima in corso: 1-2 minuti per sito…</div>';
+      $('#preview-result').innerHTML = '<div class="msg warn"><span class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span>Ricerca delle pagine in corso: 1-2 minuti per sito…</span></div>';
     } else {
       show('audit');
     }
-    refreshJob();
+    await refreshJob();
   } catch (e) {
-    if (kind === 'avvia-siti') toast(e.message);
-    else setMsg(e.message, 'err');
+    if (kind === 'scopri') $('#preview-result').innerHTML = errorHtml(e.message, 'Anteprima non avviata');
+    else if (kind === 'avvia-siti') toast(e.message, 'err');
+    else setMsg('Audit non avviato. ' + e.message, 'err');
   }
 }
-$('#preview').onclick = () => startJob('scopri');
-$('#run').onclick = () => startJob('avvia');
+$('#preview').onclick = (e) => busy(e.currentTarget, 'Avvio dell\'anteprima…', () => startJob('scopri'));
+$('#run').onclick = (e) => busy(e.currentTarget, 'Avvio in corso…', () => startJob('avvia'));
+
+function lockButtons() {
+  const running = !!state.job && state.job.status === 'in-corso';
+  for (const id of ['#save', '#preview', '#run']) {
+    const b = $(id);
+    if (b.classList.contains('busy')) continue;
+    b.disabled = running;
+    b.title = running ? 'Attendi la fine dell\'operazione in corso (indicatore in alto a destra)' : '';
+  }
+}
 
 const PHASES = ['uscita', 'scoperta', 'manuale', 'automatiche', 'report', 'fine'];
 async function refreshJob() {
-  const j = await api('/api/lavoro').catch(() => null);
+  let j;
+  try { j = await api('/api/lavoro'); } catch { return; }
+  const was = state.job;
   state.job = j;
   const running = !!j && j.status === 'in-corso';
-  for (const id of ['#save', '#preview', '#run']) $(id).disabled = running;
-  renderStatus(j);
+  lockButtons();
   if (j && j.kind === 'scopri') renderPreview(j);
-  if (j && j.kind === 'audit') renderAudit(j);
+  renderAudit(j);
   if (running && !state.polling) state.polling = setInterval(refreshJob, 1500);
   if (!running && state.polling) {
     clearInterval(state.polling);
     state.polling = null;
-    if (j && j.kind === 'audit' && j.status === 'completato') toast('Audit completato: il rapporto è pronto.');
-    if (j && j.kind === 'audit' && j.status === 'interrotto') toast('Audit interrotto.');
+    if (j && j.kind === 'audit' && was && was.status === 'in-corso') {
+      if (j.status === 'completato') { toast('Audit completato: il rapporto è pronto.'); if (state.view !== 'audit') state.unseenDone = true; }
+      if (j.status === 'interrotto') toast('Audit interrotto.');
+      if (j.status === 'errore') toast('L\'audit si è fermato per un errore: ' + (j.error || ''), 'err');
+    }
   }
+  renderStatus(j);
 }
 
-function renderStatus(j) {
+function renderStatus(j, offline = false) {
   const st = $('#status');
   const pr = j && j.progress;
   const running = j && j.status === 'in-corso';
   const waiting = running && pr && pr.waiting;
   const pct = running && pr && pr.total ? Math.round(progressPct(pr)) : null;
-  st.className = 'status ' + (waiting ? 'st-wait' : running ? 'st-run' : j && j.status === 'errore' ? 'st-err' : '');
-  $('#status-t').textContent = running && j.stopping ? 'Interruzione in corso' : j && j.status === 'interrotto' ? 'Ultimo audit: interrotto' : waiting === 'manuale' ? 'Azione richiesta' : waiting === 'connessione' ? 'In pausa: connessione' : running ? (j.kind === 'audit' ? 'Audit in corso' : 'Anteprima in corso') : j && j.status === 'errore' ? 'Ultima operazione: errore' : 'Pronto';
-  $('#mini').classList.toggle('hidden', pct == null);
+  st.className = 'status ' + (offline ? 'st-err' : waiting ? 'st-wait' : running ? 'st-run' : j && j.status === 'errore' ? 'st-err' : '');
+  $('#status-t').textContent = offline ? 'Non raggiungibile' : running && j.stopping ? 'Interruzione in corso' : j && j.status === 'interrotto' ? 'Ultimo audit: interrotto' : waiting === 'manuale' ? 'Azione richiesta' : waiting === 'connessione' ? 'In pausa: connessione' : running ? (j.kind === 'audit' ? 'Audit in corso' : 'Anteprima in corso') : j && j.status === 'errore' ? 'Ultima operazione: errore' : 'Pronto';
+  $('#mini').classList.toggle('hidden', pct == null || offline);
   if (pct != null) $('#mini i').style.width = pct + '%';
-  document.title = waiting === 'manuale' ? '⚠ Azione richiesta – Scookie' : pct != null ? `${pct}% – Scookie` : 'Scookie';
+  const badge = $('#tab-audit-badge');
+  const auditRun = running && j.kind === 'audit';
+  badge.className = 'tab-badge' + (waiting ? ' wait' : state.unseenDone ? ' done' : '');
+  badge.textContent = waiting === 'manuale' ? '!' : auditRun ? (pct != null ? pct + '%' : '…') : state.unseenDone ? '✓' : '';
+  badge.classList.toggle('hidden', !(auditRun || state.unseenDone) || offline);
+  badge.setAttribute('aria-label', waiting === 'manuale' ? 'azione richiesta' : auditRun ? 'audit in corso' : 'rapporto pronto');
+  document.title = waiting === 'manuale' ? '⚠ Azione richiesta – Scookie' : pct != null ? `${pct}% – Scookie` : state.unseenDone ? '✓ Rapporto pronto – Scookie' : 'Scookie';
 }
 function progressPct(pr) {
   if (pr.phase === 'fine') return 100;
@@ -897,11 +1201,11 @@ function progressPct(pr) {
 function renderPreview(j) {
   const r = $('#preview-result');
   if (j.status === 'in-corso') {
-    r.innerHTML = `<div class="msg warn">Anteprima in corso…</div><pre class="log">${esc(j.log.slice(-6).join('\n'))}</pre>`;
+    r.innerHTML = `<div class="msg warn"><span class="row" style="gap:8px"><span class="spin" aria-hidden="true"></span>Ricerca delle pagine in corso: 1-2 minuti per sito…</span></div><pre class="log">${esc(j.log.slice(-6).join('\n'))}</pre>`;
     return;
   }
   if (j.status === 'errore') {
-    r.innerHTML = `<div class="msg err">${esc(j.error)}</div>`;
+    r.innerHTML = errorHtml(j.error, 'L\'anteprima non è riuscita');
     return;
   }
   if (!j.discovery || j.file !== state.file) return;
@@ -910,13 +1214,24 @@ function renderPreview(j) {
     $$('#sites .site').forEach(siteHints);
     refreshSummary();
   }
-  r.innerHTML = '<div class="tbl"><table><thead><tr><th>Sito</th><th class="num">Trovate</th><th class="num">Campione</th><th>Note</th></tr></thead><tbody>' +
+  r.innerHTML = '<div class="tbl"><table><thead><tr><th>Sito</th><th class="num">Trovate</th><th class="num">Da analizzare</th><th>Note</th></tr></thead><tbody>' +
     j.discovery.map((d) => `<tr><td>${esc(host(d.site))}</td><td class="num">${d.found}</td><td class="num">${d.sample.length}</td><td class="small muted">${d.notes.map(esc).join(' · ')}</td></tr>`).join('') +
     '</tbody></table></div>' +
-    j.discovery.map((d) => `<details class="adv"><summary>${esc(host(d.site))}: pagine del campione</summary><div class="tbl"><table><tr><th>#</th><th>Tipo</th><th>Origine</th><th>Pagina</th></tr>${d.sample.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.type)}</td><td>${esc(p.source)}</td><td>${esc(p.url)}</td></tr>`).join('')}</table></div></details>`).join('');
+    j.discovery.map((d) => `<details class="adv"><summary>${esc(host(d.site))}: elenco delle pagine da analizzare</summary><div class="tbl"><table><tr><th>#</th><th>Tipo</th><th>Origine</th><th>Pagina</th></tr>${d.sample.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.type)}</td><td>${esc(p.source)}</td><td>${esc(p.url)}</td></tr>`).join('')}</table></div></details>`).join('');
 }
 
 function renderAudit(j) {
+  const isAudit = !!j && j.kind === 'audit';
+  $('#audit-empty').classList.toggle('hidden', isAudit);
+  for (const id of ['#job-progress', '#sites-box', '#job-log-box']) $(id).classList.toggle('hidden', !isAudit);
+  $('#job-badge').classList.toggle('hidden', !isAudit);
+  if (!isAudit) {
+    $('#job-kind').textContent = 'Audit';
+    $('#job-title').textContent = 'Audit';
+    for (const id of ['#job-action', '#job-offline']) $(id).classList.add('hidden');
+    $('#job-result').innerHTML = '';
+    return;
+  }
   const pr = j.progress;
   const running = j.status === 'in-corso';
   $('#job-title').textContent = state.clients.find((c) => c.file === j.file)?.cliente || j.file;
@@ -939,51 +1254,78 @@ function renderAudit(j) {
     const i = PHASES.indexOf(el.dataset.p);
     el.className = 'ph' + (i < k || phase === 'fine' ? ' done' : i === k ? (pr && pr.waiting ? ' wait' : ' now') : '');
   });
-  const manualTotal = pr ? pr.sites.reduce((a, s) => a, 0) : 0;
-  $('#ph-scoperta').textContent = pr && pr.sites.length ? `${pr.sites.length} siti` : 'siti';
+  $('#ph-scoperta').textContent = pr && pr.sites.length ? `${pr.sites.length} ${pr.sites.length === 1 ? 'sito' : 'siti'}` : 'siti';
   $('#ph-auto').textContent = pr && pr.total ? `${pr.total} sessioni` : '—';
   const indet = running && (!pr || phase === 'uscita' || phase === 'scoperta');
   const pct = pr ? Math.round(progressPct(pr)) : running ? 0 : 100;
   const bar = $('#bar');
   bar.className = 'bar' + (indet ? ' indet' : '') + (pr && pr.waiting ? ' wait' : '');
   $('i', bar).style.width = (indet ? 0 : pct) + '%';
+  if (indet) bar.removeAttribute('aria-valuenow'); else bar.setAttribute('aria-valuenow', String(pct));
   $('#pct').textContent = indet ? '—' : pct + '%';
-  $('#eta-l').textContent = pr && pr.waiting === 'manuale' ? 'Ferma finché non premi "Ho finito"' : pr && pr.waiting === 'connessione' ? 'Ferma finché torna la connessione' : 'Tempo rimanente';
-  $('#eta').textContent = !running ? (j.status === 'completato' ? 'completato' : '—') : pr && pr.waiting ? 'in pausa' : pr && pr.etaSec != null ? mins(pr.etaSec) : 'in calcolo…';
+  $('#eta-l').textContent = pr && pr.waiting === 'manuale' ? 'In attesa del tuo "Ho finito"' : pr && pr.waiting === 'connessione' ? 'In attesa della connessione' : 'Tempo rimanente';
+  $('#eta').textContent = !running ? (j.status === 'completato' ? 'completato' : '—') : pr && pr.waiting ? 'in pausa' : pr && pr.etaSec != null ? mins(pr.etaSec) : indet ? 'in calcolo…' : 'in calcolo…';
   $('#now').innerHTML = running && pr ? `<span class="chip blue">${pr.total ? `Sessione ${Math.min(pr.done + 1, pr.total)} di ${pr.total}` : 'In corso'}</span><span>${esc(pr.current || '')}</span>` : '';
   $('#job-action').classList.toggle('hidden', !(running && pr && pr.waiting === 'manuale'));
   $('#job-offline').classList.toggle('hidden', !(running && pr && pr.waiting === 'connessione'));
   $('#sites-prog').innerHTML = pr && pr.sites.length
     ? pr.sites.map((s) => `<div class="sp"><span>${esc(host(s.site))}</span><div class="bar"><i style="width:${s.total ? (s.done / s.total) * 100 : 0}%"></i></div><span class="muted small" style="font-variant-numeric:tabular-nums">${s.done}/${s.total}</span></div>`).join('')
-    : '<p class="muted small">Disponibile dopo la scoperta delle pagine.</p>';
+    : '<p class="muted small">Compare dopo la ricerca delle pagine.</p>';
   const r = $('#job-result');
   if (j.status === 'errore') {
-    r.innerHTML = `<div class="msg err">${esc(j.error)}</div>`;
+    r.innerHTML = errorHtml(j.error, 'L\'audit si è fermato per un errore');
   } else if (j.status === 'interrotto') {
-    r.innerHTML = `<div class="msg warn"><b>Audit interrotto.</b> ${esc(j.error || '')} Per avere il rapporto, ripeti l'audit dalla sezione Clienti.</div>`;
+    r.innerHTML = `<div class="msg warn"><b>Audit interrotto.</b> ${esc(j.error || '')}<span class="fix"><b>Per avere il rapporto</b> ripeti l'audit: apri il cliente dalla scheda Clienti e premi "Avvia l'audit".</span></div>`;
   } else if (j.status === 'completato' && j.runName) {
+    if (r.dataset.run === j.runName) return;
     const base = '/esecuzioni/' + encodeURIComponent(j.runName) + '/';
-    r.innerHTML = `<div class="card stack"><div class="row spread"><h2>Audit completato</h2><span class="chip ok">Report pronto</span></div>
+    r.dataset.run = j.runName;
+    r.innerHTML = `<div class="card stack"><div class="row spread"><h2>Audit completato</h2><span class="chip ok">Rapporto pronto</span></div>
+      <p>Il rapporto con le prove è pronto. <b>Prossimo passo:</b> revisiona i rilievi (confermato, falso positivo, da verificare) per generare la versione rivista da consegnare.</p>
       <div class="row"><a class="btn primary" href="${base}report.html" target="_blank" rel="noopener">Apri il rapporto</a>
-      <a class="btn" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>
       <button class="btn" data-open-run="${esc(j.runName)}">Revisiona i rilievi</button>
-      <button class="btn" id="all-runs">Tutte le esecuzioni</button></div>
+      <a class="btn ghost" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>
+      <button class="btn ghost" id="all-runs">Tutti i rapporti</button></div>
       <p class="muted small">Cartella: ${esc(j.runName)}</p></div>`;
-    $('#all-runs').onclick = () => show('esecuzioni');
-    $('[data-open-run]', r).onclick = (e) => openReview(e.target.dataset.openRun);
+    $('#all-runs').onclick = () => nav('esecuzioni');
+    $('[data-open-run]', r).onclick = (e) => busy(e.currentTarget, 'Apertura…', () => openReview(e.currentTarget.dataset.openRun));
+    return;
   } else r.innerHTML = '';
+  delete r.dataset.run;
 }
 
-/* ---------- Esecuzioni ---------- */
+/* ---------- Rapporti ---------- */
+const SEV_LABEL = { alta: 'priorità alta', media: 'media', bassa: 'bassa', informativa: 'contesto' };
 async function loadRuns() {
-  const runs = await api('/api/esecuzioni');
-  state.runs = runs;
   const box = $('#runs');
+  if (!box.children.length) box.innerHTML = '<div class="skel thin"></div><div class="skel thin"></div>';
+  let runs;
+  try {
+    runs = await api('/api/esecuzioni');
+  } catch (e) {
+    box.innerHTML = `<div class="stack">${errorHtml(e.message, 'Non riesco a caricare i rapporti')}<div><button class="btn sm" id="runs-retry">Riprova</button></div></div>`;
+    $('#runs-retry').onclick = loadRuns;
+    return;
+  }
+  state.runs = runs;
+  const sel = $('#runs-filter');
+  const names = [...new Set(runs.map((r) => r.cliente))].sort((a, b) => a.localeCompare(b, 'it'));
+  const want = sel.value || store.get('scookie.runsFilter') || '';
+  sel.innerHTML = '<option value="">Tutti i clienti</option>' + names.map((n) => `<option>${esc(n)}</option>`).join('');
+  sel.value = names.includes(want) ? want : '';
+  renderRuns();
+}
+function renderRuns() {
+  const runs = state.runs;
+  const box = $('#runs');
+  const filter = $('#runs-filter').value;
   if (!runs.length) {
-    box.innerHTML = '<div class="card empty">Nessuna esecuzione ancora. Avvia un audit dalla sezione Clienti.</div>';
+    box.innerHTML = '<div class="card empty-state"><h2>Ancora nessun rapporto</h2><p>Qui troverai i rapporti di ogni audit, con le prove e la revisione dei rilievi. Il primo arriva al termine del primo audit.</p><button class="btn primary" id="runs-go-clients">Avvia un audit</button></div>';
+    $('#runs-go-clients').onclick = () => nav('clienti');
     return;
   }
   box.innerHTML = runs.map((r, i) => {
+    if (filter && r.cliente !== filter) return '';
     const base = '/esecuzioni/' + encodeURIComponent(r.name) + '/';
     if (r.incompleta) {
       return `<article class="card run">
@@ -997,31 +1339,42 @@ async function loadRuns() {
     const reviewed = r.revisionate ?? 0;
     const total = r.criticita ?? 0;
     const revDone = total > 0 && reviewed >= total;
+    // passo successivo consigliato: è l'unica azione primaria della card
+    const next = !r.revisione || total === 0 ? (r.rivisto ? 'fatto' : 'leggi') : reviewed === 0 ? 'leggi' : !revDone ? 'revisiona' : !r.rivisto ? 'rivisto' : 'fatto';
+    const P = (k) => (next === k ? 'primary' : '');
+    const nextText = {
+      leggi: r.revisione && total ? 'Prossimo passo: leggi il rapporto, poi revisiona i rilievi.' : 'Prossimo passo: leggi il rapporto.',
+      revisiona: `Prossimo passo: completa la revisione (${total - reviewed} ${total - reviewed === 1 ? 'rilievo' : 'rilievi'} da valutare).`,
+      rivisto: 'Prossimo passo: genera il rapporto rivisto da consegnare.',
+      fatto: `Revisione completata: il rapporto rivisto è pronto.${prev ? ' Puoi confrontarlo con l\'audit precedente.' : ''}`,
+    }[next];
     // il paese atteso è quello dichiarato nella configurazione dell'audit, non sempre l'Italia
     const okExit = r.uscitaOk ?? r.paese === 'IT';
     const country = !r.paese ? '<span class="chip bad">uscita non verificata</span>' : okExit ? `<span class="muted">uscita ${esc(r.paese)}</span>` : `<span class="chip bad">uscita ${esc(r.paese)}${r.paeseAtteso ? `, atteso ${esc(r.paeseAtteso)}` : ''}</span>`;
     const configOk = r.configurazione && state.clients.some((c) => c.file === r.configurazione);
     return `<article class="card run">
       <div class="run-h"><h2>${esc(r.cliente)}</h2><span class="muted">${esc(fmt(r.inizio))}${r.durataSec ? ` · ${Math.round(r.durataSec / 60)} minuti` : ''}</span>${country}
-        ${r.rivisto ? '<span class="chip ok">Revisionato</span>' : r.revisione ? '<span class="chip warn">Da revisionare</span>' : ''}</div>
-      <div class="sev">${g ? ['alta', 'media', 'bassa', 'informativa'].map((k) => `<div class="s ${k}"><b>${g[k] ?? 0}</b><span>${k}</span></div>`).join('') : `<div class="s"><b>${esc(total)}</b><span>rilievi</span></div>`}</div>
-      ${r.sessioniIncomplete ? `<div class="hint-box"><div><b>${r.sessioniIncomplete === 1 ? '1 sessione fermata' : r.sessioniIncomplete + ' sessioni fermate'} dal tetto di durata</b><span class="small">Il sito era lento: quelle sessioni sono parziali (dettaglio nella sezione Limiti del rapporto). Per completarle, ripetere l'audit o alzare "timeoutSessione" nella configurazione.</span></div></div>` : ''}
+        ${r.rivisto ? '<span class="chip ok">Revisionato</span>' : r.revisione && total ? '<span class="chip warn">Da revisionare</span>' : ''}</div>
+      <div class="sev" aria-label="Rilievi per priorità di verifica">${g ? ['alta', 'media', 'bassa', 'informativa'].map((k) => `<div class="s ${k}"><b>${g[k] ?? 0}</b><span>${SEV_LABEL[k]}</span></div>`).join('') : `<div class="s"><b>${esc(total)}</b><span>rilievi</span></div>`}</div>
+      ${r.sessioniIncomplete ? `<div class="hint-box"><div><b>${r.sessioniIncomplete === 1 ? '1 sessione fermata' : r.sessioniIncomplete + ' sessioni fermate'} dal tetto di durata</b><span class="small">Il sito era lento: quelle sessioni sono parziali (dettaglio nella sezione Limiti del rapporto). Per completarle, ripeti l'audit o alza "timeoutSessione" nella configurazione.</span></div></div>` : ''}
       ${r.sitiSenzaDati && r.sitiSenzaDati.length ? `<div class="hint-box"><div><b>Nessun dato per ${esc(r.sitiSenzaDati.map(host).join(', '))}</b><span class="small">Le pagine non si sono caricate (connessione assente o computer in stop): per questi siti l'audit va ripetuto.</span>
         ${configOk ? `<div style="margin-top:8px"><button class="btn sm" data-rerun="${esc(r.configurazione)}" data-siti="${esc(JSON.stringify(r.sitiSenzaDati))}">Ripeti solo questi siti</button></div>` : ''}</div></div>` : ''}
+      <p class="next-hint">${esc(nextText)}</p>
       <div class="flow">
-        <div class="fs done"><span class="k">1 · Leggi</span><span class="small">Rapporto e allegati</span><div class="row"><a class="btn sm primary" href="${base}report.html" target="_blank" rel="noopener">Report</a>${r.pdf ? `<a class="btn sm" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}<a class="btn sm" href="${base}${esc(r.csv || 'rilievi.csv')}">CSV</a></div></div>
-        <div class="fs ${r.revisione ? (revDone ? 'done' : 'next') : ''}"><span class="k">2 · Revisiona</span><span class="small">${r.revisione ? `${reviewed} rilievi su ${total}` : 'Modulo non disponibile'}</span>${r.revisione ? `<div class="row"><button class="btn sm ${revDone ? '' : 'primary'}" data-open-run="${esc(r.name)}">${reviewed ? 'Continua' : 'Inizia'} la revisione</button></div>` : ''}</div>
-        <div class="fs ${r.rivisto ? 'done' : ''}"><span class="k">3 · Rapporto rivisto</span><span class="small">${r.rivisto ? 'Generato' : 'Dopo la revisione'}</span><div class="row">${r.rivisto ? `<a class="btn sm" href="${base}report-rivisto.html" target="_blank" rel="noopener">Apri</a>` : ''}${r.revisione ? `<button class="btn sm" data-revisione="${esc(r.name)}" ${reviewed ? '' : 'disabled'}>${r.rivisto ? 'Rigenera' : 'Genera'}</button>` : ''}</div></div>
-        <div class="fs"><span class="k">4 · Confronta</span><span class="small">${prev ? `Con il ${esc(fmt(prev.inizio))}` : 'Nessuna esecuzione precedente'}</span>${prev ? `<div class="row"><button class="btn sm" data-prima="${esc(prev.name)}" data-dopo="${esc(r.name)}">Confronta con precedente</button></div>` : ''}</div>
+        <div class="fs ${next !== 'leggi' ? 'done' : 'next'}"><span class="k">1 · Leggi</span><span class="small">Rapporto e allegati</span><div class="row" style="gap:6px"><a class="btn sm ${P('leggi')}" href="${base}report.html" target="_blank" rel="noopener">Apri il rapporto</a>${r.pdf ? `<a class="btn sm ghost" href="${base}report.pdf" target="_blank" rel="noopener">PDF</a>` : ''}<a class="btn sm ghost" href="${base}${esc(r.csv || 'rilievi.csv')}">CSV</a></div></div>
+        <div class="fs ${r.revisione && total ? (revDone ? 'done' : next === 'revisiona' ? 'next' : '') : ''}"><span class="k">2 · Revisiona</span><span class="small">${r.revisione ? (total ? `${reviewed} rilievi su ${total} valutati` : 'Nessun rilievo da valutare') : 'Modulo non disponibile per questo rapporto'}</span>${r.revisione && total ? `<div class="row"><button class="btn sm ${P('revisiona')}" data-open-run="${esc(r.name)}">${reviewed ? 'Continua' : 'Inizia'} la revisione</button></div>` : ''}</div>
+        <div class="fs ${r.rivisto ? 'done' : next === 'rivisto' ? 'next' : ''}"><span class="k">3 · Rapporto rivisto</span><span class="small">${r.rivisto ? 'Generato' : 'Dopo la revisione'}</span><div class="row" style="gap:6px">${r.rivisto ? `<a class="btn sm ${P('fatto')}" href="${base}report-rivisto.html" target="_blank" rel="noopener">Apri</a>` : ''}${r.revisione && total ? `<button class="btn sm ${P('rivisto')}" data-revisione="${esc(r.name)}" ${reviewed ? '' : 'disabled title="Valuta almeno un rilievo per generare il rapporto rivisto"'}>${r.rivisto ? 'Rigenera' : 'Genera'}</button>` : ''}</div></div>
+        <div class="fs"><span class="k">4 · Confronta</span><span class="small">${prev ? `Con l'audit del ${esc(fmt(prev.inizio))}` : 'Nessun audit precedente dello stesso cliente'}</span>${prev ? `<div class="row"><button class="btn sm" data-prima="${esc(prev.name)}" data-dopo="${esc(r.name)}">Confronta con precedente</button></div>` : ''}</div>
       </div>
       <div class="cmp hidden" data-cmp="${esc(r.name)}"></div>
-      <div class="row" style="justify-content:flex-end"><button class="btn sm" data-rigenera="${esc(r.name)}" data-copia="1" title="Applica le regole della versione attuale ai dati di questa rilevazione, in una copia: utile per confrontare a parità di strumento una rilevazione passata con una nuova">Rigenera con la versione attuale</button></div>
+      <details class="more"><summary>Altre azioni</summary><div class="row"><button class="btn sm" data-rigenera="${esc(r.name)}" data-copia="1">Rigenera con la versione attuale di Scookie</button><span class="small muted">Applica le regole attuali ai dati già raccolti, in una copia: utile per confrontare a parità di strumento un audit passato con uno nuovo.</span></div></details>
     </article>`;
-  }).join('');
+  }).join('') || '<div class="card empty">Nessun rapporto per questo cliente.</div>';
 }
-$('#refresh-runs').onclick = loadRuns;
+$('#runs-filter').onchange = () => { store.set('scookie.runsFilter', $('#runs-filter').value); renderRuns(); };
+$('#refresh-runs').onclick = (e) => busy(e.currentTarget, 'Aggiornamento…', loadRuns);
 $('#stop-job').onclick = async () => {
-  if (!confirm('Interrompere l\'audit adesso?\n\nIl browser si chiude subito. I dati raccolti fin qui sono parziali: non producono un rapporto e l\'audit va ripetuto.')) return;
+  if (!(await ask({ title: 'Interrompere l\'audit adesso?', text: 'Il browser si chiude subito. I dati raccolti fin qui sono parziali: non producono un rapporto e l\'audit andrà ripetuto.', ok: 'Interrompi l\'audit', cancel: 'Continua l\'audit', danger: true }))) return;
   const b = $('#stop-job');
   b.disabled = true;
   try {
@@ -1029,93 +1382,94 @@ $('#stop-job').onclick = async () => {
     toast('Interruzione in corso: il browser si sta chiudendo.');
     refreshJob();
   } catch (e) {
-    toast(e.message);
+    toast(e.message, 'err');
     b.disabled = false;
   }
 };
 $('#manual-done').onclick = async () => {
   const b = $('#manual-done');
-  b.disabled = true;
-  try {
-    await api('/api/manuale/fatto', { method: 'POST', body: {} });
-    toast('Navigazione manuale conclusa: l\'audit prosegue.');
-  } catch (e) {
-    toast(e.message);
-  } finally {
-    setTimeout(() => (b.disabled = false), 3000);
-  }
+  await busy(b, 'Invio…', async () => {
+    try {
+      await api('/api/manuale/fatto', { method: 'POST', body: {} });
+      toast('Navigazione manuale conclusa: l\'audit prosegue da solo.');
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  });
 };
 $('#runs').addEventListener('click', async (ev) => {
   const open = ev.target.closest('[data-open-run]');
-  if (open) return openReview(open.dataset.openRun);
+  if (open) return busy(open, 'Apertura…', () => openReview(open.dataset.openRun));
   const rg = ev.target.closest('button[data-rigenera]');
   if (rg) {
-    try {
-      await api('/api/rigenera', { method: 'POST', body: { esecuzione: rg.dataset.rigenera, copia: rg.dataset.copia === '1' } });
-      show('audit');
-      refreshJob();
-    } catch (e) {
-      toast(e.message);
-    }
-    return;
+    return busy(rg, 'Avvio…', async () => {
+      try {
+        await api('/api/rigenera', { method: 'POST', body: { esecuzione: rg.dataset.rigenera, copia: rg.dataset.copia === '1' } });
+        show('audit');
+        refreshJob();
+      } catch (e) {
+        toast(e.message, 'err');
+      }
+    });
   }
   const rerun = ev.target.closest('[data-rerun]');
-  if (rerun) return startJob('avvia-siti', { file: rerun.dataset.rerun, siti: JSON.parse(rerun.dataset.siti) });
+  if (rerun) return busy(rerun, 'Avvio…', () => startJob('avvia-siti', { file: rerun.dataset.rerun, siti: JSON.parse(rerun.dataset.siti) }));
   const rv = ev.target.closest('button[data-revisione]');
   if (rv) return applyReview(rv.dataset.revisione, rv);
   const b = ev.target.closest('button[data-prima]');
   if (!b) return;
-  b.disabled = true;
-  b.textContent = 'Confronto…';
-  try {
-    const c = await api('/api/confronta', { method: 'POST', body: { prima: b.dataset.prima, dopo: b.dataset.dopo } });
-    const href = '/esecuzioni/' + encodeURIComponent(b.dataset.dopo) + '/' + encodeURIComponent(c.file);
-    const box = $(`[data-cmp="${CSS.escape(b.dataset.dopo)}"]`);
-    box.innerHTML = `<div class="c"><span class="muted small">Non più osservate</span><b style="color:var(--ok)">${c.risolte}</b></div>
-      <div class="c"><span class="muted small">Ancora presenti</span><b>${c.rimaste}</b></div>
-      <div class="c"><span class="muted small">Nuove</span><b style="color:var(--bad)">${c.nuove}</b></div>`;
-    box.classList.remove('hidden');
-    b.outerHTML = `<a class="btn sm primary" href="${href}" target="_blank" rel="noopener">Confronto: −${c.risolte} / =${c.rimaste} / +${c.nuove}</a>`;
-  } catch (e) {
-    b.disabled = false;
-    b.textContent = 'Confronta con precedente';
-    toast(e.message);
-  }
+  await busy(b, 'Confronto in corso…', async () => {
+    try {
+      const c = await api('/api/confronta', { method: 'POST', body: { prima: b.dataset.prima, dopo: b.dataset.dopo } });
+      const href = '/esecuzioni/' + encodeURIComponent(b.dataset.dopo) + '/' + encodeURIComponent(c.file);
+      const box = $(`[data-cmp="${CSS.escape(b.dataset.dopo)}"]`);
+      box.innerHTML = `<div class="c"><span class="muted small">Non più osservati</span><b style="color:var(--ok)">${c.risolte}</b></div>
+        <div class="c"><span class="muted small">Ancora presenti</span><b>${c.rimaste}</b></div>
+        <div class="c"><span class="muted small">Nuovi</span><b style="color:var(--bad)">${c.nuove}</b></div>`;
+      box.classList.remove('hidden');
+      b.outerHTML = `<a class="btn sm" href="${href}" target="_blank" rel="noopener" title="Apri il documento di confronto">Confronto: −${c.risolte} / =${c.rimaste} / +${c.nuove}</a>`;
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  });
 });
 
 async function applyReview(run, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Generazione…'; }
-  try {
-    const r = await api('/api/revisione', { method: 'POST', body: { esecuzione: run } });
-    toast(`Report rivisto generato: ${r.confermate} confermate, ${r.falsiPositivi} falsi positivi, ${r.nonRevisionate} non revisionate.`);
-    await loadRuns();
-    return true;
-  } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Genera'; }
-    toast(e.message);
-    return false;
-  }
+  const go = async () => {
+    try {
+      const r = await api('/api/revisione', { method: 'POST', body: { esecuzione: run } });
+      toast(`Rapporto rivisto generato: ${r.confermate} confermati, ${r.falsiPositivi} falsi positivi, ${r.nonRevisionate} non revisionati.`);
+      await loadRuns();
+      return true;
+    } catch (e) {
+      toast(e.message, 'err');
+      return false;
+    }
+  };
+  return btn ? busy(btn, 'Generazione…', go) : go();
 }
 
 /* ---------- Revisione dall'interfaccia ---------- */
-const OUTCOMES = [['', '— da scegliere —'], ['confermato', 'Confermato'], ['falso positivo', 'Falso positivo'], ['da verificare', 'Da verificare']];
-const SEV_CHIP = { alta: 'bad', media: 'warn', bassa: 'blue', informativa: '' };
+const OUTCOMES = [['', 'Scegli l\'esito…'], ['confermato', 'Confermato'], ['falso positivo', 'Falso positivo'], ['da verificare', 'Da verificare']];
+const SEV_CHIP = { alta: 'bad', media: 'warn', bassa: '', informativa: '' };
 async function openReview(run) {
   try {
     const rows = await api('/api/revisione/' + encodeURIComponent(run));
     state.review = { run, rows };
     const r = state.runs.find((x) => x.name === run);
     $('#rev-title').textContent = r ? `${r.cliente} · ${fmt(r.inizio)}` : run;
-    $('#rev-rows').innerHTML = rows.map((x, i) => `<tr>
-      <td><a href="/esecuzioni/${encodeURIComponent(run)}/report.html#${esc(x.scheda)}" target="_blank" rel="noopener">${esc(x.scheda)}</a></td>
+    $('#rev-rows').innerHTML = rows.map((x, i) => `<tr data-row="${i}">
+      <td><a href="/esecuzioni/${encodeURIComponent(run)}/report.html#${esc(x.scheda)}" target="_blank" rel="noopener" title="Apri il rilievo nel rapporto, con le prove">${esc(x.scheda)}</a></td>
       <td><span class="chip ${SEV_CHIP[x.gravita] ?? ''}">${esc(x.gravita)}</span></td>
       <td><b>${esc(x.titolo)}</b><div class="muted small">${esc(x.regola)} · ${esc(host(x.sito))}</div></td>
-      <td><select data-i="${i}" class="rev-esito">${OUTCOMES.map(([v, l]) => `<option value="${v}" ${x.esito === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
-      <td><input type="text" data-i="${i}" class="rev-nota" value="${esc(x.nota)}" placeholder="Motivo o verifica fatta"></td></tr>`).join('');
+      <td><select data-i="${i}" class="rev-esito" aria-label="Esito del rilievo ${esc(x.scheda)}">${OUTCOMES.map(([v, l]) => `<option value="${v}" ${x.esito === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td><input type="text" data-i="${i}" class="rev-nota" value="${esc(x.nota)}" placeholder="Motivo o verifica fatta" aria-label="Nota sul rilievo ${esc(x.scheda)}"></td></tr>`).join('');
+    $('#rev-only-open').checked = false;
+    setRevDirty(false);
     reviewCount();
     show('revisione');
   } catch (e) {
-    toast(e.message);
+    toast(e.message, 'err');
   }
 }
 function reviewRows() {
@@ -1123,22 +1477,39 @@ function reviewRows() {
 }
 function reviewCount() {
   const rows = reviewRows();
-  $('#rev-count').textContent = `${rows.filter((r) => r.esito).length} rilievi revisionati su ${rows.length} · ${rows.filter((r) => r.esito === 'falso positivo').length} falsi positivi`;
+  const n = rows.filter((r) => r.esito).length;
+  const fp = rows.filter((r) => r.esito === 'falso positivo').length;
+  $('#rev-count').innerHTML = `<b>${n} di ${rows.length}</b> rilievi valutati${fp ? ` · ${fp} ${fp === 1 ? 'falso positivo' : 'falsi positivi'}` : ''}${n === rows.length && rows.length ? ' · <span style="color:var(--ok)">revisione completa</span>' : ''}`;
+  $('#rev-bar i').style.width = (rows.length ? (n / rows.length) * 100 : 0) + '%';
+  const only = $('#rev-only-open').checked;
+  rows.forEach((r, i) => {
+    const tr = $(`#rev-rows tr[data-row="${i}"]`);
+    tr.classList.toggle('set', !!r.esito);
+    tr.classList.toggle('hidden', only && !!r.esito);
+  });
+  const apply = $('#rev-apply');
+  if (!apply.classList.contains('busy')) {
+    apply.disabled = n === 0;
+    apply.title = n === 0 ? 'Valuta almeno un rilievo per generare il rapporto rivisto' : '';
+  }
 }
-$('#rev-rows').addEventListener('change', reviewCount);
+$('#rev-rows').addEventListener('change', () => { setRevDirty(true); reviewCount(); });
+$('#rev-rows').addEventListener('input', () => setRevDirty(true));
+$('#rev-only-open').onchange = reviewCount;
 async function saveReview() {
   await api('/api/revisione/' + encodeURIComponent(state.review.run), { method: 'POST', body: { righe: reviewRows() } });
+  setRevDirty(false);
 }
-$('#rev-save').onclick = async () => {
-  try { await saveReview(); toast('Revisione salvata.'); } catch (e) { toast(e.message); }
-};
-$('#rev-apply').onclick = async () => {
+$('#rev-save').onclick = (e) => busy(e.currentTarget, 'Salvataggio…', async () => {
+  try { await saveReview(); toast('Bozza della revisione salvata.'); } catch (err) { toast(err.message, 'err'); }
+});
+$('#rev-apply').onclick = (e) => busy(e.currentTarget, 'Generazione del rapporto rivisto…', async () => {
   try {
     await saveReview();
     if (await applyReview(state.review.run)) show('esecuzioni');
-  } catch (e) { toast(e.message); }
-};
-$('#rev-back').onclick = () => show('esecuzioni');
+  } catch (err) { toast(err.message, 'err'); }
+});
+$('#rev-back').onclick = () => nav('esecuzioni');
 
 /* ---------- Percorsi registrati ---------- */
 async function loadRecordings(file) {
@@ -1150,50 +1521,53 @@ async function loadRecordings(file) {
     const box = node.querySelector('.s-rec');
     box.classList.toggle('hidden', !r);
     if (!r) continue;
-    box.innerHTML = `<div><b>Percorso registrato il ${esc(fmt(r.registrato))} (${r.passi} azioni)</b><span class="small">Nelle prossime esecuzioni si rigioca in automatico dopo la scelta, in ogni ripetizione: non serve la tua presenza. Se il sito è cambiato o il percorso va rifatto, registralo di nuovo.</span></div><button class="btn sm" type="button">Registra di nuovo</button>`;
+    node.querySelector('.s-manual-d').open = true;
+    box.innerHTML = `<div><b>Percorso registrato il ${esc(fmt(r.registrato))} (${r.passi} azioni)</b><span class="small">Nelle prossime esecuzioni si ripete da solo dopo la scelta, in ogni ripetizione: non serve la tua presenza. Se il sito è cambiato, registralo di nuovo.</span></div><button class="btn sm" type="button">Registra di nuovo</button>`;
     box.querySelector('button').onclick = async () => {
-      if (!confirm('Eliminare il percorso registrato? Al prossimo audit la navigazione manuale ti chiederà di rifarlo.')) return;
-      await api('/api/percorsi/' + encodeURIComponent(file), { method: 'POST', body: { sito: url } }).catch((e) => toast(e.message));
+      if (!(await ask({ title: 'Registrare di nuovo il percorso?', text: 'Il percorso attuale viene eliminato: al prossimo audit la navigazione manuale ti chiederà di rifarlo.', ok: 'Elimina e registra di nuovo', danger: true }))) return;
+      await api('/api/percorsi/' + encodeURIComponent(file), { method: 'POST', body: { sito: url } }).catch((e) => toast(e.message, 'err'));
       loadRecordings(file);
+      refreshSummary();
     };
   }
+  refreshSummary();
 }
 
 /* ---------- Aggiornamenti e chiusura ---------- */
 async function checkUpdates() {
   try {
     const u = await api('/api/aggiornamenti');
-    const cur = u.current ? `Versione ${u.current}. ` : '';
+    const cur = u.current ? `Scookie ${u.current}. ` : '';
     $('#upd-text').textContent =
       u.available == null ? cur + (u.error || 'Aggiornamenti non verificabili.')
-      : u.available === 0 ? cur + 'Aggiornato all\'ultima versione su GitHub.'
-      : cur + `${u.available} ${u.available === 1 ? 'aggiornamento disponibile' : 'aggiornamenti disponibili'} su GitHub.` + (u.canRestart ? '' : ' Per installarli chiudi Scookie e riaprilo dall\'icona sulla Scrivania.');
+      : u.available === 0 ? cur + 'Aggiornato all\'ultima versione.'
+      : cur + `${u.available} ${u.available === 1 ? 'aggiornamento disponibile' : 'aggiornamenti disponibili'}.` + (u.canRestart ? '' : ' Per installarli chiudi Scookie e riaprilo dall\'icona sulla Scrivania.');
     $('#upd-go').classList.toggle('hidden', !(u.available > 0 && u.canRestart && u.canQuit));
     $('#quit').classList.toggle('hidden', !u.canQuit);
   } catch (e) {
-    $('#upd-text').textContent = 'Aggiornamenti non verificabili: ' + e.message;
+    $('#upd-text').textContent = 'Aggiornamenti non verificabili: ' + e.message + '.';
   }
 }
 const goodbye = (text) => {
   document.body.innerHTML = `<main style="max-width:560px;margin:80px auto;padding:0 16px;font:16px/1.5 system-ui"><h1>Scookie</h1><p>${esc(text)}</p></main>`;
 };
 $('#quit').onclick = async () => {
-  if (!confirm('Chiudere Scookie? Per riaprirlo usa l\'icona sulla Scrivania.')) return;
+  if (!(await ask({ title: 'Chiudere Scookie?', text: 'Per riaprirlo usa l\'icona sulla Scrivania. Configurazioni e rapporti restano salvati.', ok: 'Chiudi Scookie' }))) return;
   try {
     await api('/api/esci', { method: 'POST', body: {} });
     goodbye('Scookie è chiuso. Puoi chiudere questa scheda; per riaprirlo usa l\'icona sulla Scrivania.');
   } catch (e) {
-    toast(e.message);
+    toast(e.message, 'err');
   }
 };
-$('#upd-go').onclick = async () => {
+$('#upd-go').onclick = (e) => busy(e.currentTarget, 'Aggiornamento…', async () => {
   try {
     await api('/api/aggiorna', { method: 'POST', body: {} });
     goodbye('Aggiornamento in corso: tra un minuto circa si apre una nuova scheda con Scookie aggiornato. Puoi chiudere questa.');
-  } catch (e) {
-    toast(e.message);
+  } catch (err) {
+    toast(err.message, 'err');
   }
-};
+});
 
 /* ---------- Avvio ---------- */
 // la chiave della sessione serve solo alla prima apertura (poi vale il cookie): via dalla barra degli indirizzi
@@ -1202,14 +1576,14 @@ if (location.search) history.replaceState(null, '', '/');
   try {
     const info = await api('/api/info');
     $('#version').textContent = 'v' + info.versione;
-    $('#clients-dir').textContent = 'Configurazioni in: ' + info.clienti;
-    $('#runs-dir').textContent = 'Risultati in: ' + info.esecuzioni;
+    $('#clients-dir').textContent = '· Configurazioni in ' + info.clienti;
+    $('#runs-dir').textContent = 'Rapporti salvati in: ' + info.esecuzioni;
     await loadClients();
     await refreshJob();
     checkUpdates();
     if (state.job && state.job.status === 'in-corso' && state.job.kind === 'audit') show('audit');
   } catch (e) {
-    document.body.insertAdjacentHTML('afterbegin', `<div class="msg err">${esc(e.message)}</div>`);
+    $('#clients').innerHTML = `<div style="grid-column:1/-1">${errorHtml(e.message, 'Scookie non si è avviato correttamente')}</div>`;
   }
 })();
 </script>
