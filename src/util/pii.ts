@@ -388,6 +388,15 @@ function decodeDeep(s: string): string {
   return cur;
 }
 
+/** `needle` compare in `hay` come parola intera: non preceduto né seguito da lettere o cifre. */
+function wholeWord(hay: string, needle: string): boolean {
+  const word = /[\p{L}\p{N}]/u;
+  for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + 1)) {
+    if (!word.test(hay[i - 1] ?? '') && !word.test(hay[i + needle.length] ?? '')) return true;
+  }
+  return false;
+}
+
 export function detectPii(...texts: (string | null | undefined)[]): PiiHit[] {
   const out = new Map<string, PiiHit>();
   const add = (h: PiiHit) => out.set(`${h.kind}|${h.param}|${h.masked}`, h);
@@ -417,7 +426,9 @@ export function detectPii(...texts: (string | null | undefined)[]): PiiHit[] {
     const lower = whole.toLowerCase();
     for (const t of testData) {
       const hay = isText(t.tipo) ? lower : whole;
-      if (t.forms.some((f) => hay.includes(isText(t.tipo) ? f.toLowerCase() : f))) add({ kind: t.kind, param: null, masked: t.value, test: true });
+      // testi liberi (nomi, indirizzi): solo come parola intera, altrimenti "Test" scatta su "ab-testing" e "Rosa" su "prosa"
+      const found = isText(t.tipo) ? t.forms.some((f) => wholeWord(hay, f.toLowerCase())) : t.forms.some((f) => hay.includes(f));
+      if (found) add({ kind: t.kind, param: null, masked: t.value, test: true });
       // lo stesso dato come hash o in base64 (es. l'email in SHA-256 inviata ai fornitori pubblicitari)
       const enc = t.encoded.find((e) => (e.ci ? lower.includes(e.needle) : whole.includes(e.needle)));
       if (enc) add({ kind: `${t.kind} (${enc.how === 'base64' ? 'in base64' : `hash ${enc.how}`})`, param: null, masked: t.value, test: true });

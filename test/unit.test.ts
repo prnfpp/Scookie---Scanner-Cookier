@@ -409,3 +409,11 @@ test('host dei rilievi: indirizzo o dominio intero (regola sui sottodomini)', ()
   // la regola sui sottodomini riporta il dominio, non un indirizzo: non deve interrompere l'audit
   assert.equal(siteHost('esempio.it'), 'esempio.it');
 });
+
+test('dati di prova testuali: solo come parola intera, non dentro altre parole', () => {
+  setTestData([{ tipo: 'nome', valore: 'Test', etichetta: 'cognome' }]);
+  assert.equal(detectPii('https://cdn.esempio.it/ab-testing/latest.js').length, 0);
+  assert.equal(detectPii('https://x.example/p?q=Test').length, 1);
+  assert.equal(detectPii('https://x.example/blog/prosa-e-poesia').length, 0);
+  setTestData([]);
+});

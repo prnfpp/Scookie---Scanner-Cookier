@@ -4,6 +4,11 @@
 
 Terza verifica della rilevazione (navigazioni manuali corrette, tre ripetizioni).
 
+- **Nomi digitati: solo parola intera.** Un nome o cognome di prova breve (es. "Test", "Rosa") non scatta più dentro altre
+  parole degli indirizzi (`/ab-testing/`, `/prosa-e-poesia`), che producevano un falso "dati inseriti arrivano a…".
+- **CSV: i numeri negativi restano numeri** (millisecondi dalla scelta); la protezione dalle formule vale solo per i testi.
+- **Interruzione durante l'attesa della connessione:** il pulsante "Interrompi" ferma subito anche questa attesa.
+
 - **Dati dell'operatore nell'indirizzo delle pagine.** Durante una navigazione manuale, i valori con nome di dato
   personale negli indirizzi delle pagine del sito (es. `/preventivo?dataNascita=…&targa=…`, aperto dal modulo della
   home) valgono come dati di prova anche quando il campo non li ha consegnati come testo digitato (calendari, campi
