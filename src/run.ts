@@ -634,7 +634,7 @@ async function runAuditInner(loaded: LoadedConfig, opts: RunOptions, config: Aud
         if (!first.unreachable || !NETWORK_ERROR.test(first.unreachable)) continue;
         log(`    ${first.id}: connessione assente, attesa del ripristino…`);
         progress.wait('connessione');
-        const back = await waitOnline(browser, site.url, log);
+        const back = await waitOnline(browser, site.url, log, opts.signal);
         progress.wait(null);
         if (!back) break;
         const plan = plans.find((p) => p.id === first.id);

@@ -62,7 +62,7 @@ export function attributeByHost(sessions: SessionResult[]): Attribution {
     return ownBySite.get(site)!;
   };
   // Host che appartengono a un sito della rilevazione (il suo, con o senza www, e quello a cui porta la home): una
-  // pagina su uno di questi host è una pagina di quel sito, non di un sito a parte (es. conte.it che rimanda a www.conte.it).
+  // pagina su uno di questi host è una pagina di quel sito, non di un sito a parte (es. esempio.it che rimanda a www.esempio.it).
   const aliasSite = new Map<string, string>();
   for (const site of new Set(sessions.filter((s) => !s.attributedFrom).map((s) => s.site))) {
     for (const h of own(site)) if (!aliasSite.has(h)) aliasSite.set(h, site);
